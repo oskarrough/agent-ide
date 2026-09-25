@@ -3,7 +3,6 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 
-const host = process.env.HOST || '127.0.0.1';
 const port = Number(process.env.PORT || 3000);
 const db = new DatabaseSync(process.env.DB_PATH || 'threads.db');
 db.exec(`
@@ -46,7 +45,7 @@ function notify(threadId) {
   for (const socket of clients) socket.write(Buffer.concat([header, payload]));
 }
 
-const server = http.createServer(async (req, res) => {
+const handleRequest = async (req, res) => {
   const path = new URL(req.url, 'http://localhost').pathname;
   if (req.method === 'OPTIONS') {
     res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' });
@@ -82,9 +81,9 @@ const server = http.createServer(async (req, res) => {
   } catch (error) {
     send(res, 400, { error: error.message });
   }
-});
+};
 
-server.on('upgrade', (req, socket) => {
+function upgrade(req, socket) {
   const key = req.headers['sec-websocket-key'];
   if (req.url !== '/ws' || !key) return socket.destroy();
   const accept = createHash('sha1').update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
@@ -93,6 +92,15 @@ server.on('upgrade', (req, socket) => {
   socket.on('data', () => socket.end());
   socket.on('close', () => clients.delete(socket));
   socket.on('error', () => clients.delete(socket));
-});
+}
 
-server.listen(port, host, () => console.log(`http://${host}:${port}`));
+for (const host of process.env.HOST ? [process.env.HOST] : ['127.0.0.1', '::1']) {
+  const server = http.createServer(handleRequest);
+  server.on('upgrade', upgrade);
+  server.on('error', (error) => {
+    if (host === '::1' && ['EAFNOSUPPORT', 'EADDRNOTAVAIL'].includes(error.code)) return;
+    console.error(error);
+    process.exit(1);
+  });
+  server.listen(port, host, () => console.log(`http://${host === '::1' ? '[::1]' : host}:${port}`));
+}

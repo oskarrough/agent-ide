@@ -7,8 +7,8 @@
   body { font: 16px system-ui, sans-serif; max-width: 850px; margin: 2rem auto; padding: 0 1rem; color: #20242a; }
   h1 { margin-bottom: .25rem; }
   form { display: flex; gap: .5rem; margin: 1rem 0; }
-  input, textarea, button { font: inherit; padding: .55rem; }
-  input, textarea { flex: 1; min-width: 0; }
+  input, button { font: inherit; padding: .55rem; }
+  input { flex: 1; min-width: 0; }
   button { cursor: pointer; }
   #layout { display: grid; grid-template-columns: 220px 1fr; gap: 1.5rem; }
   #threads { list-style: none; padding: 0; }
@@ -36,7 +36,7 @@
   <section>
     <h2 id="thread-heading">Select a thread</h2>
     <ul id="events"></ul>
-    <form id="event-form"><textarea id="body" placeholder="Event body" rows="2" required maxlength="10000"></textarea><button>Post</button></form>
+    <form id="event-form"><input id="body" placeholder="Event body" required maxlength="10000"><button>Post</button></form>
   </section>
 </div>
 <script type="module">
