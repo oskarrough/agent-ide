@@ -2,173 +2,224 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Realtime threads POC</title>
+<title>agent-ide</title>
 <style>
-  body { font: 16px system-ui, sans-serif; max-width: 850px; margin: 2rem auto; padding: 0 1rem; color: #20242a; }
-  h1 { margin-bottom: .25rem; }
-  form { display: flex; gap: .5rem; margin: 1rem 0; }
-  input, button { font: inherit; padding: .55rem; }
+  body { font: 15px system-ui, sans-serif; max-width: 1000px; margin: 1.5rem auto; padding: 0 1rem; color: #20242a; }
+  h1 { margin: 0 0 .25rem; font-size: 1.3rem; }
+  h2 { font-size: 1rem; margin: 0; }
+  form { display: flex; gap: .4rem; margin: .5rem 0; }
+  input, button, select { font: inherit; padding: .4rem; }
   input { flex: 1; min-width: 0; }
   button { cursor: pointer; }
-  #layout { display: grid; grid-template-columns: 220px 1fr; gap: 1.5rem; }
-  #threads { list-style: none; padding: 0; }
-  #threads button { width: 100%; text-align: left; margin-bottom: .35rem; }
-  #threads button.active { background: #d7e9ff; }
-  #events { list-style: none; padding: 0; min-height: 100px; }
-  #events li { border-bottom: 1px solid #ddd; padding: .6rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-  small, #status { color: #59636e; }
-  .error { color: #ad1b1b !important; }
-  @media (max-width: 600px) { #layout { grid-template-columns: 1fr; } }
+  ul { list-style: none; padding: 0; margin: .25rem 0; }
+  [hidden] { display: none !important; }
+  small, .mute { color: #59636e; }
+  .error { color: #ad1b1b; }
+  #layout { display: grid; grid-template-columns: 300px 1fr; gap: 1.5rem; margin-top: 1rem; }
+  .server { border: 1px solid #ddd; border-radius: 8px; padding: .6rem; margin-bottom: .8rem; }
+  .server header { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
+  .server header button { padding: .1rem .4rem; }
+  .thread { width: 100%; text-align: left; margin-bottom: .25rem; }
+  .thread.active { background: #d7e9ff; }
+  .dot { display: inline-block; width: .55rem; height: .55rem; border-radius: 50%; background: #bbb; margin-right: .3rem; }
+  .dot.on { background: #2f9e62; }
+  #placement { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin: .5rem 0; }
+  #messages li { border-bottom: 1px solid #eee; padding: .5rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  #messages li.bot { background: #f6f3fb; padding-left: .5rem; }
+  #messages b { font-weight: 600; }
+  @media (max-width: 700px) { #layout { grid-template-columns: 1fr; } }
 </style>
-<h1>Realtime threads</h1>
-<p>Open this page twice. Create a thread or post an event in either window.</p>
-<form id="connect-form">
-  <input id="server-url" aria-label="Server URL" placeholder="http://localhost:3000" required>
-  <button>Connect</button>
-</form>
-<div id="status">Disconnected</div>
+<h1>agent-ide</h1>
+<div class="mute">You are <b id="me"></b>. Set <code>?user=name</code> in the URL to be someone else.</div>
+<form id="add-server"><input id="server-url" placeholder="Add a server, e.g. http://localhost:3000" required><button>Add</button></form>
 <div id="layout">
-  <section>
-    <h2>Threads</h2>
-    <form id="thread-form"><input id="title" placeholder="Thread title" required maxlength="200"><button>Create</button></form>
-    <ul id="threads"></ul>
-  </section>
-  <section>
-    <h2 id="thread-heading">Select a thread</h2>
-    <ul id="events"></ul>
-    <form id="event-form"><input id="body" placeholder="Event body" required maxlength="10000"><button>Post</button></form>
-  </section>
+  <aside id="servers"></aside>
+  <main>
+    <h2 id="heading">Select a thread</h2>
+    <div id="placement" hidden>
+      Replies from
+      <select id="runner"></select>
+      <select id="harness"></select>
+      <input id="model" placeholder="model (optional)" style="flex:0 1 11rem">
+    </div>
+    <ul id="messages"></ul>
+    <form id="post" hidden><input id="body" placeholder="Message" required maxlength="10000"><button>Send</button></form>
+  </main>
 </div>
 <script type="module">
   const $ = (id) => document.getElementById(id);
-  let base = '';
-  let socket;
-  let reconnectTimer;
-  let selectedId = null;
-  let threads = [];
-  let events = [];
+  function build(tag, props, children = []) { const node = Object.assign(document.createElement(tag), props); node.append(...children); return node; }
+  const me = new URLSearchParams(location.search).get('user') || 'anon';
+  const STORE = 'agent-ide-servers';
+  // Every server is its own world: its own threads, runners and socket.
+  const servers = new Map();
+  let selected = null; // { url, id }
+  let messages = [];
 
-  function status(message, error = false) {
-    $('status').textContent = message;
-    $('status').className = error ? 'error' : '';
-  }
-  async function api(path, options) {
-    const response = await fetch(base + path, options);
+  async function api(url, path, options) {
+    const response = await fetch(url + path, options);
     const value = await response.json();
     if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`);
     return value;
   }
-  function renderThreads() {
-    $('threads').replaceChildren(...threads.map((thread) => {
-      const li = document.createElement('li');
-      const button = document.createElement('button');
-      button.textContent = thread.title;
-      button.className = thread.id === selectedId ? 'active' : '';
-      button.onclick = () => selectThread(thread.id);
-      li.append(button);
-      return li;
-    }));
-    $('thread-heading').textContent = threads.find((thread) => thread.id === selectedId)?.title || 'Select a thread';
-    $('event-form').hidden = !selectedId;
+  const post = (url, path, value) => api(url, path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value) });
+
+  function save() { localStorage.setItem(STORE, JSON.stringify([...servers.keys()])); }
+
+  function addServer(raw) {
+    const url = new URL(raw).origin;
+    if (!['http:', 'https:'].includes(new URL(url).protocol)) throw new Error('Use an http:// or https:// URL');
+    if (servers.has(url)) return;
+    servers.set(url, { url, status: 'connecting', threads: [], runners: [], socket: null, timer: null });
+    save();
+    open(url);
+    render();
   }
-  function renderEvents() {
-    $('events').replaceChildren(...events.map((event) => {
-      const li = document.createElement('li');
-      const body = document.createElement('div');
-      const time = document.createElement('small');
-      body.textContent = event.body;
-      time.textContent = new Date(event.createdAt).toLocaleString();
-      li.append(body, time);
-      return li;
-    }));
+
+  function removeServer(url) {
+    const server = servers.get(url);
+    clearTimeout(server.timer);
+    server.socket.onclose = null;
+    server.socket.close();
+    servers.delete(url);
+    if (selected?.url === url) select(null);
+    save();
+    render();
   }
-  async function refreshThreads() {
-    threads = await api('/api/threads');
-    if (selectedId && !threads.some((thread) => thread.id === selectedId)) selectedId = null;
-    renderThreads();
-  }
-  async function selectThread(id) {
-    selectedId = id;
-    events = [];
-    renderThreads();
-    renderEvents();
-    await refreshEvents();
-  }
-  async function refreshEvents() {
-    const id = selectedId;
-    if (!id) return;
-    const loaded = await api(`/api/threads/${id}/events`);
-    if (selectedId === id) { events = loaded; renderEvents(); }
-  }
-  function connect() {
-    clearTimeout(reconnectTimer);
-    socket?.close();
-    const serverUrl = new URL($('server-url').value);
-    if (!['http:', 'https:'].includes(serverUrl.protocol)) throw new Error('Use an http:// or https:// server URL');
-    base = serverUrl.origin;
-    localStorage.setItem('realtime-threads-server', base);
-    selectedId = null;
-    threads = [];
-    events = [];
-    renderThreads();
-    renderEvents();
-    openSocket(base);
-  }
-  function openSocket(serverBase) {
-    const wsUrl = serverBase.replace(/^http/, 'ws') + '/ws';
-    const connection = new WebSocket(wsUrl);
-    socket = connection;
-    status(`Connecting to ${serverBase}…`);
-    connection.onopen = async () => {
-      if (socket !== connection) return;
-      status(`Connected to ${serverBase}`);
-      try { await refreshThreads(); await refreshEvents(); }
-      catch (error) { status(error.message, true); }
+
+  function open(url) {
+    const server = servers.get(url);
+    const socket = new WebSocket(url.replace(/^http/, 'ws') + '/ws');
+    server.socket = socket;
+    socket.onopen = () => { server.status = 'online'; refresh(url); };
+    socket.onmessage = ({ data }) => {
+      const { threadId } = JSON.parse(data);
+      if (threadId === null) refresh(url);
+      else if (selected?.url === url && selected.id === threadId) loadMessages();
     };
-    connection.onmessage = async ({ data }) => {
-      if (socket !== connection) return;
-      try {
-        const { threadId } = JSON.parse(data);
-        if (threadId === null) await refreshThreads();
-        if (threadId === selectedId) await refreshEvents();
-      } catch (error) { status(error.message, true); }
+    socket.onclose = () => {
+      if (!servers.has(url)) return;
+      server.status = 'offline';
+      render();
+      server.timer = setTimeout(() => open(url), 2000);
     };
-    connection.onclose = () => {
-      if (socket !== connection) return;
-      status(`Disconnected from ${serverBase}; retrying…`, true);
-      reconnectTimer = setTimeout(() => openSocket(serverBase), 1500);
-    };
-    connection.onerror = () => connection.close();
+    socket.onerror = () => socket.close();
   }
-  $('connect-form').onsubmit = (event) => {
-    event.preventDefault();
-    try { connect(); } catch (error) { status(error.message, true); }
-  };
-  $('thread-form').onsubmit = async (event) => {
-    event.preventDefault();
+
+  async function refresh(url) {
+    const server = servers.get(url);
     try {
-      const thread = await api('/api/threads', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: $('title').value }),
-      });
-      $('title').value = '';
-      await refreshThreads();
-      await selectThread(thread.id);
-    } catch (error) { status(error.message, true); }
-  };
-  $('event-form').onsubmit = async (event) => {
+      [server.threads, server.runners] = await Promise.all([api(url, '/api/threads'), api(url, '/api/runners')]);
+    } catch (error) { server.status = error.message; }
+    render();
+  }
+
+  function select(next) {
+    selected = next;
+    messages = [];
+    render();
+    loadMessages();
+  }
+
+  async function loadMessages() {
+    if (!selected) return;
+    const { url, id } = selected;
+    const loaded = await api(url, `/api/threads/${id}/events`);
+    if (selected?.url === url && selected.id === id) { messages = loaded; renderMessages(); }
+  }
+
+  function render() {
+    $('servers').replaceChildren(...[...servers.values()].map((server) => {
+      const newThread = build('form', { onsubmit: async (event) => {
+        event.preventDefault();
+        const title = event.target.elements.title.value;
+        const thread = await post(server.url, '/api/threads', { title });
+        await refresh(server.url);
+        select({ url: server.url, id: thread.id });
+      } }, [build('input', { name: 'title', placeholder: 'New thread', required: true }), build('button', { textContent: '+' })]);
+      return build('section', { className: 'server' }, [
+        build('header', {}, [
+          build('span', {}, [build('span', { className: `dot ${server.status === 'online' ? 'on' : ''}` }), build('b', { textContent: server.url.replace(/^https?:\/\//, '') })]),
+          build('button', { textContent: '×', title: 'Remove server', onclick: () => removeServer(server.url) }),
+        ]),
+        server.status === 'online' ? '' : build('div', { className: 'error', textContent: server.status }),
+        build('small', { textContent: 'Runners' }),
+        build('ul', {}, server.runners.length ? server.runners.map((runner) => build('li', {}, [
+          build('span', { className: `dot ${runner.online ? 'on' : ''}` }), `${runner.name} `, build('small', { textContent: runner.harnesses.join(', ') }),
+        ])) : [build('li', { className: 'mute', textContent: 'none — start runner.js' })]),
+        build('small', { textContent: 'Threads' }),
+        build('ul', {}, server.threads.map((thread) => build('li', {}, [build('button', {
+          className: `thread ${selected?.url === server.url && selected.id === thread.id ? 'active' : ''}`,
+          textContent: thread.title + (thread.runner ? ` · ${thread.runner}` : ''),
+          onclick: () => select({ url: server.url, id: thread.id }),
+        })]))),
+        newThread,
+      ]);
+    }));
+    if (!servers.size) $('servers').replaceChildren(build('p', { className: 'mute', textContent: 'No servers yet. Start one with `bun server.js` and add its URL above.' }));
+    renderPlacement();
+    renderMessages();
+  }
+
+  function current() {
+    const server = selected && servers.get(selected.url);
+    return server && { server, thread: server.threads.find((t) => t.id === selected.id) };
+  }
+
+  function renderPlacement() {
+    const found = current();
+    $('heading').textContent = found?.thread?.title || 'Select a thread';
+    $('placement').hidden = !found?.thread;
+    $('post').hidden = !found?.thread;
+    if (!found?.thread) return;
+    const { server, thread } = found;
+    if (document.activeElement === $('model')) return;
+    const runner = server.runners.find((r) => r.name === thread.runner);
+    $('runner').replaceChildren(build('option', { value: '', textContent: 'nobody (humans only)' }),
+      ...server.runners.map((r) => build('option', { value: r.name, textContent: r.name + (r.online ? '' : ' (offline)') })));
+    if (thread.runner && !runner) $('runner').append(build('option', { value: thread.runner, textContent: `${thread.runner} (unknown)` }));
+    $('runner').value = thread.runner || '';
+    const harnesses = runner?.harnesses || (thread.harness ? [thread.harness] : []);
+    $('harness').replaceChildren(...harnesses.map((h) => build('option', { value: h, textContent: h })));
+    $('harness').hidden = !thread.runner;
+    $('harness').value = thread.harness || harnesses[0] || '';
+    $('model').hidden = !thread.runner || $('harness').value === 'echo';
+    $('model').value = thread.model || '';
+  }
+
+  async function place() {
+    const { server, thread } = current();
+    const runnerName = $('runner').value;
+    const runner = server.runners.find((r) => r.name === runnerName);
+    const harness = runner?.harnesses.includes($('harness').value) ? $('harness').value : runner?.harnesses[0];
+    await post(server.url, `/api/threads/${thread.id}`, { runner: runnerName, harness, model: $('model').value });
+  }
+  $('runner').onchange = place;
+  $('harness').onchange = place;
+  $('model').onchange = place;
+
+  function renderMessages() {
+    $('messages').replaceChildren(...messages.map((m) => build('li', { className: m.kind }, [
+      build('b', { textContent: m.author }), ' ', build('small', { textContent: new Date(m.createdAt).toLocaleTimeString() }),
+      build('div', { textContent: m.body }),
+    ])));
+  }
+
+  $('post').onsubmit = async (event) => {
     event.preventDefault();
-    try {
-      await api(`/api/threads/${selectedId}/events`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ body: $('body').value }),
-      });
-      $('body').value = '';
-      await refreshEvents();
-    } catch (error) { status(error.message, true); }
+    await post(selected.url, `/api/threads/${selected.id}/events`, { author: me, kind: 'human', body: $('body').value });
+    $('body').value = '';
   };
-  $('server-url').value = localStorage.getItem('realtime-threads-server') || location.origin;
-  $('event-form').hidden = true;
-  try { connect(); } catch (error) { status(error.message, true); }
+  $('add-server').onsubmit = (event) => {
+    event.preventDefault();
+    try { addServer($('server-url').value); $('server-url').value = ''; } catch (error) { alert(error.message); }
+  };
+
+  $('me').textContent = me;
+  const saved = JSON.parse(localStorage.getItem(STORE) || '[]');
+  for (const url of saved) addServer(url);
+  render();
+  // Served by an arbe server rather than a file or a dev server? Add it.
+  if (!saved.length) fetch('/api/runners').then((r) => r.headers.get('content-type')?.includes('json') && addServer(location.origin)).catch(() => {});
 </script>
 </html>

@@ -1,4 +1,5 @@
 import http from 'node:http';
+import os from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
@@ -9,13 +10,19 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS threads (id TEXT PRIMARY KEY, title TEXT NOT NULL, created_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL);
 `);
+for (const [table, column] of [['threads', 'runner TEXT'], ['threads', 'harness TEXT'], ['threads', 'model TEXT'], ['events', "author TEXT NOT NULL DEFAULT 'anon'"], ['events', "kind TEXT NOT NULL DEFAULT 'human'"]]) {
+  try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${column}`); } catch {}
+}
 
-const threads = db.prepare('SELECT id, title, created_at AS createdAt FROM threads ORDER BY created_at DESC');
+const threads = db.prepare('SELECT id, title, runner, harness, model, created_at AS createdAt FROM threads ORDER BY created_at DESC');
 const thread = db.prepare('SELECT id FROM threads WHERE id = ?');
-const events = db.prepare('SELECT id, thread_id AS threadId, body, created_at AS createdAt FROM events WHERE thread_id = ? ORDER BY created_at, rowid');
-const addThread = db.prepare('INSERT INTO threads VALUES (?, ?, ?)');
-const addEvent = db.prepare('INSERT INTO events VALUES (?, ?, ?, ?)');
+const events = db.prepare('SELECT id, thread_id AS threadId, author, kind, body, created_at AS createdAt FROM events WHERE thread_id = ? ORDER BY created_at, rowid');
+const addThread = db.prepare('INSERT INTO threads (id, title, created_at) VALUES (?, ?, ?)');
+const setPlacement = db.prepare('UPDATE threads SET runner = ?, harness = ?, model = ? WHERE id = ?');
+const addEvent = db.prepare('INSERT INTO events (id, thread_id, body, created_at, author, kind) VALUES (?, ?, ?, ?, ?, ?)');
 const clients = new Set();
+// Runners are known while the server runs; online means their socket is open.
+const runners = new Map();
 const page = await readFile(new URL('./client.html', import.meta.url));
 
 function send(res, status, value) {
@@ -27,7 +34,7 @@ async function input(req) {
   let body = '';
   for await (const chunk of req) {
     body += chunk;
-    if (body.length > 20000) throw new Error('Request too large');
+    if (body.length > 200000) throw new Error('Request too large');
   }
   return JSON.parse(body);
 }
@@ -45,6 +52,10 @@ function notify(threadId) {
   for (const socket of clients) socket.write(Buffer.concat([header, payload]));
 }
 
+function runnerList() {
+  return [...runners.values()].map(({ socket, ...runner }) => ({ ...runner, online: Boolean(socket) }));
+}
+
 const handleRequest = async (req, res) => {
   const path = new URL(req.url, 'http://localhost').pathname;
   if (req.method === 'OPTIONS') {
@@ -56,6 +67,7 @@ const handleRequest = async (req, res) => {
     return res.end(page);
   }
   try {
+    if (req.method === 'GET' && path === '/api/runners') return send(res, 200, runnerList());
     if (req.method === 'GET' && path === '/api/threads') return send(res, 200, threads.all());
     if (req.method === 'POST' && path === '/api/threads') {
       const { title } = await input(req);
@@ -64,15 +76,25 @@ const handleRequest = async (req, res) => {
       send(res, 201, item);
       return notify(null);
     }
+    const placement = /^\/api\/threads\/([\w-]+)$/.exec(path);
+    if (placement && req.method === 'POST') {
+      const id = placement[1];
+      if (!thread.get(id)) return send(res, 404, { error: 'Thread not found' });
+      const { runner, harness, model } = await input(req);
+      setPlacement.run(runner || null, harness || null, model || null, id);
+      send(res, 200, { id, runner, harness, model });
+      return notify(null);
+    }
     const match = /^\/api\/threads\/([\w-]+)\/events$/.exec(path);
     if (match) {
       const id = match[1];
       if (!thread.get(id)) return send(res, 404, { error: 'Thread not found' });
       if (req.method === 'GET') return send(res, 200, events.all(id));
       if (req.method === 'POST') {
-        const { body } = await input(req);
-        const item = { id: randomUUID(), threadId: id, body: field(body, 'body'), createdAt: new Date().toISOString() };
-        addEvent.run(item.id, id, item.body, item.createdAt);
+        const { body, author = 'anon', kind = 'human' } = await input(req);
+        if (!['human', 'bot'].includes(kind)) throw new Error('kind must be human or bot');
+        const item = { id: randomUUID(), threadId: id, author: field(author, 'author'), kind, body: field(body, 'body'), createdAt: new Date().toISOString() };
+        addEvent.run(item.id, id, item.body, item.createdAt, item.author, item.kind);
         send(res, 201, item);
         return notify(id);
       }
@@ -83,15 +105,39 @@ const handleRequest = async (req, res) => {
   }
 };
 
+// Browsers connect to /ws. A runner connects to /ws?runner=NAME&harnesses=a,b and is online while connected.
 function upgrade(req, socket) {
+  const url = new URL(req.url, 'http://localhost');
   const key = req.headers['sec-websocket-key'];
-  if (req.url !== '/ws' || !key) return socket.destroy();
+  if (url.pathname !== '/ws' || !key) return socket.destroy();
   const accept = createHash('sha1').update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
   socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
+  const name = url.searchParams.get('runner');
+  if (name) {
+    runners.get(name)?.socket?.destroy();
+    const harnesses = (url.searchParams.get('harnesses') || '').split(',').filter(Boolean);
+    runners.set(name, { name, host: url.searchParams.get('host') || '', harnesses, lastSeen: new Date().toISOString(), socket });
+    console.log(`runner ${name} online: ${harnesses.join(', ')}`);
+    notify(null);
+  }
   clients.add(socket);
+  const close = () => {
+    clients.delete(socket);
+    const runner = name && runners.get(name);
+    if (runner?.socket !== socket) return;
+    runners.set(name, { ...runner, socket: null, lastSeen: new Date().toISOString() });
+    console.log(`runner ${name} offline`);
+    notify(null);
+  };
   socket.on('data', () => socket.end());
-  socket.on('close', () => clients.delete(socket));
-  socket.on('error', () => clients.delete(socket));
+  socket.on('end', () => socket.end());
+  socket.on('close', close);
+  socket.on('error', close);
+}
+
+function urls(host) {
+  if (host !== '0.0.0.0') return [host === '::1' ? '[::1]' : host];
+  return Object.values(os.networkInterfaces()).flat().filter((a) => a.family === 'IPv4').map((a) => a.address);
 }
 
 for (const host of process.env.HOST ? [process.env.HOST] : ['127.0.0.1', '::1']) {
@@ -102,5 +148,5 @@ for (const host of process.env.HOST ? [process.env.HOST] : ['127.0.0.1', '::1'])
     console.error(error);
     process.exit(1);
   });
-  server.listen(port, host, () => console.log(`http://${host === '::1' ? '[::1]' : host}:${port}`));
+  server.listen(port, host, () => { for (const address of urls(host)) console.log(`http://${address}:${port}`); });
 }

@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "runner": "node runner.js"
   },
   "engines": {
     "node": ">=24"
