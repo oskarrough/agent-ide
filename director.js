@@ -1,18 +1,9 @@
-// A fake director: when a human posts, ask the thread's default bot to reply.
+// A fake director: @mentioned bots reply, in order; otherwise the last bot to speak in the thread answers.
 // It only uses the public API; stop it and threads stay silent until someone calls reply.
-// bun director.js --server http://localhost:3000 [--bot codex=laptop:codex --bot claude=box:claude:haiku]
+// bun director.js --server http://localhost:3000
 import { parseArgs } from 'node:util';
 
-const { values: args } = parseArgs({ options: {
-  server: { type: 'string', default: 'http://localhost:3000' },
-  bot: { type: 'string', multiple: true, default: [] },
-} });
-// Each --bot is name=runner:harness[:model].
-const bots = args.bot.map((spec) => {
-  const [bot, rest] = spec.split('=');
-  const [runner, harness, model] = rest.split(':');
-  return { bot, runner, harness, model };
-});
+const { values: args } = parseArgs({ options: { server: { type: 'string', default: 'http://localhost:3000' } } });
 const server = new URL(args.server).origin;
 const handled = new Set();
 
@@ -25,29 +16,25 @@ async function api(path, options) {
 const post = (path, value, user) => api(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-user': user }, body: JSON.stringify(value) });
 
 // Who speaks next. Swap this function to change the policy.
-// With --bot: an @mention picks the bot, otherwise bots take turns. Without: the thread's default.
-function choose(thread, entries) {
-  if (bots.length) {
-    const mentioned = bots.find((b) => entries.at(-1).body.includes(`@${b.bot}`));
-    if (mentioned) return mentioned;
-    const previous = entries.findLast((e) => bots.some((b) => b.bot === e.author));
-    return bots[(bots.findIndex((b) => b.bot === previous?.author) + 1) % bots.length];
-  }
-  if (!thread.runner) return null;
-  return { bot: thread.harness || 'echo', runner: thread.runner, harness: thread.harness, model: thread.model };
+// A job's bot answers on the job's runner, so steering a job is just posting in it.
+function choose(bots, entries) {
+  const last = entries.at(-1);
+  const mentioned = bots.filter((b) => new RegExp(`@${b.name}\\b`).test(last.body)).map((b) => b.name);
+  if (mentioned.length) return mentioned;
+  const previous = entries.findLast((e) => e.kind === 'bot' && e.type === 'chat');
+  return previous ? [previous.author] : [];
 }
 
 async function consider(threadId) {
-  const [threads, entries] = await Promise.all([api('/api/threads'), api(`/api/threads/${threadId}/events`)]);
-  const thread = threads.find((t) => t.id === threadId);
+  const [bots, entries] = await Promise.all([api('/api/bots'), api(`/api/threads/${threadId}/events`)]);
   const last = entries.at(-1);
-  // Child threads belong to whoever started them, not to the director.
-  if (!thread || thread.parent || !last || last.kind !== 'human' || last.type !== 'chat' || handled.has(last.id)) return;
+  if (!last || last.kind !== 'human' || last.type !== 'chat' || handled.has(last.id)) return;
   handled.add(last.id);
-  const turn = choose(thread, entries);
-  if (!turn) return;
-  console.log(`${turn.bot} via ${turn.runner} replies to ${last.author} in "${thread.title}"`);
-  await post(`/api/threads/${threadId}/reply`, turn, last.author).catch((error) => console.error(error.message));
+  // One at a time, so the second bot hears the first.
+  for (const bot of choose(bots, entries)) {
+    console.log(`${bot} replies to ${last.author} in ${threadId}`);
+    await post(`/api/threads/${threadId}/reply`, { bot }, last.author).catch((error) => console.error(error.message));
+  }
 }
 
 function connect() {

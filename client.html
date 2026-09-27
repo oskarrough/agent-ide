@@ -19,11 +19,20 @@
   .server { border: 1px solid #ddd; border-radius: 8px; padding: .6rem; margin-bottom: .8rem; }
   .server header { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
   .server header button { padding: .1rem .4rem; }
-  .thread { width: 100%; text-align: left; margin-bottom: .25rem; }
+  .thread-row { display: flex; gap: .25rem; margin-bottom: .25rem; }
+  .thread { flex: 1; min-width: 0; text-align: left; }
   .thread.active { background: #d7e9ff; }
   .dot { display: inline-block; width: .55rem; height: .55rem; border-radius: 50%; background: #bbb; margin-right: .3rem; }
   .dot.on { background: #2f9e62; }
-  #placement { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin: .5rem 0; }
+  #people { margin: .3rem 0 .6rem; }
+  #pin { font-weight: 600; margin: .3rem 0; }
+  #pick { border: 1px solid #ddd; border-radius: 8px; padding: .6rem; margin-top: 1rem; }
+  form.stack { flex-wrap: wrap; }
+  form.stack > * { flex: 1 1 7rem; }
+  #pick .row { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+  #pick form { margin: .4rem 0 0; }
+  .working { color: #8a5a00; }
+  .link { background: none; border: 0; padding: 0 .2rem; color: #59636e; }
   #messages li { border-bottom: 1px solid #eee; padding: .5rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   #messages li.bot { background: #f6f3fb; padding-left: .5rem; }
   #messages b { font-weight: 600; }
@@ -38,14 +47,22 @@
   <aside id="servers"></aside>
   <main>
     <h2 id="heading">Select a thread</h2>
-    <div id="placement" hidden>
-      Replies from
-      <select id="runner"></select>
-      <select id="harness"></select>
-      <input id="model" placeholder="model (optional)" style="flex:0 1 11rem">
-    </div>
+    <div id="pin"></div>
+    <div id="people" class="mute"></div>
     <ul id="messages"></ul>
-    <form id="post" hidden><input id="body" placeholder="Message, or $ command to run on the runner" required maxlength="10000"><button>Send</button></form>
+    <form id="post" hidden><input id="body" required maxlength="10000"><button>Send</button></form>
+    <!-- Asking a bot is a plain reply call; it needs no director. -->
+    <form id="ask" hidden><label>Bot <select id="bot"></select></label><button>Ask</button></form>
+    <!-- Only a plain thread starts jobs: a child thread pinned to the bot's runner, cli and folder, unless overridden here. -->
+    <section id="pick" hidden>
+      <div class="row">
+        <label>Runner <select id="runner"></select></label>
+        <label>CLI <select id="cli"></select></label>
+        <label>Folder <input id="dir" size="10"></label>
+      </div>
+      <form id="job"><input id="task" placeholder="Task for a job with the bot above" required><button>Start job</button></form>
+      <small id="pick-note"></small>
+    </section>
   </main>
 </div>
 <script type="module">
@@ -53,6 +70,9 @@
   function build(tag, props, children = []) { const node = Object.assign(document.createElement(tag), props); node.append(...children); return node; }
   const me = new URLSearchParams(location.search).get('user') || 'anon';
   const STORE = 'agent-ide-servers';
+  // Each client names the servers it knows; the URL stays the key.
+  const ALIASES = 'agent-ide-aliases';
+  const aliases = JSON.parse(localStorage.getItem(ALIASES) || '{}');
   // Every server is its own world: its own threads, runners and socket.
   const servers = new Map();
   let selected = null; // { url, id }
@@ -61,18 +81,23 @@
   async function api(url, path, options) {
     const response = await fetch(url + path, options);
     const value = await response.json();
-    if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`);
+    if (!response.ok) throw new Error(value.error || value.body || `HTTP ${response.status}`);
     return value;
   }
   const post = (url, path, value) => api(url, path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-user': me }, body: JSON.stringify(value) });
+  const remove = (url, path) => api(url, path, { method: 'DELETE', headers: { 'x-user': me } });
+  const act = (promise) => promise.catch((error) => alert(error.message));
 
-  function save() { localStorage.setItem(STORE, JSON.stringify([...servers.keys()])); }
+  function save() {
+    localStorage.setItem(STORE, JSON.stringify([...servers.keys()]));
+    localStorage.setItem(ALIASES, JSON.stringify(Object.fromEntries([...servers.values()].filter((s) => s.alias).map((s) => [s.url, s.alias]))));
+  }
 
   function addServer(raw) {
     const url = new URL(raw).origin;
     if (!['http:', 'https:'].includes(new URL(url).protocol)) throw new Error('Use an http:// or https:// URL');
     if (servers.has(url)) return;
-    servers.set(url, { url, status: 'connecting', threads: [], runners: [], socket: null, timer: null });
+    servers.set(url, { url, alias: aliases[url] || '', status: 'connecting', threads: [], runners: [], bots: [], socket: null, timer: null });
     save();
     open(url);
     render();
@@ -111,7 +136,8 @@
   async function refresh(url) {
     const server = servers.get(url);
     try {
-      [server.threads, server.runners] = await Promise.all([api(url, '/api/threads'), api(url, '/api/runners')]);
+      [server.threads, server.runners, server.bots] = await Promise.all([api(url, '/api/threads'), api(url, '/api/runners'), api(url, '/api/bots')]);
+      if (selected?.url === url && !server.threads.some((t) => t.id === selected.id)) select(null);
     } catch (error) { server.status = error.message; }
     render();
   }
@@ -126,8 +152,13 @@
   async function loadMessages() {
     if (!selected) return;
     const { url, id } = selected;
-    const loaded = await api(url, `/api/threads/${id}/events`);
-    if (selected?.url === url && selected.id === id) { messages = loaded; renderMessages(); }
+    try {
+      const loaded = await api(url, `/api/threads/${id}/events`);
+      if (selected?.url === url && selected.id === id) { messages = loaded; renderPeople(); renderMessages(); }
+    } catch (error) {
+      await refresh(url);
+      if (selected?.url === url && selected.id === id) alert(error.message);
+    }
   }
 
   function render() {
@@ -141,25 +172,47 @@
       } }, [build('input', { name: 'title', placeholder: 'New thread', required: true }), build('button', { textContent: '+' })]);
       return build('section', { className: 'server' }, [
         build('header', {}, [
-          build('span', {}, [build('span', { className: `dot ${server.status === 'online' ? 'on' : ''}` }), build('b', { textContent: server.url.replace(/^https?:\/\//, '') })]),
+          build('span', {}, [build('span', { className: `dot ${server.status === 'online' ? 'on' : ''}` }), build('b', { textContent: server.alias || server.url.replace(/^https?:\/\//, '') }),
+            server.alias ? build('small', { textContent: ` ${server.url.replace(/^https?:\/\//, '')}` }) : '',
+            build('button', { className: 'link', textContent: 'alias…', onclick: () => {
+              const alias = prompt(`Alias for ${server.url} (empty to clear)`, server.alias);
+              if (alias === null) return;
+              server.alias = alias.trim();
+              save();
+              render();
+            } })]),
           build('button', { textContent: '×', title: 'Remove server', onclick: () => removeServer(server.url) }),
         ]),
         server.status === 'online' ? '' : build('div', { className: 'error', textContent: server.status }),
         build('small', { textContent: 'Runners' }),
-        build('ul', {}, server.runners.length ? server.runners.map((runner) => build('li', {}, [
-          build('span', { className: `dot ${runner.online ? 'on' : ''}` }), `${runner.name} `, build('small', { textContent: runner.harnesses.join(', ') }),
-        ])) : [build('li', { className: 'mute', textContent: 'none — start runner.js' })]),
+        build('ul', {}, server.runners.length ? server.runners.map((runner) => runnerItem(server, runner))
+          : [build('li', { className: 'mute', textContent: 'none — start runner.js' })]),
+        build('small', { textContent: 'Bots' }),
+        build('ul', {}, server.bots.length ? server.bots.map((bot) => botItem(server, bot))
+          : [build('li', { className: 'mute', textContent: 'none yet' })]),
+        fillBotForm(server),
         build('small', { textContent: 'Threads' }),
-        build('ul', {}, nested(server.threads).map(({ thread, depth }) => build('li', { style: `margin-left: ${depth * 1}rem` }, [build('button', {
+        build('ul', {}, nested(server.threads).map(({ thread, depth }) => build('li', { className: 'thread-row', style: `margin-left: ${depth * 1}rem` }, [build('button', {
           className: `thread ${selected?.url === server.url && selected.id === thread.id ? 'active' : ''}`,
-          textContent: (depth ? '↳ ' : '') + thread.title + (thread.runner ? ` · ${thread.runner}` : ''),
           onclick: () => select({ url: server.url, id: thread.id }),
+        }, [
+          (depth ? '↳ ' : '') + thread.title,
+          thread.runner ? build('small', {}, [' · job on ', runnerLabel(server, thread.runner)]) : '',
+          thread.working.length ? build('small', { className: 'working', textContent: ` · ${thread.working.join(', ')} working` }) : '',
+          thread.waiting.length ? build('small', { className: 'working' }, [' · waiting for ', ...joined([...new Set(thread.waiting.map((j) => j.runner))].map((name) => runnerLabel(server, name)), ', ')]) : '',
+        ]), build('button', {
+          textContent: '×', title: `Delete thread: ${thread.title}`, ariaLabel: `Delete thread: ${thread.title}`,
+          onclick: () => {
+            if (!confirm(`Delete “${thread.title}” and all its messages? Child threads will be kept. This cannot be undone.`)) return;
+            act(remove(server.url, `/api/threads/${thread.id}`).then(() => refresh(server.url)));
+          },
         })]))),
         newThread,
       ]);
     }));
     if (!servers.size) $('servers').replaceChildren(build('p', { className: 'mute', textContent: 'No servers yet. Start one with `bun server.js` and add its URL above.' }));
-    renderPlacement();
+    renderPeople();
+    renderPick();
     renderMessages();
   }
 
@@ -168,41 +221,183 @@
     return server && { server, thread: server.threads.find((t) => t.id === selected.id) };
   }
 
-  function renderPlacement() {
+  // A runner shows whose it is and who may use it; its owner can lend it.
+  function runnerItem(server, runner) {
+    const mine = runner.owner === me;
+    return build('li', {}, [
+      build('span', { className: `dot ${runner.online ? 'on' : ''}` }), runner.alias || runner.name, ' ',
+      build('small', { textContent: `${runner.alias ? `${runner.name} · ` : ''}${runner.owner}'s · ${runner.clis.join(', ')}` }),
+      ...runner.allowed.map((guest) => build('button', { className: 'link', textContent: `lent to ${guest}${mine ? ' ×' : ''}`, disabled: !mine, title: 'Stop lending',
+        onclick: () => act(post(server.url, `/api/runners/${runner.name}/allow`, { user: guest, allowed: false }).then(() => refresh(server.url))) })),
+      mine ? build('button', { className: 'link', textContent: 'lend…', onclick: () => {
+        const guest = prompt(`Lend ${runner.alias || runner.name} to whom?`);
+        if (guest) act(post(server.url, `/api/runners/${runner.name}/allow`, { user: guest }).then(() => refresh(server.url)));
+      } }) : '',
+    ]);
+  }
+
+  // A bot runs on its runner, and is online when that runner is.
+  function botItem(server, bot) {
+    const runner = server.runners.find((r) => r.name === bot.runner);
+    return build('li', { title: bot.soul || '' }, [
+      build('span', { className: `dot ${runner?.online ? 'on' : ''}` }), `@${bot.name} `,
+      build('small', {}, [...where(server, bot), ` · ${bot.owner}'s`]),
+      bot.owner === me ? build('button', { className: 'link', textContent: 'edit', onclick: () => editBot(server, bot) }) : '',
+      bot.owner === me ? build('button', { className: 'link', textContent: '×', title: 'Delete bot', onclick: () => act(remove(server.url, `/api/bots/${bot.name}`)) }) : '',
+    ]);
+  }
+
+  // Bots are server-wide, so they are made here and not in a thread. The form is kept across renders so typing survives a refresh.
+  // Editing a bot is adding it again under the same name: the server overwrites a bot its owner saves.
+  function fillBotForm(server) {
+    const form = server.botForm ||= build('form', { className: 'stack', onsubmit: (event) => {
+      event.preventDefault();
+      const f = form.elements;
+      if (!f.runner.value) return alert('Pick a runner first');
+      act(post(server.url, '/api/bots', { name: f.bot.value, soul: f.soul.value, runner: f.runner.value, cli: f.cli.value || 'echo', model: f.model.value, dir: f.dir.value || '.' })
+        .then(() => editBot(server, null)));
+    } }, [
+      build('input', { name: 'bot', placeholder: 'bot name', required: true, pattern: '[\\w\\-]+' }),
+      build('select', { name: 'runner', title: 'Runner', onchange: () => fillBotForm(server) }),
+      build('select', { name: 'cli', title: 'CLI' }),
+      build('input', { name: 'model', placeholder: 'model (default)' }),
+      build('input', { name: 'dir', placeholder: 'folder (.)' }),
+      build('input', { name: 'soul', placeholder: 'soul (optional): who this bot is' }),
+      build('button', { name: 'save' }),
+      build('button', { name: 'cancel', type: 'button', textContent: 'Cancel', onclick: () => editBot(server, null) }),
+    ]);
+    const { runner, cli, bot, save, cancel } = form.elements;
+    bot.readOnly = Boolean(server.editing);
+    save.textContent = server.editing ? 'Save bot' : 'Add bot';
+    cancel.hidden = !server.editing;
+    // A bot being edited keeps its runner and cli even when that runner hasn't connected since the server started.
+    const editing = server.bots.find((b) => b.name === server.editing);
+    const runners = server.runners.map((r) => runnerOption(server, r));
+    if (editing && !runners.some(([v]) => v === editing.runner)) runners.unshift([editing.runner, `${editing.runner} (not connected)`]);
+    keep(runner, runners, 'no runners');
+    const clis = (server.runners.find((r) => r.name === runner.value)?.clis || []).map((c) => [c, c]);
+    if (editing?.runner === runner.value && !clis.some(([v]) => v === editing.cli)) clis.unshift([editing.cli, editing.cli]);
+    keep(cli, clis, 'no cli');
+    return form;
+  }
+
+  // Loads a bot into the form to edit it, or empties the form back to adding one.
+  function editBot(server, bot) {
+    server.editing = bot?.name || null;
+    const f = fillBotForm(server).elements;
+    for (const key of ['soul', 'model', 'dir']) f[key].value = bot?.[key] || '';
+    f.bot.value = bot?.name || '';
+    if (bot) f.runner.value = bot.runner;
+    render();
+    if (bot) f.cli.value = bot.cli;
+  }
+
+  // Options are rebuilt on refresh; a select keeps its value, and an empty one says why it is empty.
+  function keep(select, options, empty) {
+    if (document.activeElement === select) return;
+    const value = select.value;
+    select.replaceChildren(...(options.length ? options.map(([v, text, title = '']) => build('option', { value: v, textContent: text, title })) : [build('option', { value: '', textContent: empty })]));
+    if (options.some(([v]) => v === value)) select.value = value;
+  }
+
+  // A runner is shown by its alias, with its name (what bots and jobs store) as the title. Every place a runner is shown goes through here.
+  function runnerLabel(server, name) {
+    const alias = server.runners.find((r) => r.name === name)?.alias;
+    return build('span', { textContent: alias || name, title: alias ? name : '' });
+  }
+  function runnerOption(server, runner) {
+    const label = runnerLabel(server, runner.name);
+    return [runner.name, `${label.textContent}${runner.online ? '' : ' (offline)'}`, label.title];
+  }
+
+  function joined(parts, separator) {
+    return parts.filter(Boolean).flatMap((part, i) => i ? [separator, part] : [part]);
+  }
+
+  function where(server, { runner, cli, model, dir }) {
+    return joined([cli, model && `(${model})`, runner && build('span', {}, ['on ', runnerLabel(server, runner)]), dir && `in ${dir}`], ' ');
+  }
+
+  // Who is in the thread, and where each bot lives. A job also says where it runs.
+  function renderPeople() {
     const found = current();
     $('heading').textContent = found?.thread?.title || 'Select a thread';
-    $('placement').hidden = !found?.thread;
-    $('post').hidden = !found?.thread;
+    $('post').hidden = $('ask').hidden = !found?.thread;
+    $('pick').hidden = !found?.thread || Boolean(found.thread.runner);
+    // A job's pin is where everything said in it runs.
+    $('pin').replaceChildren(...(found?.thread?.runner ? ['Job: ', ...where(found.server, found.thread)] : []));
+    if (!found?.thread) return $('people').replaceChildren();
+    const { server, thread } = found;
+    const humans = [...new Set(messages.filter((m) => m.kind === 'human').map((m) => m.author))];
+    const bots = [...new Set(messages.filter((m) => m.kind === 'bot' && m.type === 'chat').map((m) => m.author))];
+    const botView = (name) => {
+      const saved = server.bots.find((b) => b.name === name);
+      const runner = server.runners.find((r) => r.name === (thread.runner || saved?.runner));
+      const detail = thread.runner ? [] : saved ? [' (', ...where(server, saved), ')'] : [' (no runner)'];
+      return build('span', {}, [build('span', { className: `dot ${runner?.online ? 'on' : ''}` }), name, ...detail, thread.working.includes(name) ? build('span', { className: 'working', textContent: ' working…' }) : '', '  ']);
+    };
+    $('people').replaceChildren(
+      thread.runner ? build('div', {}, ['Bots asked here and $ commands run there, and wait for ', runnerLabel(server, thread.runner), " if it's offline."]) : '',
+      ...thread.waiting.map((job) => build('div', { className: 'working' }, [`${job.author}'s ${job.kind} is waiting for `, runnerLabel(server, job.runner), ' ',
+        build('button', { className: 'link', textContent: 'cancel', onclick: () => act(remove(server.url, `/api/jobs/${job.id}`)) })])),
+      build('div', {}, [`People: ${humans.join(', ') || 'nobody yet'} · Bots: `, ...(bots.length ? bots.map(botView) : ['none yet, ask one below'])]),
+    );
+  }
+
+  // A job starts from a registered bot; runner, cli and folder default to the bot's.
+  function renderPick() {
+    const found = current();
     if (!found?.thread) return;
     const { server, thread } = found;
-    if (document.activeElement === $('model')) return;
-    const runner = server.runners.find((r) => r.name === thread.runner);
-    $('runner').replaceChildren(build('option', { value: '', textContent: 'nobody (humans only)' }),
-      ...server.runners.map((r) => build('option', { value: r.name, textContent: r.name + (r.online ? '' : ' (offline)') })));
-    if (thread.runner && !runner) $('runner').append(build('option', { value: thread.runner, textContent: `${thread.runner} (unknown)` }));
-    $('runner').value = thread.runner || '';
-    const harnesses = runner?.harnesses || (thread.harness ? [thread.harness] : []);
-    $('harness').replaceChildren(...harnesses.map((h) => build('option', { value: h, textContent: h })));
-    $('harness').hidden = !thread.runner;
-    $('harness').value = thread.harness || harnesses[0] || '';
-    $('model').hidden = !thread.runner || $('harness').value === 'echo';
-    $('model').value = thread.model || '';
+    $('body').placeholder = thread.runner
+      ? `Message, or $ command to run on ${runnerLabel(server, thread.runner).textContent} in ${thread.dir}. @bot routes only while director.js runs`
+      : 'Message. @bot routes only while director.js runs; $ commands run only in a job';
+    keep($('bot'), server.bots.map((b) => [b.name, `@${b.name}`]), 'none: add one in the sidebar');
+    const bot = server.bots.find((b) => b.name === $('bot').value);
+    if (thread.runner) return;
+    keep($('runner'), [['', bot ? `${runnerLabel(server, bot.runner).textContent} (bot's)` : "bot's"], ...server.runners.map((r) => runnerOption(server, r))]);
+    const runner = server.runners.find((r) => r.name === ($('runner').value || bot?.runner));
+    keep($('cli'), [['', bot ? `${bot.cli} (bot's)` : "bot's"], ...(runner?.clis || []).map((c) => [c, c])]);
+    $('dir').placeholder = bot ? `${bot.dir} (bot's)` : '';
+    $('pick-note').replaceChildren(...(bot
+      ? [`Job as @${bot.name}: `, ...where(server, pin(bot)), `${runner && runner.owner !== me ? ` (${runner.owner}'s runner: they must lend it to you)` : ''}.`]
+      : ['Add a bot in the sidebar to start a job.']));
+  }
+  $('bot').onchange = $('runner').onchange = renderPick;
+  $('dir').oninput = renderPick;
+
+  function pin(bot) {
+    return { runner: $('runner').value || bot.runner, cli: $('cli').value || bot.cli, model: bot.model, dir: $('dir').value || bot.dir };
   }
 
-  async function place() {
-    const { server, thread } = current();
-    const runnerName = $('runner').value;
-    const runner = server.runners.find((r) => r.name === runnerName);
-    const harness = runner?.harnesses.includes($('harness').value) ? $('harness').value : runner?.harnesses[0];
-    await post(server.url, `/api/threads/${thread.id}`, { runner: runnerName, harness, model: $('model').value });
-  }
-  $('runner').onchange = place;
-  $('harness').onchange = place;
-  $('model').onchange = place;
+  // Asking is the reply verb, called directly. Failures land in the thread as notes.
+  $('ask').onsubmit = (event) => {
+    event.preventDefault();
+    if (!$('bot').value) return alert('Add a bot in the sidebar first');
+    act(post(selected.url, `/api/threads/${selected.id}/reply`, { bot: $('bot').value }));
+  };
+
+  // A job is a child thread pinned to where the bot works. The server reports the result to this thread, so the tab can close.
+  $('job').onsubmit = (event) => {
+    event.preventDefault();
+    const { url, id } = selected;
+    const bot = servers.get(url).bots.find((b) => b.name === $('bot').value);
+    if (!bot) return alert('Add a bot in the sidebar first');
+    const task = $('task').value;
+    $('task').value = '';
+    act((async () => {
+      const child = await post(url, '/api/threads', { title: task.slice(0, 60), parent: id, ...pin(bot) });
+      await post(url, `/api/threads/${id}/events`, { author: bot.name, kind: 'bot', body: `On it in thread:${child.id}` });
+      await post(url, `/api/threads/${child.id}/events`, { author: me, kind: 'human', body: task });
+      // Failures land in the child thread as notes, and the parent hears about them from the server.
+      post(url, `/api/threads/${child.id}/reply`, { bot: bot.name }).catch(() => {});
+    })());
+  };
 
   function renderMessages() {
+    const server = servers.get(selected?.url);
     $('messages').replaceChildren(...messages.map((m) => build('li', { className: `${m.kind} ${m.type}` }, [
-      build('b', { textContent: m.author }), ' ', build('small', { textContent: (m.runner ? `via ${m.runner} · ` : '') + new Date(m.createdAt).toLocaleTimeString() }),
+      build('b', { textContent: m.author }), ' ', build('small', {}, joined([m.runner && build('span', {}, ['via ', runnerLabel(server, m.runner)]), m.cli, m.dir && `in ${m.dir}`, new Date(m.createdAt).toLocaleTimeString()], ' · ')),
       m.type === 'exec' ? execView(JSON.parse(m.body)) : build('div', {}, linked(m.body)),
     ])));
   }
@@ -229,11 +424,13 @@
   $('post').onsubmit = async (event) => {
     event.preventDefault();
     const body = $('body').value;
-    $('body').value = '';
-    // "$ cmd" runs cmd on the thread's runner instead of posting a message.
+    // "$ cmd" runs cmd where the job is pinned. A plain thread runs nowhere.
     const command = body.match(/^\$\s+(.+)/s)?.[1];
+    const { thread } = current();
+    if (command && !thread.runner) return alert('$ commands run only in a job, on its runner and folder. Start a job from this thread, then run the command in it.');
+    $('body').value = '';
     try {
-      if (command) await post(selected.url, `/api/threads/${selected.id}/exec`, { runner: current().thread.runner, command });
+      if (command) await post(selected.url, `/api/threads/${selected.id}/exec`, { command });
       else await post(selected.url, `/api/threads/${selected.id}/events`, { author: me, kind: 'human', body });
     } catch (error) { alert(error.message); }
   };
