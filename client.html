@@ -27,6 +27,8 @@
   #messages li { border-bottom: 1px solid #eee; padding: .5rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   #messages li.bot { background: #f6f3fb; padding-left: .5rem; }
   #messages b { font-weight: 600; }
+  #messages li.system { color: #ad1b1b; font-style: italic; }
+  #messages pre { background: #20242a; color: #e7e9ee; padding: .5rem; margin: .3rem 0 0; overflow-x: auto; font-size: 13px; }
   @media (max-width: 700px) { #layout { grid-template-columns: 1fr; } }
 </style>
 <h1>agent-ide</h1>
@@ -43,7 +45,7 @@
       <input id="model" placeholder="model (optional)" style="flex:0 1 11rem">
     </div>
     <ul id="messages"></ul>
-    <form id="post" hidden><input id="body" placeholder="Message" required maxlength="10000"><button>Send</button></form>
+    <form id="post" hidden><input id="body" placeholder="Message, or $ command to run on the runner" required maxlength="10000"><button>Send</button></form>
   </main>
 </div>
 <script type="module">
@@ -62,7 +64,7 @@
     if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`);
     return value;
   }
-  const post = (url, path, value) => api(url, path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value) });
+  const post = (url, path, value) => api(url, path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-user': me }, body: JSON.stringify(value) });
 
   function save() { localStorage.setItem(STORE, JSON.stringify([...servers.keys()])); }
 
@@ -148,9 +150,9 @@
           build('span', { className: `dot ${runner.online ? 'on' : ''}` }), `${runner.name} `, build('small', { textContent: runner.harnesses.join(', ') }),
         ])) : [build('li', { className: 'mute', textContent: 'none — start runner.js' })]),
         build('small', { textContent: 'Threads' }),
-        build('ul', {}, server.threads.map((thread) => build('li', {}, [build('button', {
+        build('ul', {}, nested(server.threads).map(({ thread, depth }) => build('li', { style: `margin-left: ${depth * 1}rem` }, [build('button', {
           className: `thread ${selected?.url === server.url && selected.id === thread.id ? 'active' : ''}`,
-          textContent: thread.title + (thread.runner ? ` · ${thread.runner}` : ''),
+          textContent: (depth ? '↳ ' : '') + thread.title + (thread.runner ? ` · ${thread.runner}` : ''),
           onclick: () => select({ url: server.url, id: thread.id }),
         })]))),
         newThread,
@@ -199,16 +201,41 @@
   $('model').onchange = place;
 
   function renderMessages() {
-    $('messages').replaceChildren(...messages.map((m) => build('li', { className: m.kind }, [
-      build('b', { textContent: m.author }), ' ', build('small', { textContent: new Date(m.createdAt).toLocaleTimeString() }),
-      build('div', { textContent: m.body }),
+    $('messages').replaceChildren(...messages.map((m) => build('li', { className: `${m.kind} ${m.type}` }, [
+      build('b', { textContent: m.author }), ' ', build('small', { textContent: (m.runner ? `via ${m.runner} · ` : '') + new Date(m.createdAt).toLocaleTimeString() }),
+      m.type === 'exec' ? execView(JSON.parse(m.body)) : build('div', {}, linked(m.body)),
     ])));
+  }
+
+  // Children sit under their parent.
+  function nested(threads, parent = null, depth = 0) {
+    return threads.filter((t) => (t.parent || null) === parent).flatMap((thread) => [{ thread, depth }, ...nested(threads, thread.id, depth + 1)]);
+  }
+
+  // "thread:<id>" in a message becomes a link to that thread on the same server.
+  function linked(body) {
+    return body.split(/(thread:[\w-]+)/).map((part) => {
+      const id = part.startsWith('thread:') && part.slice(7);
+      if (!id) return part;
+      const title = servers.get(selected.url)?.threads.find((t) => t.id === id)?.title || id.slice(0, 8);
+      return build('a', { href: '#', textContent: `↳ ${title}`, onclick: (event) => { event.preventDefault(); select({ url: selected.url, id }); } });
+    });
+  }
+
+  function execView({ command, dir, code, stdout, stderr }) {
+    return build('pre', { textContent: `$ ${command}   (in ${dir}, exit ${code})\n${[stdout, stderr].filter(Boolean).join('\n')}` });
   }
 
   $('post').onsubmit = async (event) => {
     event.preventDefault();
-    await post(selected.url, `/api/threads/${selected.id}/events`, { author: me, kind: 'human', body: $('body').value });
+    const body = $('body').value;
     $('body').value = '';
+    // "$ cmd" runs cmd on the thread's runner instead of posting a message.
+    const command = body.match(/^\$\s+(.+)/s)?.[1];
+    try {
+      if (command) await post(selected.url, `/api/threads/${selected.id}/exec`, { runner: current().thread.runner, command });
+      else await post(selected.url, `/api/threads/${selected.id}/events`, { author: me, kind: 'human', body });
+    } catch (error) { alert(error.message); }
   };
   $('add-server').onsubmit = (event) => {
     event.preventDefault();
