@@ -5,7 +5,6 @@
 <title>agent-ide</title>
 <style>
   body { font: 15px system-ui, sans-serif; max-width: 1000px; margin: 1.5rem auto; padding: 0 1rem; color: #20242a; }
-  h1 { margin: 0 0 .25rem; font-size: 1.3rem; }
   h2 { font-size: 1rem; margin: 0; }
   form { display: flex; gap: .4rem; margin: .5rem 0; }
   input, button, select { font: inherit; padding: .4rem; }
@@ -40,7 +39,6 @@
   #messages pre { background: #20242a; color: #e7e9ee; padding: .5rem; margin: .3rem 0 0; overflow-x: auto; font-size: 13px; }
   @media (max-width: 700px) { #layout { grid-template-columns: 1fr; } }
 </style>
-<h1>agent-ide</h1>
 <div class="mute">You are <b id="me"></b>. Set <code>?user=name</code> in the URL to be someone else.</div>
 <form id="add-server"><input id="server-url" placeholder="Add a server, e.g. http://localhost:3000" required><button>Add</button></form>
 <div id="layout">
@@ -202,10 +200,7 @@
           thread.waiting.length ? build('small', { className: 'working' }, [' · waiting for ', ...joined([...new Set(thread.waiting.map((j) => j.runner))].map((name) => runnerLabel(server, name)), ', ')]) : '',
         ]), build('button', {
           textContent: '×', title: `Delete thread: ${thread.title}`, ariaLabel: `Delete thread: ${thread.title}`,
-          onclick: () => {
-            if (!confirm(`Delete “${thread.title}” and all its messages? Child threads will be kept. This cannot be undone.`)) return;
-            act(remove(server.url, `/api/threads/${thread.id}`).then(() => refresh(server.url)));
-          },
+          onclick: () => act(remove(server.url, `/api/threads/${thread.id}`).then(() => refresh(server.url))),
         })]))),
         newThread,
       ]);
