@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { parseArgs } from 'node:util';
+import { openDurable } from './durable.js';
 
 const { values: args } = parseArgs({ options: {
   server: { type: 'string', default: 'http://localhost:3000' },
@@ -24,7 +25,7 @@ const commands = {
   pi: (prompt, model) => ['pi', ['-p', ...(model ? ['--model', model] : []), prompt]],
 };
 const installed = (bin) => spawnSync('sh', ['-c', `command -v ${bin}`]).status === 0;
-const clis = ['echo', ...Object.keys(commands).filter(installed)];
+const clis = ['echo', 'pi-durable', ...Object.keys(commands).filter(installed)];
 const children = new Set();
 
 // Stopping the runner stops its work too, rather than leaving agents running for nobody.
@@ -56,8 +57,16 @@ function run(bin, argv, cwd) {
   });
 }
 
+// pi-durable runs in this process, on one file per runner, and finishes after a restart what it started before it.
+const durable = await openDurable({
+  file: path.join(os.homedir(), '.agent-ide', `${name}.sqlite`),
+  deliver: (jobId, result) => api(`/api/jobs/${jobId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(result) }).catch((error) => console.error(error.message)),
+  progress: (jobId, live) => api(`/api/jobs/${jobId}/progress`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(live) }).catch(() => {}),
+});
+
 async function reply(job) {
   const messages = await api(`/api/threads/${job.threadId}/events`);
+  if (job.cli === 'pi-durable') return durable.reply(job, messages, folder(job.dir));
   if (job.cli === 'echo' || !commands[job.cli]) return `${job.bot}${job.soul ? ` (${job.soul})` : ''} via ${name} (${folder(job.dir)}) heard: ${messages.at(-1)?.body ?? 'nothing'}`;
   const transcript = messages.filter((m) => m.type !== 'system').map((m) => `${m.author}: ${m.body}`).join('\n');
   const soul = job.soul ? `\n\n${job.soul}` : '';
@@ -78,7 +87,12 @@ async function handle(job) {
   console.log(`${job.kind} for ${job.author} in ${job.threadId}`);
   let result;
   try {
-    result = job.kind === 'exec' ? await run('sh', ['-c', job.command], folder(job.dir)) : { body: await reply(job) };
+    if (job.kind === 'exec') result = await run('sh', ['-c', job.command], folder(job.dir));
+    else {
+      // pi-durable answers with its steps too; the one-shot clis only with text.
+      const answer = await reply(job);
+      result = typeof answer === 'string' ? { body: answer } : answer;
+    }
   } catch (error) { result = { error: error.message }; }
   await api(`/api/jobs/${job.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(result) });
 }

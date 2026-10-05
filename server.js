@@ -15,16 +15,16 @@ db.exec(`
 `);
 // Older files call the cli column harness.
 for (const table of ['threads', 'events', 'bots']) try { db.exec(`ALTER TABLE ${table} RENAME COLUMN harness TO cli`); } catch {}
-for (const [table, column] of [['threads', 'parent TEXT'], ['threads', 'runner TEXT'], ['threads', 'cli TEXT'], ['threads', 'model TEXT'], ['threads', 'dir TEXT'], ['events', "author TEXT NOT NULL DEFAULT 'anon'"], ['events', "kind TEXT NOT NULL DEFAULT 'human'"], ['events', 'runner TEXT'], ['events', "type TEXT NOT NULL DEFAULT 'chat'"], ['events', 'cli TEXT'], ['events', 'dir TEXT']]) {
+for (const [table, column] of [['threads', 'parent TEXT'], ['threads', 'runner TEXT'], ['threads', 'cli TEXT'], ['threads', 'model TEXT'], ['threads', 'dir TEXT'], ['events', "author TEXT NOT NULL DEFAULT 'anon'"], ['events', "kind TEXT NOT NULL DEFAULT 'human'"], ['events', 'runner TEXT'], ['events', "type TEXT NOT NULL DEFAULT 'chat'"], ['events', 'cli TEXT'], ['events', 'dir TEXT'], ['events', 'steps TEXT']]) {
   try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${column}`); } catch {}
 }
 
 // A thread with a runner is a job: pinned to that runner, cli and folder. Other threads live nowhere.
 const threads = db.prepare('SELECT id, title, parent, runner, cli, model, dir, created_at AS createdAt FROM threads ORDER BY created_at DESC');
 const thread = db.prepare('SELECT id, parent, runner, cli, model, dir FROM threads WHERE id = ?');
-const events = db.prepare('SELECT id, thread_id AS threadId, author, kind, type, runner, cli, dir, body, created_at AS createdAt FROM events WHERE thread_id = ? ORDER BY created_at, rowid');
+const events = db.prepare('SELECT id, thread_id AS threadId, author, kind, type, runner, cli, dir, steps, body, created_at AS createdAt FROM events WHERE thread_id = ? ORDER BY created_at, rowid');
 const addThread = db.prepare('INSERT INTO threads (id, title, parent, runner, cli, model, dir, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-const addEvent = db.prepare('INSERT INTO events (id, thread_id, body, created_at, author, kind, type, runner, cli, dir) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+const addEvent = db.prepare('INSERT INTO events (id, thread_id, body, created_at, author, kind, type, runner, cli, dir, steps) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
 // A bot is a name, a soul, and the runner, cli and folder its replies come from.
 const bots = db.prepare('SELECT name, owner, runner, cli, model, dir, soul FROM bots ORDER BY name');
 const bot = db.prepare('SELECT name, owner, runner, cli, model, dir, soul FROM bots WHERE name = ?');
@@ -61,9 +61,15 @@ function field(value, name) {
 
 function frame(value) {
   const payload = Buffer.from(JSON.stringify(value));
-  const header = payload.length < 126
-    ? Buffer.from([0x81, payload.length])
-    : Buffer.from([0x81, 126, payload.length >> 8, payload.length & 255]);
+  let header;
+  if (payload.length < 126) header = Buffer.from([0x81, payload.length]);
+  else if (payload.length < 65536) header = Buffer.from([0x81, 126, payload.length >> 8, payload.length & 255]);
+  else {
+    header = Buffer.alloc(10);
+    header[0] = 0x81;
+    header[1] = 127;
+    header.writeBigUInt64BE(BigInt(payload.length), 2);
+  }
   return Buffer.concat([header, payload]);
 }
 
@@ -72,10 +78,11 @@ function notify(threadId) {
   for (const socket of clients) socket.write(data);
 }
 
-function append(threadId, { author, kind = 'bot', type = 'chat', runner = null, cli = null, dir = null, body }) {
+// Steps are the tool calls a reply made on the way, kept with it.
+function append(threadId, { author, kind = 'bot', type = 'chat', runner = null, cli = null, dir = null, steps = null, body }) {
   if (!thread.get(threadId)) throw new Error('Thread not found');
-  const item = { id: randomUUID(), threadId, author, kind, type, runner, cli, dir, body, createdAt: new Date().toISOString() };
-  addEvent.run(item.id, threadId, item.body, item.createdAt, item.author, item.kind, item.type, item.runner, item.cli, item.dir);
+  const item = { id: randomUUID(), threadId, author, kind, type, runner, cli, dir, steps, body, createdAt: new Date().toISOString() };
+  addEvent.run(item.id, threadId, item.body, item.createdAt, item.author, item.kind, item.type, item.runner, item.cli, item.dir, steps && JSON.stringify(steps));
   notify(threadId);
   return item;
 }
@@ -123,6 +130,11 @@ function strand(name) {
 // Who is busy in a thread right now, for the sidebar and the thread header.
 function working(threadId) {
   return [...jobs.values()].filter((job) => job.threadId === threadId && !job.stranded && !job.queued).map((job) => job.author);
+}
+
+// What a working bot has said and run so far, for anyone who opens the thread mid-reply.
+function live(threadId) {
+  return [...jobs.values()].filter((job) => job.threadId === threadId && job.live).map(({ id, author, live }) => ({ jobId: id, author, ...live }));
 }
 
 function waiting(threadId) {
@@ -187,7 +199,7 @@ const handleRequest = async (req, res) => {
       send(res, 200, { name: existing.name });
       return notify(null);
     }
-    if (req.method === 'GET' && path === '/api/threads') return send(res, 200, threads.all().map((t) => ({ ...t, working: working(t.id), waiting: waiting(t.id) })));
+    if (req.method === 'GET' && path === '/api/threads') return send(res, 200, threads.all().map((t) => ({ ...t, working: working(t.id), waiting: waiting(t.id), live: live(t.id) })));
     if (req.method === 'POST' && path === '/api/threads') {
       // Passing a runner makes the thread a job, pinned to that runner, cli and folder.
       const { title, parent = null, runner = null, cli = null, model = null, dir = null } = await input(req);
@@ -215,19 +227,31 @@ const handleRequest = async (req, res) => {
       send(res, 200, { id });
       return notify(null);
     }
+    // A runner streams a reply in progress. It lives in memory only; the finished reply is what's kept.
+    const progress = /^\/api\/jobs\/([\w-]+)\/progress$/.exec(path);
+    if (progress && req.method === 'POST') {
+      const job = jobs.get(progress[1]);
+      if (!job || job.queued) return send(res, 404, { error: 'Job not found' });
+      const { text = '', steps = [] } = await input(req);
+      job.live = { text, steps };
+      send(res, 200, { ok: true });
+      const data = frame({ threadId: job.threadId, live: { jobId: job.id, author: job.author, ...job.live } });
+      for (const socket of clients) socket.write(data);
+      return;
+    }
     const result = /^\/api\/jobs\/([\w-]+)$/.exec(path);
     if (result && req.method === 'POST') {
       const job = jobs.get(result[1]);
       // A job whose runner dropped mid-way is kept, so a late answer still lands in the thread.
       if (!job || job.queued) return send(res, 404, { error: 'Job not found' });
       jobs.delete(job.id);
-      const { body, error, ...output } = await input(req);
+      const { body, error, steps, ...output } = await input(req);
       const late = job.stranded ? ' (arrived after its runner reconnected)' : '';
       const entry = append(job.threadId, error
         ? { author: 'server', type: 'system', runner: job.runner, body: `${job.author} could not ${job.kind} via ${job.runner}: ${error}` }
         : job.kind === 'exec'
           ? { author: job.author, kind: 'human', type: 'exec', runner: job.runner, dir: job.dir, body: JSON.stringify({ command: job.command, dir: job.dir, ...output }) }
-          : { author: job.author, runner: job.runner, cli: job.cli, dir: job.dir, body: (body || '(empty reply)') + late });
+          : { author: job.author, runner: job.runner, cli: job.cli, dir: job.dir, steps, body: (body || '(empty reply)') + late });
       job.resolve(entry);
       report(job, entry);
       send(res, 200, entry);
@@ -268,7 +292,7 @@ const handleRequest = async (req, res) => {
     if (match) {
       const id = match[1];
       if (!thread.get(id)) return send(res, 404, { error: 'Thread not found' });
-      if (req.method === 'GET') return send(res, 200, events.all(id));
+      if (req.method === 'GET') return send(res, 200, events.all(id).map((event) => ({ ...event, steps: event.steps ? JSON.parse(event.steps) : null })));
       if (req.method === 'POST') {
         const { body, author = 'anon', kind = 'human' } = await input(req);
         if (!['human', 'bot'].includes(kind)) throw new Error('kind must be human or bot');

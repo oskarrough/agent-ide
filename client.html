@@ -34,6 +34,7 @@
   .link { background: none; border: 0; padding: 0 .2rem; color: #59636e; }
   #messages li { border-bottom: 1px solid #eee; padding: .5rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   #messages li.bot { background: #f6f3fb; padding-left: .5rem; }
+  #messages li.live { opacity: .75; }
   #messages b { font-weight: 600; }
   #messages li.system { color: #ad1b1b; font-style: italic; }
   #messages pre { background: #20242a; color: #e7e9ee; padding: .5rem; margin: .3rem 0 0; overflow-x: auto; font-size: 13px; }
@@ -118,8 +119,13 @@
     server.socket = socket;
     socket.onopen = () => { server.status = 'online'; refresh(url); };
     socket.onmessage = ({ data }) => {
-      const { threadId } = JSON.parse(data);
-      if (threadId === null) refresh(url);
+      const { threadId, live } = JSON.parse(data);
+      // A reply in progress replaces its previous frame; the finished reply arrives as a message, and a refresh drops it.
+      if (live) {
+        const thread = server.threads?.find((t) => t.id === threadId);
+        if (thread) thread.live = [...(thread.live ?? []).filter((l) => l.jobId !== live.jobId), live];
+        if (selected?.url === url && selected.id === threadId) renderMessages();
+      } else if (threadId === null) refresh(url);
       else if (selected?.url === url && selected.id === threadId) loadMessages();
     };
     socket.onclose = () => {
@@ -393,7 +399,12 @@
     const server = servers.get(selected?.url);
     $('messages').replaceChildren(...messages.map((m) => build('li', { className: `${m.kind} ${m.type}` }, [
       build('b', { textContent: m.author }), ' ', build('small', {}, joined([m.runner && build('span', {}, ['via ', runnerLabel(server, m.runner)]), m.cli, m.dir && `in ${m.dir}`, new Date(m.createdAt).toLocaleTimeString()], ' · ')),
+      stepsView(m.steps, false),
       m.type === 'exec' ? execView(JSON.parse(m.body)) : build('div', {}, linked(m.body)),
+    ])), ...(current()?.thread?.live ?? []).map((l) => build('li', { className: 'bot live' }, [
+      build('b', { textContent: l.author }), ' ', build('small', { className: 'working', textContent: 'writing…' }),
+      stepsView(l.steps, true),
+      build('div', { textContent: l.text }),
     ])));
   }
 
@@ -410,6 +421,15 @@
       const title = servers.get(selected.url)?.threads.find((t) => t.id === id)?.title || id.slice(0, 8);
       return build('a', { href: '#', textContent: `↳ ${title}`, onclick: (event) => { event.preventDefault(); select({ url: selected.url, id }); } });
     });
+  }
+
+  // The tool calls a reply made: open while it works, folded once it's done.
+  function stepsView(steps, open) {
+    if (!steps?.length) return '';
+    return build('details', { open }, [
+      build('summary', { className: 'mute', textContent: `${steps.length} step${steps.length === 1 ? '' : 's'}` }),
+      ...steps.map((step) => build('pre', { textContent: `${step.name}: ${step.args}${step.status === 'done' ? '' : ` (${step.status})`}${step.output ? `\n${step.output}` : ''}` })),
+    ]);
   }
 
   function execView({ command, dir, code, stdout, stderr }) {

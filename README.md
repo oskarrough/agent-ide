@@ -1,11 +1,11 @@
 # agent-ide
 
-Threads live on servers. Replies come from runners. No dependencies or build step. Runs with bun (or Node.js 24+).
+Threads live on servers. Replies come from runners. No build step; the runner depends on pi-durable (`bun install`). Runs with bun (or Node.js 24+).
 
 ```
 client.html ──▶ server.js (threads, bots, which runners are online)
                    ▲
-                   └── runner.js dials out; does the reply and exec jobs it is handed, using claude, codex, pi or echo
+                   └── runner.js dials out; does the reply and exec jobs it is handed, using pi-durable, claude, codex, pi or echo
 ```
 
 A thread is a conversation between humans and bots, and it lives nowhere. A bot is a name and a soul, plus the runner, coding agent CLI (`cli`) and folder its replies come from, so one thread can hold bots from several machines. A job is a child thread pinned to a runner, cli and folder; everything said there runs there, so steering a job is just posting in it.
@@ -33,7 +33,9 @@ In a thread, the header lists who's in it, and Ask makes a bot reply, with no di
 bun runner.js --server http://127.0.0.1:3000 --name oskar-laptop [--alias "Oskar's laptop"] --dir ~/code/foo [--owner oskar]
 ```
 
-A runner connects to one server, reports the coding agent CLIs it finds (`claude`, `codex`, `pi`, plus a built-in `echo`) and waits. It never decides when to act; it does the `reply` and `exec` jobs the server hands it, in a folder under `--dir`. The name is its key; `--alias` is a human-readable name the client shows instead, set on the machine so it survives a server restart. It belongs to `--owner` (default: the OS user), and only the owner or people they allow can send it work. The server checks that; the runner doesn't.
+A runner connects to one server, reports the coding agent CLIs it finds (`claude`, `codex`, `pi`, plus a built-in `echo`) and waits. It never decides when to act; it does the `reply` and `exec` jobs the server hands it, in a folder under `--dir`.
+
+`pi-durable` is the runner's own harness, built on [Pi Durable](https://www.npmjs.com/package/@earendil-works/pi-durable), and is always offered. Each thread gets one durable conversation on the runner, in `~/.agent-ide/NAME.sqlite`, that reads only the messages it hasn't seen and has read, write, edit and bash in the job's folder. It signs in with pi's logins (`~/.pi/agent/auth.json`). A model is `provider/model`, or a bare id on pi's default provider, and no model means pi's default. If the runner dies mid-reply, it picks the reply up on restart and sends it as a late answer; an interrupted tool call is reported to the model, not rerun. Its reply keeps its `steps`, the tool calls it made with their output, which the client shows folded under the message. The server still owns the thread; the conversation is the bot's memory of it. The other clis stay one-shot: each reply is a fresh process that gets the whole thread as its prompt. The name is its key; `--alias` is a human-readable name the client shows instead, set on the machine so it survives a server restart. It belongs to `--owner` (default: the OS user), and only the owner or people they allow can send it work. The server checks that; the runner doesn't.
 
 ## Policy lives in callers
 
@@ -53,6 +55,7 @@ Send `x-user: name` to say who you are (fake identity).
 - `POST /api/threads/:id/exec` `{"command"}` runs a command on the job's runner, in its folder; the output lands in the thread as an `exec` entry. A thread that isn't a job answers 409.
 - `GET /api/runners` (each with `name`, `alias`, `owner`, `clis`, `allowed`, `online`), `POST /api/runners/:name/allow` `{"user","allowed"?}` (owner only)
 - `/ws` sends `{threadId}` change notifications. Runners connect with `/ws?runner=NAME&alias=…&owner=…&clis=…`, receive `{job}` and answer at `POST /api/jobs/:id`.
+- `POST /api/jobs/:id/progress` `{"text","steps"}` is a runner streaming a reply in progress. `/ws` relays it as `{threadId, live}`, and `GET /api/threads` lists each thread's `live` replies for late joiners. It is kept in memory only, until the reply lands. Only pi-durable streams.
 
 A runner that is unknown or not lent to you fails fast, with a note in the thread. An offline runner fails fast in a plain thread, where the conversation moves on without that bot. In a job thread the work waits instead: the thread says so, it starts when the runner reconnects, and whoever asked (or the runner's owner) can cancel it with `DELETE /api/jobs/:id`. Waiting work lives in memory, so a server restart drops it. A runner that drops mid-job leaves a note too; if it reconnects and finishes, the late answer still lands.
 
