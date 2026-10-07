@@ -35,7 +35,8 @@ client.html ──▶ server.js   one Pi Durable harness; every thread is a conv
 - An **entry** is one record in a thread. Pi's own kinds are a human's input, an answer, a tool call and its result. Ours are chat for the humans, a command's output, a note and an error.
 - A **runner** is a machine connected to the server. It streams models with its own logins and runs file and shell calls in its folder. It stores nothing.
 - An **agent** is a model on a runner, named like `gpt-6.1-sol@laptop`, with an optional effort level and folder. A thread has one agent at a time, kept as Pi's own agent setting.
-- An entry's **to** names the agent that should answer it. A human's input keeps its author and `to` in its Pi request id, written as URL params: `author=oskar&runner=laptop&model=echo%2Fecho&key=…`.
+- An entry's **to** names the agent that should answer it. An input keeps its author and `to` in its Pi request id, written as URL params: `author=oskar&runner=laptop&model=echo%2Fecho&key=…`.
+- Agents have two tools of their own, run by the server: `post` to another thread, or to a new child thread, and `read` a thread or the list of them.
 
 Posting an entry is the one thing you do:
 
@@ -43,7 +44,8 @@ Posting an entry is the one thing you do:
 - With no `to`, the thread's agent answers.
 - With `to: null`, nobody answers; it's for the humans.
 - `$ cmd` runs on the agent's runner, in its folder.
-- Posting into a child thread hands work off. Each answer there is reported to the parent.
+- Posting into a child thread hands work off. Each answer there is reported to the parent as a note.
+- An agent posts the same way, as itself. Its post's request id adds `from=`, its own thread, and the answer comes back there as an input from the agent that gave it. That wakes the asking agent, or queues for it if it's busy.
 
 Forking a thread at an entry starts a new thread with everything up to there and the agent it had then. Ask another agent from the same point; nothing in the fork reports back.
 
@@ -72,7 +74,7 @@ The client is served at `/`, or by `bun client.html` with live reload. It can ho
 
 By default a thread is single-player: every entry goes to its agent. With `DIRECTOR=1`, [director.js](director.js) decides instead. An entry goes to nobody unless it @mentions an agent the thread has asked before, as `@gpt-6.1-sol@laptop`, `@gpt-6.1-sol` or `@laptop`.
 
-A restart loses nothing. Pi commits every step before it's shown, so the server picks up where it stopped. If a runner drops mid-answer, Pi's rules decide: a broken model stream is retried once the runner is back, and a running tool call fails, so the model sees the error and carries on.
+A restart loses nothing. Pi commits every step before it's shown, so the server picks up where it stopped. An agent's tool call may run again after a restart; the thread it starts and the post it makes are keyed by the call, so the rerun finds them instead of making new ones. If a runner drops mid-answer, Pi's rules decide: a broken model stream is retried once the runner is back, and a running tool call fails, so the model sees the error and carries on.
 
 Things to know:
 
@@ -92,4 +94,5 @@ Send `x-user: name` to say who you are.
 - `POST /api/threads/:id/stop`: withdraws queued inputs and stops the agent.
 - `DELETE /api/threads/:id`: hides it; Pi Durable keeps everything.
 - `GET /api/runners`: each runner, its default model, and the calls it's answering.
+- Agents' tools: `post {"thread"?, "title"?, "body", "to"?}`, where no thread starts a child and `to` is `model@runner`, a runner, or `nobody`; and `read {"thread"?, "last"?}`.
 - `/ws`: pushes `{threadId}` whenever a thread changes. Runners connect here too and speak the protocol in [remote.js](remote.js).
