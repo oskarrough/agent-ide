@@ -1,4 +1,4 @@
-// Connects this machine to one server and does the jobs it hands over. It never decides when to act.
+// Connects this machine to one server and answers the entries addressed to it. It never decides when to act.
 // bun runner.js --server http://localhost:3000 [--name oskar-laptop] [--alias "Oskar's laptop"] [--dir ~/code/foo]
 import os from 'node:os';
 import path from 'node:path';
@@ -18,15 +18,19 @@ args.dir = path.resolve(args.dir);
 const server = new URL(args.server).origin;
 const name = args.name;
 
-// Coding agent CLIs are whatever binaries this machine has, signed in with this user's logins.
-const commands = {
-  claude: (prompt, model) => ['claude', ['-p', ...(model ? ['--model', model] : []), prompt]],
-  codex: (prompt, model) => ['codex', ['exec', '--skip-git-repo-check', '-s', 'workspace-write', ...(model ? ['-m', model] : []), prompt]],
-  pi: (prompt, model) => ['pi', ['-p', ...(model ? ['--model', model] : []), prompt]],
+// One-shot harnesses are whatever coding agent binaries this machine has, signed in with this user's logins.
+// Each answer is a fresh process that gets the whole thread as its prompt.
+const oneShot = {
+  claude: (prompt, { model, effort }) => ['claude', ['-p', ...(model ? ['--model', model] : []), ...(effort ? ['--effort', effort] : []), prompt]],
+  codex: (prompt, { model, effort }) => ['codex', ['exec', '--skip-git-repo-check', '-s', 'workspace-write', ...(model ? ['-m', model] : []), ...(effort ? ['-c', `model_reasoning_effort="${effort}"`] : []), prompt]],
+  pi: (prompt, { model, effort }) => ['pi', ['-p', ...(model ? ['--model', model] : []), ...(effort ? ['--thinking', effort] : []), prompt]],
 };
 const installed = (bin) => spawnSync('sh', ['-c', `command -v ${bin}`]).status === 0;
-const clis = ['echo', 'pi-durable', ...Object.keys(commands).filter(installed)];
+// shell runs the entry as a command; echo repeats it, for testing.
+const harnesses = ['pi-durable', 'shell', 'echo', ...Object.keys(oneShot).filter(installed)];
 const children = new Set();
+// Entries this runner is answering. The server sends them again after a reconnect; they are answered once.
+const answering = new Set();
 
 // Stopping the runner stops its work too, rather than leaving agents running for nobody.
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => {
@@ -40,8 +44,9 @@ async function api(path, options) {
   if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`);
   return value;
 }
+const post = (path, value) => api(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-user': name }, body: JSON.stringify(value) });
 
-function run(bin, argv, cwd) {
+function execute(bin, argv, cwd) {
   return new Promise((resolve, reject) => {
     const child = spawn(bin, argv, { cwd, stdio: ['ignore', 'pipe', 'pipe'], timeout: 10 * 60_000 });
     children.add(child);
@@ -60,20 +65,24 @@ function run(bin, argv, cwd) {
 // pi-durable runs in this process, on one file per runner, and finishes after a restart what it started before it.
 const durable = await openDurable({
   file: path.join(os.homedir(), '.agent-ide', `${name}.sqlite`),
-  deliver: (jobId, result) => api(`/api/jobs/${jobId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(result) }).catch((error) => console.error(error.message)),
-  progress: (jobId, live) => api(`/api/jobs/${jobId}/progress`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(live) }).catch(() => {}),
+  finish: (entryId, result) => post(`/api/entries/${entryId}/reply`, result).catch((error) => console.error(error.message)),
+  live: (entryId, progress) => post(`/api/entries/${entryId}/live`, progress).catch(() => {}),
 });
 
-async function reply(job) {
-  const messages = await api(`/api/threads/${job.threadId}/events`);
-  if (job.cli === 'pi-durable') return durable.reply(job, messages, folder(job.dir));
-  if (job.cli === 'echo' || !commands[job.cli]) return `${job.bot}${job.soul ? ` (${job.soul})` : ''} via ${name} (${folder(job.dir)}) heard: ${messages.at(-1)?.body ?? 'nothing'}`;
-  const transcript = messages.filter((m) => m.type !== 'system').map((m) => `${m.author}: ${m.body}`).join('\n');
-  const soul = job.soul ? `\n\n${job.soul}` : '';
-  const [bin, argv] = commands[job.cli](`You are ${job.bot} in a group chat.${soul}\n\nReply to the conversation.\n\n${transcript}`, job.model);
-  const { code, stdout, stderr } = await run(bin, argv, folder(job.dir));
+// What the harness says back. pi-durable answers with its steps; shell with a command's output; the rest with text.
+async function respond(asked) {
+  const { harness, dir } = asked.to;
+  const me = `${harness}@${name}`;
+  if (harness === 'shell') return execute('sh', ['-c', asked.body], folder(dir));
+  if (harness === 'echo') return { body: `${me} in ${folder(dir)} heard: ${asked.body}` };
+  const entries = await api(`/api/threads/${asked.threadId}/entries`);
+  if (harness === 'pi-durable') return durable.reply(asked, entries, me, folder(dir));
+  if (!oneShot[harness]) throw new Error(`${name} has no harness ${harness}`);
+  const transcript = entries.filter((e) => ['chat', 'exec'].includes(e.kind)).map((e) => `${e.author}: ${e.body}`).join('\n');
+  const [bin, argv] = oneShot[harness](`You are ${me} in a chat with humans and agents. Answer the last entry.\n\n${transcript}`, asked.to);
+  const { code, stdout, stderr } = await execute(bin, argv, folder(dir));
   if (code !== 0) throw new Error(stderr || `${bin} exited ${code}`);
-  return stdout;
+  return { body: stdout };
 }
 
 // Commands run in a folder under --dir, never outside it.
@@ -83,27 +92,22 @@ function folder(dir) {
   return full;
 }
 
-async function handle(job) {
-  console.log(`${job.kind} for ${job.author} in ${job.threadId}`);
+async function handle(asked) {
+  if (answering.has(asked.id)) return;
+  answering.add(asked.id);
+  console.log(`${asked.to.harness} answers ${asked.author} in ${asked.threadId}`);
   let result;
-  try {
-    if (job.kind === 'exec') result = await run('sh', ['-c', job.command], folder(job.dir));
-    else {
-      // pi-durable answers with its steps too; the one-shot clis only with text.
-      const answer = await reply(job);
-      result = typeof answer === 'string' ? { body: answer } : answer;
-    }
-  } catch (error) { result = { error: error.message }; }
-  await api(`/api/jobs/${job.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(result) });
+  try { result = await respond(asked); } catch (error) { result = { error: error.message }; }
+  await post(`/api/entries/${asked.id}/reply`, result).finally(() => answering.delete(asked.id));
 }
 
 function connect() {
-  const query = new URLSearchParams({ runner: name, alias: args.alias, owner: args.owner, host: os.hostname(), clis: clis.join(',') });
+  const query = new URLSearchParams({ runner: name, alias: args.alias, owner: args.owner, host: os.hostname(), harnesses: harnesses.join(',') });
   const socket = new WebSocket(`${server.replace(/^http/, 'ws')}/ws?${query}`);
-  socket.onopen = () => console.log(`${name} online at ${server} with ${clis.join(', ')} in ${args.dir}`);
+  socket.onopen = () => console.log(`${name} online at ${server} with ${harnesses.join(', ')} in ${args.dir}`);
   socket.onmessage = ({ data }) => {
-    const { job } = JSON.parse(data);
-    if (job) handle(job).catch((error) => console.error(error.message));
+    const { entry } = JSON.parse(data);
+    if (entry) handle(entry).catch((error) => console.error(error.message));
   };
   socket.onclose = () => {
     console.log(`disconnected from ${server}; retrying…`);

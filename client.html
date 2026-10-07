@@ -4,7 +4,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>agent-ide</title>
 <style>
-  body { font: 15px system-ui, sans-serif; max-width: 1000px; margin: 1.5rem auto; padding: 0 1rem; color: #20242a; }
+  body { font: 15px system-ui, sans-serif; max-width: 1100px; margin: 1.5rem auto; padding: 0 1rem; color: #20242a; }
   h2 { font-size: 1rem; margin: 0; }
   form { display: flex; gap: .4rem; margin: .5rem 0; }
   input, button, select { font: inherit; padding: .4rem; }
@@ -13,55 +13,61 @@
   ul { list-style: none; padding: 0; margin: .25rem 0; }
   [hidden] { display: none !important; }
   small, .mute { color: #59636e; }
-  .error { color: #ad1b1b; }
-  #layout { display: grid; grid-template-columns: 300px 1fr; gap: 1.5rem; margin-top: 1rem; }
+  code, .id { font: 12px ui-monospace, monospace; }
+  .id { color: #8a8f98; }
+  #layout { display: grid; grid-template-columns: 320px 1fr; gap: 1.5rem; margin-top: 1rem; }
   .server { border: 1px solid #ddd; border-radius: 8px; padding: .6rem; margin-bottom: .8rem; }
   .server header { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
-  .server header button { padding: .1rem .4rem; }
+  .server h3 { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: #59636e; margin: .8rem 0 .2rem; display: flex; justify-content: space-between; }
   .thread-row { display: flex; gap: .25rem; margin-bottom: .25rem; }
   .thread { flex: 1; min-width: 0; text-align: left; }
   .thread.active { background: #d7e9ff; }
   .dot { display: inline-block; width: .55rem; height: .55rem; border-radius: 50%; background: #bbb; margin-right: .3rem; }
   .dot.on { background: #2f9e62; }
-  #people { margin: .3rem 0 .6rem; }
-  #pin { font-weight: 600; margin: .3rem 0; }
-  #pick { border: 1px solid #ddd; border-radius: 8px; padding: .6rem; margin-top: 1rem; }
-  form.stack { flex-wrap: wrap; }
-  form.stack > * { flex: 1 1 7rem; }
-  #pick .row { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
-  #pick form { margin: .4rem 0 0; }
-  .working { color: #8a5a00; }
+  .status { color: #8a5a00; }
+  .status.done { color: #2f9e62; }
+  .status.error { color: #ad1b1b; }
+  .error { color: #ad1b1b; }
   .link { background: none; border: 0; padding: 0 .2rem; color: #59636e; }
-  #messages li { border-bottom: 1px solid #eee; padding: .5rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-  #messages li.bot { background: #f6f3fb; padding-left: .5rem; }
-  #messages li.live { opacity: .75; }
-  #messages b { font-weight: 600; }
-  #messages li.system { color: #ad1b1b; font-style: italic; }
-  #messages pre { background: #20242a; color: #e7e9ee; padding: .5rem; margin: .3rem 0 0; overflow-x: auto; font-size: 13px; }
-  @media (max-width: 700px) { #layout { grid-template-columns: 1fr; } }
+  .chip { font-size: 12px; background: #eef1f5; color: #20242a; border-radius: 4px; padding: 0 .35rem; margin-left: .35rem; text-decoration: none; }
+  .chip.to { background: #e3eeff; }
+  #entries li { border-bottom: 1px solid #eee; padding: .5rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  #entries li.agent { background: #f6f3fb; padding-left: .5rem; }
+  #entries li.note { color: #59636e; font-style: italic; }
+  #entries li.error { color: #ad1b1b; }
+  #entries li.live { opacity: .75; }
+  #entries li.flash { outline: 2px solid #f0b400; }
+  #entries b { font-weight: 600; }
+  pre { background: #20242a; color: #e7e9ee; padding: .5rem; margin: .3rem 0 0; overflow-x: auto; font-size: 13px; white-space: pre-wrap; }
+  pre.raw { background: #f4f5f7; color: #3a3f47; font-size: 12px; }
+  #composer { flex-direction: column; border-top: 1px solid #ddd; padding-top: .5rem; }
+  #composer .row { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; }
+  #composer .row input:not(#body) { flex: 0 1 9rem; }
+  @media (max-width: 760px) { #layout { grid-template-columns: 1fr; } }
 </style>
-<div class="mute">You are <b id="me"></b>. Set <code>?user=name</code> in the URL to be someone else.</div>
+<div class="mute">You are <b id="me"></b>. Set <code>?user=name</code> in the URL to be someone else. <label><input type="checkbox" id="structure"> Show structure</label></div>
 <form id="add-server"><input id="server-url" placeholder="Add a server, e.g. http://localhost:3000" required><button>Add</button></form>
 <div id="layout">
   <aside id="servers"></aside>
   <main>
-    <h2 id="heading">Select a thread</h2>
-    <div id="pin"></div>
-    <div id="people" class="mute"></div>
-    <ul id="messages"></ul>
-    <form id="post" hidden><input id="body" required maxlength="10000"><button>Send</button></form>
-    <!-- Asking a bot is a plain reply call; it needs no director. -->
-    <form id="ask" hidden><label>Bot <select id="bot"></select></label><button>Ask</button></form>
-    <!-- Only a plain thread starts jobs: a child thread pinned to the bot's runner, cli and folder, unless overridden here. -->
-    <section id="pick" hidden>
+    <h2 id="heading">Pick a thread, or start one</h2>
+    <div id="meta" class="mute"></div>
+    <pre id="raw-thread" class="raw" hidden></pre>
+    <ul id="entries"></ul>
+    <div id="pending"></div>
+    <!-- Posting is the one verb. The `to` says who should answer; nobody means it's for the humans here. -->
+    <form id="composer" hidden>
       <div class="row">
-        <label>Runner <select id="runner"></select></label>
-        <label>CLI <select id="cli"></select></label>
-        <label>Folder <input id="dir" size="10"></label>
+        <small>To</small>
+        <select id="runner" title="Runner"></select>
+        <select id="harness" title="Harness"></select>
+        <input id="model" placeholder="model (default)">
+        <select id="effort" title="Effort"></select>
+        <input id="dir" placeholder="folder (.)">
+        <label id="child-label"><input type="checkbox" id="child"> in a child thread</label>
       </div>
-      <form id="job"><input id="task" placeholder="Task for a job with the bot above" required><button>Start job</button></form>
-      <small id="pick-note"></small>
-    </section>
+      <div class="row"><input id="body" required maxlength="10000"><button>Send</button></div>
+    </form>
   </main>
 </div>
 <script type="module">
@@ -72,20 +78,26 @@
   // Each client names the servers it knows; the URL stays the key.
   const ALIASES = 'agent-ide-aliases';
   const aliases = JSON.parse(localStorage.getItem(ALIASES) || '{}');
+  const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
   // Every server is its own world: its own threads, runners and socket.
   const servers = new Map();
-  let selected = null; // { url, id }
-  let messages = [];
+  let selected = null; // { url, id }; an id of null is a new thread, made by its first entry
+  let entries = [];
+  // Which thread the `to` picker was last filled for, so it's filled once per thread and then left to you.
+  let pickedFor = null;
+  let structure = localStorage.getItem('agent-ide-structure') === '1';
 
-  async function api(url, path, options) {
-    const response = await fetch(url + path, options);
+  // Every request says who you are; a thread's status depends on it.
+  async function api(url, path, options = {}) {
+    const response = await fetch(url + path, { ...options, headers: { 'x-user': me, ...options.headers } });
     const value = await response.json();
-    if (!response.ok) throw new Error(value.error || value.body || `HTTP ${response.status}`);
+    if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`);
     return value;
   }
-  const post = (url, path, value) => api(url, path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-user': me }, body: JSON.stringify(value) });
-  const remove = (url, path) => api(url, path, { method: 'DELETE', headers: { 'x-user': me } });
-  const act = (promise) => promise.catch((error) => alert(error.message));
+  const post = (url, path, value) => api(url, path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value) });
+  const remove = (url, path) => api(url, path, { method: 'DELETE' });
+  const attempt = (promise) => promise.catch((error) => alert(error.message));
+  const short = (id) => id.slice(0, 6);
 
   function save() {
     localStorage.setItem(STORE, JSON.stringify([...servers.keys()]));
@@ -96,7 +108,7 @@
     const url = new URL(raw).origin;
     if (!['http:', 'https:'].includes(new URL(url).protocol)) throw new Error('Use an http:// or https:// URL');
     if (servers.has(url)) return;
-    servers.set(url, { url, alias: aliases[url] || '', status: 'connecting', threads: [], runners: [], bots: [], socket: null, timer: null });
+    servers.set(url, { url, alias: aliases[url] || '', status: 'connecting', info: null, threads: [], runners: [], socket: null, timer: null });
     save();
     open(url);
     render();
@@ -120,13 +132,13 @@
     socket.onopen = () => { server.status = 'online'; refresh(url); };
     socket.onmessage = ({ data }) => {
       const { threadId, live } = JSON.parse(data);
-      // A reply in progress replaces its previous frame; the finished reply arrives as a message, and a refresh drops it.
+      // An answer in progress replaces its previous frame; the finished answer arrives as an entry, and a refresh drops it.
       if (live) {
-        const thread = server.threads?.find((t) => t.id === threadId);
-        if (thread) thread.live = [...(thread.live ?? []).filter((l) => l.jobId !== live.jobId), live];
-        if (selected?.url === url && selected.id === threadId) renderMessages();
+        const thread = server.threads.find((t) => t.id === threadId);
+        if (thread) thread.live = [...thread.live.filter((l) => l.entryId !== live.entryId), live];
+        if (selected?.url === url && selected.id === threadId) renderEntries();
       } else if (threadId === null) refresh(url);
-      else if (selected?.url === url && selected.id === threadId) loadMessages();
+      else if (selected?.url === url && selected.id === threadId) loadEntries();
     };
     socket.onclose = () => {
       if (!servers.has(url)) return;
@@ -140,81 +152,34 @@
   async function refresh(url) {
     const server = servers.get(url);
     try {
-      [server.threads, server.runners, server.bots] = await Promise.all([api(url, '/api/threads'), api(url, '/api/runners'), api(url, '/api/bots')]);
-      if (selected?.url === url && !server.threads.some((t) => t.id === selected.id)) select(null);
+      [server.info, server.threads, server.runners] = await Promise.all([api(url, '/api/server'), api(url, '/api/threads'), api(url, '/api/runners')]);
+      if (selected?.url === url && selected.id && !server.threads.some((t) => t.id === selected.id)) select(null);
+      else if (selected?.url === url) markRead();
     } catch (error) { server.status = error.message; }
     render();
   }
 
   function select(next) {
     selected = next;
-    messages = [];
+    entries = [];
     render();
-    loadMessages();
+    loadEntries();
   }
 
-  async function loadMessages() {
-    if (!selected) return;
+  async function loadEntries() {
+    if (!selected?.id) return;
     const { url, id } = selected;
     try {
-      const loaded = await api(url, `/api/threads/${id}/events`);
-      if (selected?.url === url && selected.id === id) { messages = loaded; renderPeople(); renderMessages(); }
+      const loaded = await api(url, `/api/threads/${id}/entries`);
+      if (selected?.url !== url || selected.id !== id) return;
+      entries = loaded;
+      markRead();
+      if (pickedFor !== id) { pickedFor = id; setPicker(defaultTo()); }
+      renderThread();
     } catch (error) {
       await refresh(url);
       if (selected?.url === url && selected.id === id) alert(error.message);
     }
-  }
-
-  function render() {
-    $('servers').replaceChildren(...[...servers.values()].map((server) => {
-      const newThread = build('form', { onsubmit: async (event) => {
-        event.preventDefault();
-        const title = event.target.elements.title.value;
-        const thread = await post(server.url, '/api/threads', { title });
-        await refresh(server.url);
-        select({ url: server.url, id: thread.id });
-      } }, [build('input', { name: 'title', placeholder: 'New thread', required: true }), build('button', { textContent: '+' })]);
-      return build('section', { className: 'server' }, [
-        build('header', {}, [
-          build('span', {}, [build('span', { className: `dot ${server.status === 'online' ? 'on' : ''}` }), build('b', { textContent: server.alias || server.url.replace(/^https?:\/\//, '') }),
-            server.alias ? build('small', { textContent: ` ${server.url.replace(/^https?:\/\//, '')}` }) : '',
-            build('button', { className: 'link', textContent: 'alias…', onclick: () => {
-              const alias = prompt(`Alias for ${server.url} (empty to clear)`, server.alias);
-              if (alias === null) return;
-              server.alias = alias.trim();
-              save();
-              render();
-            } })]),
-          build('button', { textContent: '×', title: 'Remove server', onclick: () => removeServer(server.url) }),
-        ]),
-        server.status === 'online' ? '' : build('div', { className: 'error', textContent: server.status }),
-        build('small', { textContent: 'Runners' }),
-        build('ul', {}, server.runners.length ? server.runners.map((runner) => runnerItem(server, runner))
-          : [build('li', { className: 'mute', textContent: 'none — start runner.js' })]),
-        build('small', { textContent: 'Bots' }),
-        build('ul', {}, server.bots.length ? server.bots.map((bot) => botItem(server, bot))
-          : [build('li', { className: 'mute', textContent: 'none yet' })]),
-        fillBotForm(server),
-        build('small', { textContent: 'Threads' }),
-        build('ul', {}, nested(server.threads).map(({ thread, depth }) => build('li', { className: 'thread-row', style: `margin-left: ${depth * 1}rem` }, [build('button', {
-          className: `thread ${selected?.url === server.url && selected.id === thread.id ? 'active' : ''}`,
-          onclick: () => select({ url: server.url, id: thread.id }),
-        }, [
-          (depth ? '↳ ' : '') + thread.title,
-          thread.runner ? build('small', {}, [' · job on ', runnerLabel(server, thread.runner)]) : '',
-          thread.working.length ? build('small', { className: 'working', textContent: ` · ${thread.working.join(', ')} working` }) : '',
-          thread.waiting.length ? build('small', { className: 'working' }, [' · waiting for ', ...joined([...new Set(thread.waiting.map((j) => j.runner))].map((name) => runnerLabel(server, name)), ', ')]) : '',
-        ]), build('button', {
-          textContent: '×', title: `Delete thread: ${thread.title}`, ariaLabel: `Delete thread: ${thread.title}`,
-          onclick: () => act(remove(server.url, `/api/threads/${thread.id}`).then(() => refresh(server.url))),
-        })]))),
-        newThread,
-      ]);
-    }));
-    if (!servers.size) $('servers').replaceChildren(build('p', { className: 'mute', textContent: 'No servers yet. Start one with `bun server.js` and add its URL above.' }));
-    renderPeople();
-    renderPick();
-    renderMessages();
   }
 
   function current() {
@@ -222,190 +187,176 @@
     return server && { server, thread: server.threads.find((t) => t.id === selected.id) };
   }
 
-  // A runner shows whose it is and who may use it; its owner can lend it.
-  function runnerItem(server, runner) {
-    const mine = runner.owner === me;
+  // Looking at a thread means you've seen its last result, so it stops showing as done.
+  function markRead() {
+    const { server, thread } = current() || {};
+    if (!thread) return;
+    post(server.url, `/api/threads/${thread.id}/read`, {}).catch(() => {});
+    if (thread.status === 'done') { thread.status = 'idle'; render(); }
+  }
+
+  // Alone, a thread answers whoever it last asked. With a director, entries go to nobody unless you say otherwise.
+  function defaultTo() {
+    const { server } = current() || {};
+    if (server?.info?.director) return null;
+    return entries.findLast((e) => e.to && e.to.harness !== 'shell')?.to ?? null;
+  }
+
+  function render() {
+    $('servers').replaceChildren(...[...servers.values()].map(serverView));
+    if (!servers.size) $('servers').replaceChildren(build('p', { className: 'mute', textContent: 'No servers yet. Start one with `bun server.js` and add its URL above.' }));
+    renderThread();
+  }
+
+  const raw = (value) => structure ? build('pre', { className: 'raw', textContent: JSON.stringify(value, null, 2) }) : '';
+
+  // A server: its options, its runners and what each is answering, and its threads with their status.
+  function serverView(server) {
+    const { info } = server;
+    return build('section', { className: 'server' }, [
+      build('header', {}, [
+        build('span', {}, [build('span', { className: `dot ${server.status === 'online' ? 'on' : ''}` }), build('b', { textContent: server.alias || server.url.replace(/^https?:\/\//, '') }),
+          server.alias ? build('small', { textContent: ` ${server.url.replace(/^https?:\/\//, '')}` }) : '',
+          build('button', { className: 'link', textContent: 'alias…', onclick: () => {
+            const alias = prompt(`Alias for ${server.url} (empty to clear)`, server.alias);
+            if (alias === null) return;
+            server.alias = alias.trim();
+            save();
+            render();
+          } })]),
+        build('button', { textContent: '×', title: 'Remove server', onclick: () => removeServer(server.url) }),
+      ]),
+      server.status === 'online' ? '' : build('div', { className: 'error', textContent: server.status }),
+      info ? build('small', { textContent: `director ${info.director ? 'on' : 'off'} · ${info.threads} threads · ${info.owed} waiting for an answer` }) : '',
+      raw(info),
+      build('h3', { textContent: 'Runners' }),
+      build('ul', {}, server.runners.length ? server.runners.map((runner) => runnerView(server, runner))
+        : [build('li', { className: 'mute', textContent: 'none: start runner.js' })]),
+      build('h3', {}, ['Threads', build('button', { className: 'link', textContent: '+ new', onclick: () => select({ url: server.url, id: null }) })]),
+      build('ul', {}, nested(server.threads).map(({ thread, depth }) => build('li', { className: 'thread-row', style: `margin-left: ${depth}rem` }, [build('button', {
+        className: `thread ${selected?.url === server.url && selected.id === thread.id ? 'active' : ''}`,
+        onclick: () => select({ url: server.url, id: thread.id }),
+      }, [(depth ? '↳ ' : '') + thread.title, statusView(server, thread)]), build('button', {
+        textContent: '×', title: `Delete thread: ${thread.title}`, ariaLabel: `Delete thread: ${thread.title}`,
+        onclick: () => attempt(remove(server.url, `/api/threads/${thread.id}`).then(() => refresh(server.url))),
+      })]))),
+    ]);
+  }
+
+  // A runner: whose machine it is, its harnesses, and the entries it is answering right now.
+  function runnerView(server, runner) {
     return build('li', {}, [
       build('span', { className: `dot ${runner.online ? 'on' : ''}` }), runner.alias || runner.name, ' ',
-      build('small', { textContent: `${runner.alias ? `${runner.name} · ` : ''}${runner.owner}'s · ${runner.clis.join(', ')}` }),
-      ...runner.allowed.map((guest) => build('button', { className: 'link', textContent: `lent to ${guest}${mine ? ' ×' : ''}`, disabled: !mine, title: 'Stop lending',
-        onclick: () => act(post(server.url, `/api/runners/${runner.name}/allow`, { user: guest, allowed: false }).then(() => refresh(server.url))) })),
-      mine ? build('button', { className: 'link', textContent: 'lend…', onclick: () => {
-        const guest = prompt(`Lend ${runner.alias || runner.name} to whom?`);
-        if (guest) act(post(server.url, `/api/runners/${runner.name}/allow`, { user: guest }).then(() => refresh(server.url)));
-      } }) : '',
+      build('small', { textContent: `${runner.alias ? `${runner.name} · ` : ''}${runner.owner}'s · ${runner.harnesses.join(', ')}` }),
+      ...runner.working.map((w) => build('div', {}, [build('small', { className: 'status' }, ['answering ', threadLink(server, w.threadId), ` #${short(w.entryId)}`])])),
+      raw(runner),
     ]);
   }
 
-  // A bot runs on its runner, and is online when that runner is.
-  function botItem(server, bot) {
-    const runner = server.runners.find((r) => r.name === bot.runner);
-    return build('li', { title: bot.soul || '' }, [
-      build('span', { className: `dot ${runner?.online ? 'on' : ''}` }), `@${bot.name} `,
-      build('small', {}, [...where(server, bot), ` · ${bot.owner}'s`]),
-      bot.owner === me ? build('button', { className: 'link', textContent: 'edit', onclick: () => editBot(server, bot) }) : '',
-      bot.owner === me ? build('button', { className: 'link', textContent: '×', title: 'Delete bot', onclick: () => act(remove(server.url, `/api/bots/${bot.name}`)) }) : '',
-    ]);
+  // A thread's status, said briefly: who is working, which runner it's queued for, or that a result is done or failed.
+  function statusView(server, thread) {
+    const pending = (state) => thread.pending.filter((p) => p.state === state);
+    const text = {
+      working: [` · ${[...new Set(pending('working').map((p) => agentLabel(server, p.to)))].join(', ')} working`],
+      queued: [` · queued for ${[...new Set(pending('queued').map((p) => runnerName(server, p.to.runner)))].join(', ')}`],
+      done: [' · done'],
+      error: [' · failed'],
+    }[thread.status];
+    return text ? build('small', { className: `status ${thread.status}` }, text) : '';
   }
 
-  // Bots are server-wide, so they are made here and not in a thread. The form is kept across renders so typing survives a refresh.
-  // Editing a bot is adding it again under the same name: the server overwrites a bot its owner saves.
-  function fillBotForm(server) {
-    const form = server.botForm ||= build('form', { className: 'stack', onsubmit: (event) => {
-      event.preventDefault();
-      const f = form.elements;
-      if (!f.runner.value) return alert('Pick a runner first');
-      act(post(server.url, '/api/bots', { name: f.bot.value, soul: f.soul.value, runner: f.runner.value, cli: f.cli.value || 'echo', model: f.model.value, dir: f.dir.value || '.' })
-        .then(() => editBot(server, null)));
-    } }, [
-      build('input', { name: 'bot', placeholder: 'bot name', required: true, pattern: '[\\w\\-]+' }),
-      build('select', { name: 'runner', title: 'Runner', onchange: () => fillBotForm(server) }),
-      build('select', { name: 'cli', title: 'CLI' }),
-      build('input', { name: 'model', placeholder: 'model (default)' }),
-      build('input', { name: 'dir', placeholder: 'folder (.)' }),
-      build('input', { name: 'soul', placeholder: 'soul (optional): who this bot is' }),
-      build('button', { name: 'save' }),
-      build('button', { name: 'cancel', type: 'button', textContent: 'Cancel', onclick: () => editBot(server, null) }),
-    ]);
-    const { runner, cli, bot, save, cancel } = form.elements;
-    bot.readOnly = Boolean(server.editing);
-    save.textContent = server.editing ? 'Save bot' : 'Add bot';
-    cancel.hidden = !server.editing;
-    // A bot being edited keeps its runner and cli even when that runner hasn't connected since the server started.
-    const editing = server.bots.find((b) => b.name === server.editing);
-    const runners = server.runners.map((r) => runnerOption(server, r));
-    if (editing && !runners.some(([v]) => v === editing.runner)) runners.unshift([editing.runner, `${editing.runner} (not connected)`]);
-    keep(runner, runners, 'no runners');
-    const clis = (server.runners.find((r) => r.name === runner.value)?.clis || []).map((c) => [c, c]);
-    if (editing?.runner === runner.value && !clis.some(([v]) => v === editing.cli)) clis.unshift([editing.cli, editing.cli]);
-    keep(cli, clis, 'no cli');
-    return form;
+  const runnerName = (server, name) => server.runners.find((r) => r.name === name)?.alias || name;
+  const agentLabel = (server, to) => `${to.harness}@${runnerName(server, to.runner)}`;
+  const toLabel = (server, to) => [agentLabel(server, to), to.model, to.effort, to.dir && `in ${to.dir}`].filter(Boolean).join(' · ');
+
+  function threadLink(server, id) {
+    const title = server.threads.find((t) => t.id === id)?.title || short(id);
+    return build('a', { href: '#', textContent: title, onclick: (event) => { event.preventDefault(); select({ url: server.url, id }); } });
   }
 
-  // Loads a bot into the form to edit it, or empties the form back to adding one.
-  function editBot(server, bot) {
-    server.editing = bot?.name || null;
-    const f = fillBotForm(server).elements;
-    for (const key of ['soul', 'model', 'dir']) f[key].value = bot?.[key] || '';
-    f.bot.value = bot?.name || '';
-    if (bot) f.runner.value = bot.runner;
-    render();
-    if (bot) f.cli.value = bot.cli;
+  // The main pane: the thread, its entries, what's still waiting for an answer, and the composer.
+  function renderThread() {
+    const { server, thread } = current() || {};
+    const draft = selected && !selected.id;
+    $('heading').textContent = draft ? 'New thread' : thread?.title || 'Pick a thread, or start one';
+    $('meta').replaceChildren(...(thread ? [
+      build('span', { className: 'id', textContent: `#${short(thread.id)} ` }), thread.status,
+      thread.parent ? build('span', {}, [' · child of ', threadLink(server, thread.parent)]) : '',
+    ] : draft ? ['Your first entry starts it.'] : []));
+    $('raw-thread').hidden = !structure || !thread;
+    $('raw-thread').textContent = thread ? JSON.stringify(thread, null, 2) : '';
+    $('composer').hidden = !(draft || thread);
+    renderEntries();
+    renderPicker();
   }
 
-  // Options are rebuilt on refresh; a select keeps its value, and an empty one says why it is empty.
-  function keep(select, options, empty) {
-    if (document.activeElement === select) return;
-    const value = select.value;
-    select.replaceChildren(...(options.length ? options.map(([v, text, title = '']) => build('option', { value: v, textContent: text, title })) : [build('option', { value: '', textContent: empty })]));
-    if (options.some(([v]) => v === value)) select.value = value;
-  }
-
-  // A runner is shown by its alias, with its name (what bots and jobs store) as the title. Every place a runner is shown goes through here.
-  function runnerLabel(server, name) {
-    const alias = server.runners.find((r) => r.name === name)?.alias;
-    return build('span', { textContent: alias || name, title: alias ? name : '' });
-  }
-  function runnerOption(server, runner) {
-    const label = runnerLabel(server, runner.name);
-    return [runner.name, `${label.textContent}${runner.online ? '' : ' (offline)'}`, label.title];
-  }
-
-  function joined(parts, separator) {
-    return parts.filter(Boolean).flatMap((part, i) => i ? [separator, part] : [part]);
-  }
-
-  function where(server, { runner, cli, model, dir }) {
-    return joined([cli, model && `(${model})`, runner && build('span', {}, ['on ', runnerLabel(server, runner)]), dir && `in ${dir}`], ' ');
-  }
-
-  // Who is in the thread, and where each bot lives. A job also says where it runs.
-  function renderPeople() {
-    const found = current();
-    $('heading').textContent = found?.thread?.title || 'Select a thread';
-    $('post').hidden = $('ask').hidden = !found?.thread;
-    $('pick').hidden = !found?.thread || Boolean(found.thread.runner);
-    // A job's pin is where everything said in it runs.
-    $('pin').replaceChildren(...(found?.thread?.runner ? ['Job: ', ...where(found.server, found.thread)] : []));
-    if (!found?.thread) return $('people').replaceChildren();
-    const { server, thread } = found;
-    const humans = [...new Set(messages.filter((m) => m.kind === 'human').map((m) => m.author))];
-    const bots = [...new Set(messages.filter((m) => m.kind === 'bot' && m.type === 'chat').map((m) => m.author))];
-    const botView = (name) => {
-      const saved = server.bots.find((b) => b.name === name);
-      const runner = server.runners.find((r) => r.name === (thread.runner || saved?.runner));
-      const detail = thread.runner ? [] : saved ? [' (', ...where(server, saved), ')'] : [' (no runner)'];
-      return build('span', {}, [build('span', { className: `dot ${runner?.online ? 'on' : ''}` }), name, ...detail, thread.working.includes(name) ? build('span', { className: 'working', textContent: ' working…' }) : '', '  ']);
-    };
-    $('people').replaceChildren(
-      thread.runner ? build('div', {}, ['Bots asked here and $ commands run there, and wait for ', runnerLabel(server, thread.runner), " if it's offline."]) : '',
-      ...thread.waiting.map((job) => build('div', { className: 'working' }, [`${job.author}'s ${job.kind} is waiting for `, runnerLabel(server, job.runner), ' ',
-        build('button', { className: 'link', textContent: 'cancel', onclick: () => act(remove(server.url, `/api/jobs/${job.id}`)) })])),
-      build('div', {}, [`People: ${humans.join(', ') || 'nobody yet'} · Bots: `, ...(bots.length ? bots.map(botView) : ['none yet, ask one below'])]),
-    );
-  }
-
-  // A job starts from a registered bot; runner, cli and folder default to the bot's.
-  function renderPick() {
-    const found = current();
-    if (!found?.thread) return;
-    const { server, thread } = found;
-    $('body').placeholder = thread.runner
-      ? `Message, or $ command to run on ${runnerLabel(server, thread.runner).textContent} in ${thread.dir}. @bot routes only while director.js runs`
-      : 'Message. @bot routes only while director.js runs; $ commands run only in a job';
-    keep($('bot'), server.bots.map((b) => [b.name, `@${b.name}`]), 'none: add one in the sidebar');
-    const bot = server.bots.find((b) => b.name === $('bot').value);
-    if (thread.runner) return;
-    keep($('runner'), [['', bot ? `${runnerLabel(server, bot.runner).textContent} (bot's)` : "bot's"], ...server.runners.map((r) => runnerOption(server, r))]);
-    const runner = server.runners.find((r) => r.name === ($('runner').value || bot?.runner));
-    keep($('cli'), [['', bot ? `${bot.cli} (bot's)` : "bot's"], ...(runner?.clis || []).map((c) => [c, c])]);
-    $('dir').placeholder = bot ? `${bot.dir} (bot's)` : '';
-    $('pick-note').replaceChildren(...(bot
-      ? [`Job as @${bot.name}: `, ...where(server, pin(bot)), `${runner && runner.owner !== me ? ` (${runner.owner}'s runner: they must lend it to you)` : ''}.`]
-      : ['Add a bot in the sidebar to start a job.']));
-  }
-  $('bot').onchange = $('runner').onchange = renderPick;
-  $('dir').oninput = renderPick;
-
-  function pin(bot) {
-    return { runner: $('runner').value || bot.runner, cli: $('cli').value || bot.cli, model: bot.model, dir: $('dir').value || bot.dir };
-  }
-
-  // Asking is the reply verb, called directly. Failures land in the thread as notes.
-  $('ask').onsubmit = (event) => {
-    event.preventDefault();
-    if (!$('bot').value) return alert('Add a bot in the sidebar first');
-    act(post(selected.url, `/api/threads/${selected.id}/reply`, { bot: $('bot').value }));
-  };
-
-  // A job is a child thread pinned to where the bot works. The server reports the result to this thread, so the tab can close.
-  $('job').onsubmit = (event) => {
-    event.preventDefault();
-    const { url, id } = selected;
-    const bot = servers.get(url).bots.find((b) => b.name === $('bot').value);
-    if (!bot) return alert('Add a bot in the sidebar first');
-    const task = $('task').value;
-    $('task').value = '';
-    act((async () => {
-      const child = await post(url, '/api/threads', { title: task.slice(0, 60), parent: id, ...pin(bot) });
-      await post(url, `/api/threads/${id}/events`, { author: bot.name, kind: 'bot', body: `On it in thread:${child.id}` });
-      await post(url, `/api/threads/${child.id}/events`, { author: me, kind: 'human', body: task });
-      // Failures land in the child thread as notes, and the parent hears about them from the server.
-      post(url, `/api/threads/${child.id}/reply`, { bot: bot.name }).catch(() => {});
-    })());
-  };
-
-  function renderMessages() {
-    const server = servers.get(selected?.url);
-    $('messages').replaceChildren(...messages.map((m) => build('li', { className: `${m.kind} ${m.type}` }, [
-      build('b', { textContent: m.author }), ' ', build('small', {}, joined([m.runner && build('span', {}, ['via ', runnerLabel(server, m.runner)]), m.cli, m.dir && `in ${m.dir}`, new Date(m.createdAt).toLocaleTimeString()], ' · ')),
-      stepsView(m.steps, false),
-      m.type === 'exec' ? execView(JSON.parse(m.body)) : build('div', {}, linked(m.body)),
-    ])), ...(current()?.thread?.live ?? []).map((l) => build('li', { className: 'bot live' }, [
-      build('b', { textContent: l.author }), ' ', build('small', { className: 'working', textContent: 'writing…' }),
+  function renderEntries() {
+    const { server, thread } = current() || {};
+    if (!thread) { $('entries').replaceChildren(); $('pending').replaceChildren(); return; }
+    $('entries').replaceChildren(...entries.map((e) => build('li', { id: `e-${e.id}`, className: `${e.role} ${e.kind}` }, [
+      build('b', { textContent: e.author }), ' ', build('small', { textContent: new Date(e.createdAt).toLocaleTimeString() }),
+      build('span', { className: 'id', textContent: ` #${short(e.id)}` }),
+      e.to ? build('span', { className: 'chip to', textContent: `→ ${toLabel(server, e.to)}` }) : '',
+      e.replyTo ? build('a', { href: '#', className: 'chip', textContent: `↩ #${short(e.replyTo)}`, title: 'The entry this answers', onclick: (event) => { event.preventDefault(); flash(e.replyTo); } }) : '',
+      stepsView(e.steps, false),
+      e.kind === 'exec' ? execView(JSON.parse(e.body)) : e.to?.harness === 'shell' ? build('pre', { textContent: `$ ${e.body}` }) : build('div', {}, linked(server, e.body)),
+      raw(e),
+    ])), ...thread.live.map((l) => build('li', { className: 'agent live' }, [
+      build('b', { textContent: l.author }), ' ', build('small', { className: 'status', textContent: 'writing…' }),
+      build('a', { href: '#', className: 'chip', textContent: `↩ #${short(l.entryId)}`, onclick: (event) => { event.preventDefault(); flash(l.entryId); } }),
       stepsView(l.steps, true),
       build('div', { textContent: l.text }),
     ])));
+    $('pending').replaceChildren(...thread.pending.map((p) => build('div', { className: 'status' }, [
+      build('small', {}, [`#${short(p.id)} waits for ${agentLabel(server, p.to)}: ${p.state}`]),
+      p.state === 'queued' ? build('button', { className: 'link', textContent: 'cancel', onclick: () => attempt(post(server.url, `/api/entries/${p.id}/cancel`, {})) }) : '',
+    ])));
+  }
+
+  function flash(id) {
+    const node = $(`e-${id}`);
+    if (!node) return;
+    node.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    node.classList.add('flash');
+    setTimeout(() => node.classList.remove('flash'), 1200);
+  }
+
+  // The `to` picker: a runner (or nobody), one of its harnesses, and optional model, effort and folder.
+  function renderPicker() {
+    const { server } = current() || {};
+    if (!server) return;
+    keep($('runner'), [['', 'nobody'], ...server.runners.map((r) => [r.name, `${r.alias || r.name}${r.online ? '' : ' (offline)'}`])]);
+    const runner = server.runners.find((r) => r.name === $('runner').value);
+    keep($('harness'), (runner?.harnesses || []).map((h) => [h, h]));
+    keep($('effort'), [['', 'effort (default)'], ...EFFORTS.map((e) => [e, e])]);
+    const nobody = !$('runner').value;
+    for (const id of ['harness', 'model', 'effort', 'dir']) $(id).disabled = nobody;
+    $('child-label').hidden = !selected?.id;
+    $('body').placeholder = nobody
+      ? `An entry for the humans here${server.info?.director ? '; @agent calls one in' : ''}`
+      : `An entry for ${$('harness').value}@${runnerName(server, $('runner').value)}; $ command runs in its shell`;
+  }
+  $('runner').onchange = $('harness').onchange = renderPicker;
+
+  function setPicker(to) {
+    if (!to) return void ($('runner').value = '', renderPicker());
+    keep($('runner'), [[to.runner, to.runner]], to.runner);
+    $('runner').value = to.runner;
+    renderPicker();
+    keep($('harness'), [[to.harness, to.harness]], to.harness);
+    $('harness').value = to.harness;
+    $('model').value = to.model || '';
+    $('effort').value = to.effort || '';
+    $('dir').value = to.dir || '';
+    renderPicker();
+  }
+
+  // Options are rebuilt on refresh. A select keeps its value, and `wanted` stays an option even when it isn't connected.
+  function keep(select, options, wanted = select.value) {
+    if (document.activeElement === select) return;
+    if (wanted && !options.some(([v]) => v === wanted)) options = [[wanted, `${wanted} (not connected)`], ...options];
+    select.replaceChildren(...options.map(([v, text]) => build('option', { value: v, textContent: text })));
+    if (options.some(([v]) => v === wanted)) select.value = wanted;
   }
 
   // Children sit under their parent.
@@ -413,17 +364,12 @@
     return threads.filter((t) => (t.parent || null) === parent).flatMap((thread) => [{ thread, depth }, ...nested(threads, thread.id, depth + 1)]);
   }
 
-  // "thread:<id>" in a message becomes a link to that thread on the same server.
-  function linked(body) {
-    return body.split(/(thread:[\w-]+)/).map((part) => {
-      const id = part.startsWith('thread:') && part.slice(7);
-      if (!id) return part;
-      const title = servers.get(selected.url)?.threads.find((t) => t.id === id)?.title || id.slice(0, 8);
-      return build('a', { href: '#', textContent: `↳ ${title}`, onclick: (event) => { event.preventDefault(); select({ url: selected.url, id }); } });
-    });
+  // "thread:<id>" in an entry becomes a link to that thread on the same server.
+  function linked(server, body) {
+    return body.split(/(thread:[\w-]+)/).map((part) => part.startsWith('thread:') ? threadLink(server, part.slice(7)) : part);
   }
 
-  // The tool calls a reply made: open while it works, folded once it's done.
+  // The tool calls an answer made: open while it works, folded once it's done.
   function stepsView(steps, open) {
     if (!steps?.length) return '';
     return build('details', { open }, [
@@ -432,33 +378,45 @@
     ]);
   }
 
-  function execView({ command, dir, code, stdout, stderr }) {
-    return build('pre', { textContent: `$ ${command}   (in ${dir}, exit ${code})\n${[stdout, stderr].filter(Boolean).join('\n')}` });
+  function execView({ code, stdout, stderr }) {
+    return build('pre', { textContent: `exit ${code}\n${[stdout, stderr].filter(Boolean).join('\n')}` });
   }
 
-  $('post').onsubmit = async (event) => {
+  // Posting is the one verb. "$ cmd" goes to the picked runner's shell. A child thread hands work off and reports back here.
+  $('composer').onsubmit = (event) => {
     event.preventDefault();
-    const body = $('body').value;
-    // "$ cmd" runs cmd where the job is pinned. A plain thread runs nowhere.
-    const command = body.match(/^\$\s+(.+)/s)?.[1];
-    const { thread } = current();
-    if (command && !thread.runner) return alert('$ commands run only in a job, on its runner and folder. Start a job from this thread, then run the command in it.');
+    const text = $('body').value;
+    const command = text.match(/^\$\s+(.+)/s)?.[1];
+    const runner = $('runner').value;
+    if (command && !runner) return alert('Pick a runner to run the command on');
+    const to = !runner ? null : command ? { runner, harness: 'shell', dir: $('dir').value } : { runner, harness: $('harness').value, model: $('model').value, effort: $('effort').value, dir: $('dir').value };
+    const body = command || text;
+    const { url, id } = selected;
+    const child = Boolean(id) && $('child').checked;
     $('body').value = '';
-    try {
-      if (command) await post(selected.url, `/api/threads/${selected.id}/exec`, { command });
-      else await post(selected.url, `/api/threads/${selected.id}/events`, { author: me, kind: 'human', body });
-    } catch (error) { alert(error.message); }
+    attempt((async () => {
+      const threadId = id && !child ? id : (await post(url, '/api/threads', { title: body.slice(0, 60), parent: id })).id;
+      await post(url, `/api/threads/${threadId}/entries`, { body, to });
+      if (child) await post(url, `/api/threads/${id}/entries`, { body: `Handed off → thread:${threadId}` });
+      if (!id) { await refresh(url); select({ url, id: threadId }); }
+    })());
   };
   $('add-server').onsubmit = (event) => {
     event.preventDefault();
     try { addServer($('server-url').value); $('server-url').value = ''; } catch (error) { alert(error.message); }
+  };
+  $('structure').checked = structure;
+  $('structure').onchange = () => {
+    structure = $('structure').checked;
+    localStorage.setItem('agent-ide-structure', structure ? '1' : '');
+    render();
   };
 
   $('me').textContent = me;
   const saved = JSON.parse(localStorage.getItem(STORE) || '[]');
   for (const url of saved) addServer(url);
   render();
-  // Served by an arbe server rather than a file or a dev server? Add it.
-  if (!saved.length) fetch('/api/runners').then((r) => r.headers.get('content-type')?.includes('json') && addServer(location.origin)).catch(() => {});
+  // Served by an agent-ide server rather than a file or a dev server? Add it.
+  if (!saved.length) fetch('/api/server').then((r) => r.headers.get('content-type')?.includes('json') && addServer(location.origin)).catch(() => {});
 </script>
 </html>

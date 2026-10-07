@@ -1,5 +1,5 @@
-// Replies through pi-durable: one durable conversation per thread, kept on this runner, signed in with pi's own logins.
-// The server still owns the thread. This conversation is the bot's working memory of it, and survives a runner crash.
+// Answers through pi-durable: one durable conversation per thread, kept on this runner, signed in with pi's own logins.
+// The server still owns the thread. This conversation is the agent's working memory of it, and survives a runner crash.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -36,7 +36,7 @@ const credentials = {
   },
 };
 
-// Which conversation holds each thread, how far into the thread it has read, and replies still owed to the server.
+// Which conversation holds each thread, the last entry of the thread it has read, and answers it still owes the server, by entry id.
 const Runner = defineDoc({
   kind: 'agent-ide.runner',
   version: 1,
@@ -81,7 +81,7 @@ function stepsOf(entries, input, live) {
   return [...steps.values()];
 }
 
-export async function openDurable({ file, deliver, progress }) {
+export async function openDurable({ file, finish, live }) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const registry = createRegistry();
   registry.install(CodingTools);
@@ -103,9 +103,9 @@ export async function openDurable({ file, deliver, progress }) {
     return created;
   }
 
-  // Waits for the answer, then forgets the job: a crash before this point means the answer is still owed.
+  // Waits for the answer, then forgets it: a crash before this point means the answer is still owed.
   // Progress goes out while it waits, at most every 300 ms, and always the latest.
-  async function settle(jobId, submissionId) {
+  async function settle(entryId, submissionId) {
     const submission = await harness.submission(submissionId, context);
     const conversation = await harness.conversation((await submission.status(context)).conversationId, context);
     const view = await conversation.viewState(context);
@@ -115,9 +115,9 @@ export async function openDurable({ file, deliver, progress }) {
       timer ??= setTimeout(async () => {
         input ??= (await submission.status(context)).entry;
         timer = undefined;
-        const live = view.value.docs['pi.live'];
-        const message = live?.generation?.message;
-        progress(jobId, { text: text({ model: message ? [message] : [] }), steps: stepsOf(view.value.entries, input, live) });
+        const doc = view.value.docs['pi.live'];
+        const message = doc?.generation?.message;
+        live(entryId, { text: text({ model: message ? [message] : [] }), steps: stepsOf(view.value.entries, input, doc) });
       }, 300);
     });
     const settled = await submission.wait(context).finally(() => {
@@ -126,37 +126,39 @@ export async function openDurable({ file, deliver, progress }) {
     });
     const steps = stepsOf(view.value.entries, settled.entry);
     view.dispose();
-    await update((doc) => { delete doc.pending[jobId]; });
+    await update((doc) => { delete doc.pending[entryId]; });
     if (settled.status !== 'done') throw new Error(`pi-durable gave no answer: ${settled.reason ?? 'unknown'}${settled.detail ? ` (${JSON.stringify(settled.detail)})` : ''}`);
     const body = text(await conversation.commit((tx) => tx.entry(AssistantEntry, settled.answer), context));
     return { body, steps };
   }
 
-  // Answers owed from before a crash are finished and delivered as late replies.
+  // Answers owed from before a crash are finished and sent late.
   harness.resume();
-  for (const [jobId, submissionId] of Object.entries((await state()).pending)) {
-    settle(jobId, submissionId).then((reply) => deliver(jobId, reply), (error) => deliver(jobId, { error: error.message }));
+  for (const [entryId, submissionId] of Object.entries((await state()).pending)) {
+    settle(entryId, submissionId).then((reply) => finish(entryId, reply), (error) => finish(entryId, { error: error.message }));
   }
 
   return {
     // The conversation only sees what it hasn't seen yet, so a long thread costs nothing extra per reply.
-    async reply(job, messages, cwd) {
-      const conversation = await conversationFor(job.threadId);
+    // Answers one addressed entry. `to` picks the model and effort; the entry's id makes a retry find the same answer.
+    async reply(asked, entries, me, cwd) {
+      const conversation = await conversationFor(asked.threadId);
       await conversation.configure({
-        model: modelOf(job.model),
+        model: modelOf(asked.to.model),
+        thinkingLevel: asked.to.effort ?? null,
         cwd,
-        instructions: `You are ${job.bot} in a group chat with humans and other bots. Each user message holds the new chat lines as "author: text". Reply as ${job.bot}, with only your message.${job.soul ? `\n\n${job.soul}` : ''}`,
+        instructions: `You are ${me} in a chat with humans and agents. Each user message holds the new entries as "author: text". Answer as ${me}, with only your message.`,
       }, context);
-      const seen = (await state()).seen[job.threadId];
-      const unseen = messages.slice(messages.findIndex((message) => message.id === seen) + 1)
-        .filter((message) => message.type !== 'system' && !(message.kind === 'bot' && message.author === job.bot));
-      const content = unseen.map((message) => `${message.author}: ${message.body}`).join('\n') || '(nothing new; reply again)';
-      const submission = await conversation.submit({ type: 'input', content, requestId: job.id }, context);
+      const seen = (await state()).seen[asked.threadId];
+      const unseen = entries.slice(entries.findIndex((entry) => entry.id === seen) + 1)
+        .filter((entry) => ['chat', 'exec'].includes(entry.kind) && entry.author !== me);
+      const content = unseen.map((entry) => `${entry.author}: ${entry.body}`).join('\n') || '(nothing new; answer again)';
+      const submission = await conversation.submit({ type: 'input', content, requestId: asked.id }, context);
       await update((doc) => {
-        doc.pending[job.id] = submission.id;
-        if (messages.length) doc.seen[job.threadId] = messages.at(-1).id;
+        doc.pending[asked.id] = submission.id;
+        if (entries.length) doc.seen[asked.threadId] = entries.at(-1).id;
       });
-      return settle(job.id, submission.id);
+      return settle(asked.id, submission.id);
     },
   };
 }

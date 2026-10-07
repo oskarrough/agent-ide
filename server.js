@@ -1,3 +1,5 @@
+// Keeps threads and their entries, knows which runners are online, and hands each addressed entry to its runner.
+// PORT=3000 DB_PATH=threads-3000.db [DIRECTOR=1] bun server.js
 import http from 'node:http';
 import os from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
@@ -8,33 +10,53 @@ const port = Number(process.env.PORT || 3000);
 const db = new DatabaseSync(process.env.DB_PATH || `threads-${port}.db`);
 // Hold the file for good: a second server on it fails with "database is locked".
 db.exec('PRAGMA locking_mode = EXCLUSIVE; BEGIN EXCLUSIVE; COMMIT;');
+
+// Older files say events, and an entry's kind and type, where we now say entries, role and kind; bots are now agents.
+const columns = (table) => db.prepare(`PRAGMA table_info(${table})`).all().map((column) => column.name);
+if (columns('events').length && !columns('entries').length) db.exec('ALTER TABLE events RENAME TO entries');
+if (columns('entries').includes('type')) db.exec(`
+  ALTER TABLE entries RENAME COLUMN kind TO role;
+  ALTER TABLE entries RENAME COLUMN type TO kind;
+  UPDATE entries SET kind = 'note' WHERE kind = 'system';
+  UPDATE entries SET role = 'server' WHERE author = 'server';
+`);
 db.exec(`
   CREATE TABLE IF NOT EXISTS threads (id TEXT PRIMARY KEY, title TEXT NOT NULL, created_at TEXT NOT NULL);
-  CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL);
-  CREATE TABLE IF NOT EXISTS bots (name TEXT PRIMARY KEY, owner TEXT NOT NULL, runner TEXT NOT NULL, cli TEXT NOT NULL, model TEXT, dir TEXT NOT NULL, soul TEXT NOT NULL, created_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS entries (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS reads (thread_id TEXT NOT NULL, reader TEXT NOT NULL, at TEXT NOT NULL, PRIMARY KEY (thread_id, reader));
 `);
-// Older files call the cli column harness.
-for (const table of ['threads', 'events', 'bots']) try { db.exec(`ALTER TABLE ${table} RENAME COLUMN harness TO cli`); } catch {}
-for (const [table, column] of [['threads', 'parent TEXT'], ['threads', 'runner TEXT'], ['threads', 'cli TEXT'], ['threads', 'model TEXT'], ['threads', 'dir TEXT'], ['events', "author TEXT NOT NULL DEFAULT 'anon'"], ['events', "kind TEXT NOT NULL DEFAULT 'human'"], ['events', 'runner TEXT'], ['events', "type TEXT NOT NULL DEFAULT 'chat'"], ['events', 'cli TEXT'], ['events', 'dir TEXT'], ['events', 'steps TEXT']]) {
-  try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${column}`); } catch {}
+for (const [table, column] of [['threads', 'parent TEXT'], ['entries', "author TEXT NOT NULL DEFAULT 'anon'"], ['entries', "role TEXT NOT NULL DEFAULT 'human'"], ['entries', "kind TEXT NOT NULL DEFAULT 'chat'"], ['entries', 'address TEXT'], ['entries', 'reply_to TEXT'], ['entries', 'steps TEXT']]) {
+  if (!columns(table).includes(column.split(' ')[0])) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column}`);
 }
+db.exec("UPDATE entries SET role = 'agent' WHERE role = 'bot'; CREATE INDEX IF NOT EXISTS entries_reply_to ON entries (reply_to)");
+// Pinned threads, per-entry runners and bots are gone; so is what they stored.
+for (const [table, stale] of [['threads', ['runner', 'harness', 'cli', 'model', 'dir']], ['entries', ['runner', 'harness', 'cli', 'dir', 'run']]]) {
+  for (const column of stale) if (columns(table).includes(column)) db.exec(`ALTER TABLE ${table} DROP COLUMN ${column}`);
+}
+db.exec('DROP TABLE IF EXISTS bots');
 
-// A thread with a runner is a job: pinned to that runner, cli and folder. Other threads live nowhere.
-const threads = db.prepare('SELECT id, title, parent, runner, cli, model, dir, created_at AS createdAt FROM threads ORDER BY created_at DESC');
-const thread = db.prepare('SELECT id, parent, runner, cli, model, dir FROM threads WHERE id = ?');
-const events = db.prepare('SELECT id, thread_id AS threadId, author, kind, type, runner, cli, dir, steps, body, created_at AS createdAt FROM events WHERE thread_id = ? ORDER BY created_at, rowid');
-const addThread = db.prepare('INSERT INTO threads (id, title, parent, runner, cli, model, dir, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-const addEvent = db.prepare('INSERT INTO events (id, thread_id, body, created_at, author, kind, type, runner, cli, dir, steps) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-// A bot is a name, a soul, and the runner, cli and folder its replies come from.
-const bots = db.prepare('SELECT name, owner, runner, cli, model, dir, soul FROM bots ORDER BY name');
-const bot = db.prepare('SELECT name, owner, runner, cli, model, dir, soul FROM bots WHERE name = ?');
-const saveBot = db.prepare('INSERT OR REPLACE INTO bots (name, owner, runner, cli, model, dir, soul, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-const deleteBot = db.prepare('DELETE FROM bots WHERE name = ?');
+const threads = db.prepare('SELECT id, title, parent, created_at AS createdAt FROM threads ORDER BY created_at DESC');
+const thread = db.prepare('SELECT id, title, parent FROM threads WHERE id = ?');
+const addThread = db.prepare('INSERT INTO threads (id, title, parent, created_at) VALUES (?, ?, ?, ?)');
+const ENTRY = 'id, thread_id AS threadId, author, role, kind, address, reply_to AS replyTo, steps, body, created_at AS createdAt';
+const entries = db.prepare(`SELECT ${ENTRY} FROM entries WHERE thread_id = ? ORDER BY created_at, rowid`);
+const entry = db.prepare(`SELECT ${ENTRY} FROM entries WHERE id = ?`);
+const addEntry = db.prepare('INSERT INTO entries (id, thread_id, author, role, kind, address, reply_to, steps, body, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+// Addressed entries nobody has answered yet: the work still owed, in a thread or to a runner.
+const unanswered = db.prepare(`SELECT ${ENTRY} FROM entries e WHERE address IS NOT NULL AND NOT EXISTS (SELECT 1 FROM entries a WHERE a.reply_to = e.id) ORDER BY created_at, rowid`);
+// The newest result in a thread: an agent's entry, or an error.
+const lastResult = db.prepare("SELECT kind, created_at AS createdAt FROM entries WHERE thread_id = ? AND (role = 'agent' OR kind = 'error') ORDER BY created_at DESC, rowid DESC LIMIT 1");
+const readAt = db.prepare('SELECT at FROM reads WHERE thread_id = ? AND reader = ?');
+const markRead = db.prepare('INSERT OR REPLACE INTO reads (thread_id, reader, at) VALUES (?, ?, ?)');
+
 const clients = new Set();
 // Runners are known while the server runs; online means their socket is open.
 const runners = new Map();
-// Work handed to a runner, waiting for its answer.
-const jobs = new Map();
+// Addressed entries a runner has right now, by entry id, with what it has written so far.
+const working = new Map();
+// Who answers an entry. On its own, the entry's `to` decides. The director, for multiplayer threads, can decide instead.
+const director = process.env.DIRECTOR ? await import('./director.js') : null;
+const route = director ? director.route : (posted) => posted.to;
 const page = await readFile(new URL('./client.html', import.meta.url));
 
 function send(res, status, value) {
@@ -48,7 +70,7 @@ async function input(req) {
     body += chunk;
     if (body.length > 200000) throw new Error('Request too large');
   }
-  return JSON.parse(body);
+  return JSON.parse(body || '{}');
 }
 
 // Fake identity: whoever the x-user header says you are.
@@ -73,89 +95,89 @@ function frame(value) {
   return Buffer.concat([header, payload]);
 }
 
-function notify(threadId) {
-  const data = frame({ threadId });
+function broadcast(value) {
+  const data = frame(value);
   for (const socket of clients) socket.write(data);
 }
 
-// Steps are the tool calls a reply made on the way, kept with it.
-function append(threadId, { author, kind = 'bot', type = 'chat', runner = null, cli = null, dir = null, steps = null, body }) {
-  if (!thread.get(threadId)) throw new Error('Thread not found');
-  const item = { id: randomUUID(), threadId, author, kind, type, runner, cli, dir, steps, body, createdAt: new Date().toISOString() };
-  addEvent.run(item.id, threadId, item.body, item.createdAt, item.author, item.kind, item.type, item.runner, item.cli, item.dir, steps && JSON.stringify(steps));
+const notify = (threadId) => broadcast({ threadId });
+
+// A `to` says who should answer: a runner, one of its harnesses, and optionally a model, an effort level and a folder.
+function address(to) {
+  if (!to) return null;
+  const clean = { runner: field(to.runner, 'to.runner'), harness: field(to.harness, 'to.harness') };
+  for (const key of ['model', 'effort', 'dir']) if (typeof to[key] === 'string' && to[key].trim()) clean[key] = to[key].trim();
+  return clean;
+}
+
+const agentName = (to) => `${to.harness}@${to.runner}`;
+
+function parse(row) {
+  if (!row) return row;
+  const { address: to, steps, ...rest } = row;
+  return { ...rest, to: to ? JSON.parse(to) : null, steps: steps ? JSON.parse(steps) : null };
+}
+
+// An entry is one immutable record in a thread: chat, a command's output, a note, or an error.
+// It may say who should answer it (`to`), or which entry it answers (`replyTo`). Steps are the tool calls an answer made.
+function append(threadId, { author, role = 'human', kind = 'chat', to = null, replyTo = null, steps = null, body }) {
+  const posted = { id: randomUUID(), threadId, author, role, kind, to, replyTo, steps, body, createdAt: new Date().toISOString() };
+  addEntry.run(posted.id, threadId, author, role, kind, to && JSON.stringify(to), replyTo, steps && JSON.stringify(steps), body, posted.createdAt);
   notify(threadId);
-  return item;
+  if (to) dispatch(posted);
+  return posted;
 }
 
-// Hands a job to a runner and answers with the entry it produced.
-// An offline runner fails fast in a plain thread; in a job the work waits for it.
-async function act(req, res, job) {
-  const row = thread.get(job.threadId);
-  if (!row) return send(res, 404, { error: 'Thread not found' });
-  const runner = runners.get(job.runner);
-  const caller = user(req);
-  // Only the owner, or someone the owner allowed, may send work to a runner. Checked here, not on the runner.
-  if (runner && caller !== runner.owner && !runner.allowed.has(caller)) {
-    const entry = append(job.threadId, { author: 'server', type: 'system', runner: job.runner, body: `${caller} may not use ${runner.owner}'s runner ${job.runner} (${job.kind} as ${job.author}); ${runner.owner} has not allowed it` });
-    return send(res, 403, { error: entry.body, entry });
-  }
-  job.id = randomUUID();
-  if (runner && !runner.socket && row.runner) {
-    jobs.set(job.id, { ...job, caller, queued: true, resolve: () => {} });
-    const entry = append(job.threadId, { author: 'server', type: 'system', runner: job.runner, body: `${job.author}'s ${job.kind} is waiting for ${job.runner}, which is offline; it starts when ${job.runner} is back` });
-    notify(null);
-    return send(res, 202, { queued: job.id, entry });
-  }
-  if (!runner?.socket) {
-    const entry = append(job.threadId, { author: 'server', type: 'system', runner: job.runner, body: `${job.author} could not ${job.kind}: runner ${job.runner} is ${runner ? 'offline' : 'unknown'}` });
-    return send(res, 409, { error: entry.body, entry });
-  }
-  const entry = await new Promise((resolve) => {
-    jobs.set(job.id, { ...job, caller, resolve });
-    runner.socket.write(frame({ job }));
-    notify(null);
-  });
-  send(res, entry.type === 'system' ? 502 : 200, entry);
+// Hands an addressed entry to its runner. An offline runner gets it when it connects; until then it is queued.
+function dispatch(posted) {
+  const runner = runners.get(posted.to.runner);
+  if (!runner?.socket || working.has(posted.id)) return;
+  working.set(posted.id, { runner: runner.name, threadId: posted.threadId });
+  runner.socket.write(frame({ entry: posted }));
+  notify(null);
 }
 
-// A runner that drops leaves a note in every thread it was working in.
-function strand(name) {
-  for (const job of jobs.values()) {
-    if (job.runner !== name || job.stranded || job.queued) continue;
-    job.stranded = true;
-    job.resolve(append(job.threadId, { author: 'server', type: 'system', runner: name, body: `runner ${name} went offline during ${job.author}'s ${job.kind}; nothing came back yet` }));
-  }
+// The answer to an addressed entry, from its runner: text with steps, a command's output, or an error.
+function answer(asked, { body, error, steps, ...output }) {
+  working.delete(asked.id);
+  const author = agentName(asked.to);
+  const answered = error
+    ? append(asked.threadId, { author, role: 'agent', kind: 'error', replyTo: asked.id, body: `${author} failed: ${error}` })
+    : asked.to.harness === 'shell'
+      ? append(asked.threadId, { author, role: 'agent', kind: 'exec', replyTo: asked.id, body: JSON.stringify(output) })
+      : append(asked.threadId, { author, role: 'agent', replyTo: asked.id, steps, body: body || '(empty reply)' });
+  reportToParent(asked, answered);
+  notify(null);
+  return answered;
 }
 
-// Who is busy in a thread right now, for the sidebar and the thread header.
-function working(threadId) {
-  return [...jobs.values()].filter((job) => job.threadId === threadId && !job.stranded && !job.queued).map((job) => job.author);
+// A child thread reports each answer to its parent, so the result doesn't depend on whoever asked still watching.
+function reportToParent(asked, answered) {
+  const parent = thread.get(asked.threadId)?.parent;
+  if (!parent || answered.kind === 'exec') return;
+  const line = answered.body.split('\n').find(Boolean)?.slice(0, 160) || '(empty reply)';
+  append(parent, { author: answered.author, role: 'agent', kind: answered.kind, body: `${line} → thread:${asked.threadId}` });
 }
 
-// What a working bot has said and run so far, for anyone who opens the thread mid-reply.
-function live(threadId) {
-  return [...jobs.values()].filter((job) => job.threadId === threadId && job.live).map(({ id, author, live }) => ({ jobId: id, author, ...live }));
+// Where a thread stands for one reader: working, queued, error, done (a result they haven't seen yet) or idle.
+function status(threadId, pending, reader) {
+  if (pending.some((p) => p.state === 'working')) return 'working';
+  if (pending.length) return 'queued';
+  const last = lastResult.get(threadId);
+  if (!last) return 'idle';
+  if (last.kind === 'error') return 'error';
+  return last.createdAt > (readAt.get(threadId, reader)?.at ?? '') ? 'done' : 'idle';
 }
 
-function waiting(threadId) {
-  return [...jobs.values()].filter((job) => job.threadId === threadId && job.queued).map(({ id, author, kind, runner }) => ({ id, author, kind, runner }));
-}
-
-// A job thread reports each finished reply to its parent, so the result doesn't depend on whoever asked still being around.
-function report(job, entry) {
-  const row = thread.get(job.threadId);
-  if (job.kind !== 'reply' || !row?.runner || !row.parent) return;
-  const line = entry.body.split('\n').find(Boolean)?.slice(0, 160) || '(empty reply)';
-  append(row.parent, { author: job.author, runner: job.runner, body: `${entry.type === 'system' ? 'Failed' : 'Done'}: ${line} → thread:${job.threadId}` });
-}
-
-// Empty fields don't override: a reply's own fields win, then the job's, then the bot's.
-function defined(value) {
-  return Object.fromEntries(Object.entries(value || {}).filter(([, v]) => v != null && v !== ''));
+// A thread as a client sees it: its status, the entries still waiting for an answer, and answers being written.
+function view(row, owed, reader) {
+  const pending = owed.filter((p) => p.threadId === row.id).map((p) => ({ id: p.id, author: p.author, to: p.to, state: working.has(p.id) ? 'working' : 'queued' }));
+  const live = pending.filter((p) => working.get(p.id)?.live).map((p) => ({ entryId: p.id, author: agentName(p.to), ...working.get(p.id).live }));
+  return { ...row, status: status(row.id, pending, reader), pending, live };
 }
 
 function runnerList() {
-  return [...runners.values()].map(({ socket, allowed, ...runner }) => ({ ...runner, allowed: [...allowed], online: Boolean(socket) }));
+  return [...runners.values()].map(({ socket, ...runner }) => ({ ...runner, online: Boolean(socket), working: [...working].filter(([, w]) => w.runner === runner.name).map(([id, w]) => ({ entryId: id, threadId: w.threadId })) }));
 }
 
 const handleRequest = async (req, res) => {
@@ -169,55 +191,30 @@ const handleRequest = async (req, res) => {
     return res.end(page);
   }
   try {
+    if (req.method === 'GET' && path === '/api/server') return send(res, 200, { port, director: Boolean(director), threads: threads.all().length, owed: unanswered.all().length });
     if (req.method === 'GET' && path === '/api/runners') return send(res, 200, runnerList());
-    const allow = /^\/api\/runners\/([\w.-]+)\/allow$/.exec(path);
-    if (allow && req.method === 'POST') {
-      const runner = runners.get(allow[1]);
-      if (!runner) return send(res, 404, { error: 'Runner not found' });
-      if (user(req) !== runner.owner) return send(res, 403, { error: `Only ${runner.owner} can lend ${runner.name}` });
-      const { user: guest, allowed = true } = await input(req);
-      if (allowed) runner.allowed.add(field(guest, 'user')); else runner.allowed.delete(guest);
-      send(res, 200, { name: runner.name, owner: runner.owner, allowed: [...runner.allowed] });
-      return notify(null);
+    if (req.method === 'GET' && path === '/api/threads') {
+      const owed = unanswered.all().map(parse);
+      return send(res, 200, threads.all().map((row) => view(row, owed, user(req))));
     }
-    if (req.method === 'GET' && path === '/api/bots') return send(res, 200, bots.all());
-    if (req.method === 'POST' && path === '/api/bots') {
-      const { name, runner, cli = 'echo', model = null, dir = '.', soul = '' } = await input(req);
-      if (!/^[\w-]+$/.test(field(name, 'name'))) throw new Error('A bot name may use letters, digits, _ and -');
-      const existing = bot.get(name);
-      if (existing && existing.owner !== user(req)) return send(res, 403, { error: `@${name} belongs to ${existing.owner}` });
-      saveBot.run(name, user(req), field(runner, 'runner'), cli || 'echo', model || null, dir || '.', soul || '', new Date().toISOString());
-      send(res, 201, bot.get(name));
-      return notify(null);
-    }
-    const removeBot = /^\/api\/bots\/([\w-]+)$/.exec(path);
-    if (removeBot && req.method === 'DELETE') {
-      const existing = bot.get(removeBot[1]);
-      if (!existing) return send(res, 404, { error: 'Bot not found' });
-      if (existing.owner !== user(req)) return send(res, 403, { error: `@${existing.name} belongs to ${existing.owner}` });
-      deleteBot.run(existing.name);
-      send(res, 200, { name: existing.name });
-      return notify(null);
-    }
-    if (req.method === 'GET' && path === '/api/threads') return send(res, 200, threads.all().map((t) => ({ ...t, working: working(t.id), waiting: waiting(t.id), live: live(t.id) })));
     if (req.method === 'POST' && path === '/api/threads') {
-      // Passing a runner makes the thread a job, pinned to that runner, cli and folder.
-      const { title, parent = null, runner = null, cli = null, model = null, dir = null } = await input(req);
+      const { title, parent = null } = await input(req);
       if (parent && !thread.get(parent)) return send(res, 404, { error: 'Parent thread not found' });
-      const item = { id: randomUUID(), title: field(title, 'title'), parent, runner: runner || null, cli: runner ? cli || 'echo' : null, model: runner ? model || null : null, dir: runner ? dir || '.' : null, createdAt: new Date().toISOString() };
-      addThread.run(item.id, item.title, item.parent, item.runner, item.cli, item.model, item.dir, item.createdAt);
-      send(res, 201, item);
+      const row = { id: randomUUID(), title: field(title, 'title'), parent, createdAt: new Date().toISOString() };
+      addThread.run(row.id, row.title, row.parent, row.createdAt);
+      send(res, 201, row);
       return notify(null);
     }
     const removeThread = /^\/api\/threads\/([\w-]+)$/.exec(path);
     if (removeThread && req.method === 'DELETE') {
       const id = removeThread[1];
       if (!thread.get(id)) return send(res, 404, { error: 'Thread not found' });
-      if ([...jobs.values()].some((job) => job.threadId === id)) return send(res, 409, { error: 'This thread has unfinished jobs; wait for their results before deleting it' });
+      if ([...working.values()].some((w) => w.threadId === id)) return send(res, 409, { error: 'A runner is answering in this thread; wait for it before deleting it' });
       db.exec('BEGIN');
       try {
         db.prepare('UPDATE threads SET parent = NULL WHERE parent = ?').run(id);
-        db.prepare('DELETE FROM events WHERE thread_id = ?').run(id);
+        db.prepare('DELETE FROM entries WHERE thread_id = ?').run(id);
+        db.prepare('DELETE FROM reads WHERE thread_id = ?').run(id);
         db.prepare('DELETE FROM threads WHERE id = ?').run(id);
         db.exec('COMMIT');
       } catch (error) {
@@ -227,77 +224,42 @@ const handleRequest = async (req, res) => {
       send(res, 200, { id });
       return notify(null);
     }
-    // A runner streams a reply in progress. It lives in memory only; the finished reply is what's kept.
-    const progress = /^\/api\/jobs\/([\w-]+)\/progress$/.exec(path);
-    if (progress && req.method === 'POST') {
-      const job = jobs.get(progress[1]);
-      if (!job || job.queued) return send(res, 404, { error: 'Job not found' });
-      const { text = '', steps = [] } = await input(req);
-      job.live = { text, steps };
-      send(res, 200, { ok: true });
-      const data = frame({ threadId: job.threadId, live: { jobId: job.id, author: job.author, ...job.live } });
-      for (const socket of clients) socket.write(data);
-      return;
+    // Opening a thread marks it read, so its last result stops counting as done for you.
+    const read = /^\/api\/threads\/([\w-]+)\/read$/.exec(path);
+    if (read && req.method === 'POST') {
+      if (!thread.get(read[1])) return send(res, 404, { error: 'Thread not found' });
+      markRead.run(read[1], user(req), new Date().toISOString());
+      return send(res, 200, { ok: true });
     }
-    const result = /^\/api\/jobs\/([\w-]+)$/.exec(path);
-    if (result && req.method === 'POST') {
-      const job = jobs.get(result[1]);
-      // A job whose runner dropped mid-way is kept, so a late answer still lands in the thread.
-      if (!job || job.queued) return send(res, 404, { error: 'Job not found' });
-      jobs.delete(job.id);
-      const { body, error, steps, ...output } = await input(req);
-      const late = job.stranded ? ' (arrived after its runner reconnected)' : '';
-      const entry = append(job.threadId, error
-        ? { author: 'server', type: 'system', runner: job.runner, body: `${job.author} could not ${job.kind} via ${job.runner}: ${error}` }
-        : job.kind === 'exec'
-          ? { author: job.author, kind: 'human', type: 'exec', runner: job.runner, dir: job.dir, body: JSON.stringify({ command: job.command, dir: job.dir, ...output }) }
-          : { author: job.author, runner: job.runner, cli: job.cli, dir: job.dir, steps, body: (body || '(empty reply)') + late });
-      job.resolve(entry);
-      report(job, entry);
-      send(res, 200, entry);
-      return notify(null);
-    }
-    // Only work that is still waiting can be cancelled, by whoever asked for it or the runner's owner.
-    if (result && req.method === 'DELETE') {
-      const job = jobs.get(result[1]);
-      if (!job?.queued) return send(res, 404, { error: 'No waiting job with that id' });
-      if (![job.caller, runners.get(job.runner)?.owner].includes(user(req))) return send(res, 403, { error: `Only ${job.caller} or the runner's owner can cancel this` });
-      jobs.delete(job.id);
-      const entry = append(job.threadId, { author: 'server', type: 'system', runner: job.runner, body: `${user(req)} cancelled ${job.author}'s waiting ${job.kind}` });
-      send(res, 200, entry);
-      return notify(null);
-    }
-    const reply = /^\/api\/threads\/([\w-]+)\/reply$/.exec(path);
-    if (reply && req.method === 'POST') {
-      const threadId = reply[1];
-      const row = thread.get(threadId);
-      if (!row) return send(res, 404, { error: 'Thread not found' });
-      const { bot: name, ...options } = await input(req);
-      const saved = bot.get(field(name, 'bot'));
-      const { runner, cli = 'echo', model = null, dir = '.', soul = '' } = { ...defined(saved), ...defined(row), ...defined(options) };
-      if (!runner) throw new Error(`@${name} has no runner: register the bot, or pass one`);
-      return act(req, res, { kind: 'reply', threadId, author: name, bot: name, runner, cli, model, dir, soul });
-    }
-    const exec = /^\/api\/threads\/([\w-]+)\/exec$/.exec(path);
-    if (exec && req.method === 'POST') {
-      const threadId = exec[1];
-      const row = thread.get(threadId);
-      if (!row) return send(res, 404, { error: 'Thread not found' });
-      // A command runs where a job is pinned. A plain thread runs nowhere, so it has nowhere to run one.
-      if (!row.runner) return send(res, 409, { error: 'Commands run only in a job, on its runner and folder. This thread is not a job; start one from it and run the command there.' });
-      const { command } = await input(req);
-      return act(req, res, { kind: 'exec', threadId, author: user(req), runner: row.runner, command: field(command, 'command'), dir: row.dir });
-    }
-    const match = /^\/api\/threads\/([\w-]+)\/events$/.exec(path);
-    if (match) {
-      const id = match[1];
+    const list = /^\/api\/threads\/([\w-]+)\/entries$/.exec(path);
+    if (list) {
+      const id = list[1];
       if (!thread.get(id)) return send(res, 404, { error: 'Thread not found' });
-      if (req.method === 'GET') return send(res, 200, events.all(id).map((event) => ({ ...event, steps: event.steps ? JSON.parse(event.steps) : null })));
+      if (req.method === 'GET') return send(res, 200, entries.all(id).map(parse));
       if (req.method === 'POST') {
-        const { body, author = 'anon', kind = 'human' } = await input(req);
-        if (!['human', 'bot'].includes(kind)) throw new Error('kind must be human or bot');
-        return send(res, 201, append(id, { author: field(author, 'author'), kind, body: field(body, 'body') }));
+        const { body, to } = await input(req);
+        const draft = { author: user(req), body: field(body, 'body'), to: address(to) };
+        return send(res, 201, append(id, { ...draft, to: address(route(draft, entries.all(id).map(parse))) }));
       }
+    }
+    // A runner answers the entry it was handed, or streams the answer while it writes it. The stream lives in memory only.
+    const reply = /^\/api\/entries\/([\w-]+)\/(reply|live|cancel)$/.exec(path);
+    if (reply && req.method === 'POST') {
+      const asked = parse(entry.get(reply[1]));
+      if (!asked?.to) return send(res, 404, { error: 'No addressed entry with that id' });
+      if (unanswered.all().every((p) => p.id !== asked.id)) return send(res, 409, { error: 'That entry is already answered' });
+      const value = await input(req);
+      if (reply[2] === 'reply') return send(res, 200, answer(asked, value));
+      if (reply[2] === 'live') {
+        if (!working.has(asked.id)) return send(res, 409, { error: 'No runner has that entry' });
+        working.get(asked.id).live = { text: value.text || '', steps: value.steps || [] };
+        send(res, 200, { ok: true });
+        return broadcast({ threadId: asked.threadId, live: { entryId: asked.id, author: agentName(asked.to), ...working.get(asked.id).live } });
+      }
+      // Cancelling answers a queued entry with a note, so nobody owes it anymore.
+      if (working.has(asked.id)) return send(res, 409, { error: 'A runner is already answering that entry' });
+      send(res, 200, append(asked.threadId, { author: 'server', role: 'server', kind: 'note', replyTo: asked.id, body: `${user(req)} cancelled the entry for ${agentName(asked.to)}` }));
+      return notify(null);
     }
     send(res, 404, { error: 'Not found' });
   } catch (error) {
@@ -305,7 +267,7 @@ const handleRequest = async (req, res) => {
   }
 };
 
-// Browsers connect to /ws. A runner connects to /ws?runner=NAME&alias=…&clis=a,b and is online while connected. The alias is display only; the name is the key.
+// Browsers connect to /ws. A runner connects to /ws?runner=NAME&alias=…&harnesses=a,b and is online while connected. The alias is display only; the name is the key.
 function upgrade(req, socket) {
   const url = new URL(req.url, 'http://localhost');
   const key = req.headers['sec-websocket-key'];
@@ -315,18 +277,11 @@ function upgrade(req, socket) {
   const name = url.searchParams.get('runner');
   if (name) {
     runners.get(name)?.socket?.destroy();
-    const clis = (url.searchParams.get('clis') || '').split(',').filter(Boolean);
-    const owner = url.searchParams.get('owner') || 'anon';
-    const previous = runners.get(name);
-    const allowed = previous?.owner === owner ? previous.allowed : new Set();
-    runners.set(name, { name, alias: url.searchParams.get('alias') || '', owner, host: url.searchParams.get('host') || '', clis, allowed, lastSeen: new Date().toISOString(), socket });
-    console.log(`runner ${name} online: ${clis.join(', ')}`);
-    // Work that waited for this runner starts now.
-    for (const job of jobs.values()) {
-      if (!job.queued || job.runner !== name) continue;
-      job.queued = false;
-      socket.write(frame({ job }));
-    }
+    const harnesses = (url.searchParams.get('harnesses') || '').split(',').filter(Boolean);
+    runners.set(name, { name, alias: url.searchParams.get('alias') || '', owner: url.searchParams.get('owner') || 'anon', host: url.searchParams.get('host') || '', harnesses, lastSeen: new Date().toISOString(), socket });
+    console.log(`runner ${name} online: ${harnesses.join(', ')}`);
+    // Entries that queued for this runner, even across a server restart, go to it now.
+    for (const owed of unanswered.all().map(parse)) if (owed.to.runner === name) dispatch(owed);
     notify(null);
   }
   clients.add(socket);
@@ -336,7 +291,8 @@ function upgrade(req, socket) {
     if (runner?.socket !== socket) return;
     runners.set(name, { ...runner, socket: null, lastSeen: new Date().toISOString() });
     console.log(`runner ${name} offline`);
-    strand(name);
+    // What it had goes back to queued; it gets it again when it reconnects.
+    for (const [id, w] of working) if (w.runner === name) working.delete(id);
     notify(null);
   };
   socket.on('data', () => socket.end());
@@ -358,5 +314,5 @@ for (const host of process.env.HOST ? [process.env.HOST] : ['127.0.0.1', '::1'])
     console.error(error);
     process.exit(1);
   });
-  server.listen(port, host, () => { for (const address of urls(host)) console.log(`http://${address}:${port}`); });
+  server.listen(port, host, () => { for (const address of urls(host)) console.log(`http://${address}:${port}${director ? ' (director on)' : ''}`); });
 }
