@@ -48,7 +48,7 @@ const credentials = {
 };
 
 const models = builtinModels({ credentials });
-// echo is pi-ai's faux provider: no login, answers at once, for testing the loop.
+// echo/echo is pi-ai's faux provider as a model: no login, answers at once, for testing the loop.
 const echo = fauxProvider({ provider: 'echo', models: [{ id: 'echo' }] });
 models.setProvider(echo.provider);
 
@@ -61,7 +61,7 @@ function defaultModel() {
 }
 
 function connect() {
-  const query = new URLSearchParams({ runner: name, alias: args.alias, owner: args.owner, host: os.hostname(), harnesses: 'pi-durable,echo', dir, model: defaultModel() });
+  const query = new URLSearchParams({ runner: name, alias: args.alias, owner: args.owner, host: os.hostname(), dir, model: defaultModel() });
   const socket = new WebSocket(`${server.replace(/^http/, 'ws')}/ws?${query}`);
   const runner = serveRunner({ name, dir, models, echo, send: (text) => socket.readyState === WebSocket.OPEN && socket.send(text) });
   socket.onopen = () => console.log(`${name} online at ${server}, lending pi's logins and ${dir}`);

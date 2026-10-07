@@ -60,8 +60,8 @@
       <div class="row">
         <small>To</small>
         <select id="runner" title="Runner"></select>
-        <select id="harness" title="Harness"></select>
-        <input id="model" placeholder="model (runner's default)">
+        <input id="model" list="models" placeholder="model (runner's default)">
+        <datalist id="models"></datalist>
         <select id="effort" title="Effort"></select>
         <input id="dir" placeholder="folder (.)">
         <label id="child-label"><input type="checkbox" id="child"> in a child thread</label>
@@ -222,7 +222,7 @@
 
   // A runner: whose machine and folder it is, its default model, and what the server has asked of it right now.
   function runnerView(server, runner) {
-    const threads = server.threads.filter((t) => ['working', 'queued'].includes(t.status) && t.agent?.endsWith(`@${runner.name}`));
+    const threads = server.threads.filter((t) => ['working', 'queued'].includes(t.status) && t.agent?.runner === runner.name);
     return build('li', {}, [
       build('span', { className: `dot ${runner.online ? 'on' : ''}` }), runner.name, ' ',
       build('small', { textContent: `${runner.alias ? `${runner.alias} · ` : ''}${runner.owner}'s · ${runner.dir} · ${runner.model || 'no default model'}` }),
@@ -233,12 +233,14 @@
   }
 
   function statusView(thread) {
-    const text = { working: ` · ${thread.agent || 'shell'} working`, queued: ` · ${thread.agent} waits for its runner`, done: ' · done', failed: ' · failed' }[thread.status];
+    const agent = agentName(thread.agent);
+    const text = { working: ` · ${agent || 'shell'} working`, queued: ` · ${agent} waits for its runner`, done: ' · done', failed: ' · failed' }[thread.status];
     return text ? build('small', { className: `status ${thread.status}` }, [text]) : '';
   }
 
-  const agentName = (to) => to && `${to.harness}@${to.runner}`;
-  const toLabel = (to) => [agentName(to), to.model, to.effort, to.dir && `in ${to.dir}`].filter(Boolean).join(' · ');
+  // An agent is a model on a runner, named like gpt-6.1-sol@laptop.
+  const agentName = (to) => to && `${to.model.split('/').pop()}@${to.runner}`;
+  const toLabel = (to) => [agentName(to), to.effort, to.dir && `in ${to.dir}`].filter(Boolean).join(' · ');
 
   function threadLink(server, id) {
     const title = server.threads.find((t) => t.id === Number(id))?.title || `#${id}`;
@@ -251,7 +253,7 @@
     const draft = selected && !selected.id;
     $('heading').textContent = draft ? 'New thread' : view?.title || 'Pick a thread, or start one';
     $('meta').replaceChildren(...(view ? [
-      build('span', { className: 'id', textContent: `#${view.id} ` }), view.status, view.agent ? ` · agent ${view.agent}` : '',
+      build('span', { className: 'id', textContent: `#${view.id} ` }), view.status, view.agent ? ` · agent ${toLabel(view.agent)}` : '',
       view.parent ? build('span', {}, [' · child of ', threadLink(server, view.parent)]) : '',
       ['working', 'queued'].includes(view.status) ? build('button', { className: 'link', textContent: 'stop', onclick: () => attempt(post(server.url, `/api/threads/${view.id}/stop`, {})) }) : '',
     ] : draft ? ['Your first entry starts it.'] : []));
@@ -303,12 +305,12 @@
     }),
     // What Pi is doing right now, straight from pi.live: the answer being written, a retry's backoff, running tools.
     ...(live.generation ? [build('li', { className: 'agent live' }, [
-      build('b', { textContent: view.agent }), ' ',
+      build('b', { textContent: agentName(view.agent) }), ' ',
       build('small', { className: 'status', textContent: live.generation.retry ? `retrying after: ${live.generation.retry.error}` : view.status === 'queued' ? 'waits for its runner…' : `writing… attempt ${live.generation.attempt}` }),
       build('div', { textContent: textOf(live.generation.message?.content) }),
     ])] : []),
     ...(live.tools ?? []).filter((slot) => slot.status !== 'done').map((slot) => build('li', { className: 'agent live' }, [
-      build('b', { textContent: view.agent }), ' ', build('small', { className: 'status', textContent: `${slot.name} ${slot.status}` }),
+      build('b', { textContent: agentName(view.agent) }), ' ', build('small', { className: 'status', textContent: `${slot.name} ${slot.status}` }),
       build('pre', { textContent: slot.output || '…' }),
     ])),
     ...view.shells.map((run) => build('li', { className: 'live' }, [
@@ -331,18 +333,20 @@
   function renderPicker() {
     const server = current();
     if (!server) return;
-    const fallback = server.info?.director ? 'the director decides' : view?.agent || 'nobody yet';
+    const fallback = server.info?.director ? 'the director decides' : agentName(view?.agent) || 'nobody yet';
     keep($('runner'), [['', `default (${fallback})`], ['-', 'nobody'], ...server.runners.map((r) => [r.name, `${r.name}${r.online ? '' : ' (offline)'}`])]);
     const runner = server.runners.find((r) => r.name === $('runner').value);
-    keep($('harness'), (runner?.harnesses || []).map((h) => [h, h]));
     keep($('effort'), [['', 'effort (default)'], ...EFFORTS.map((e) => [e, e])]);
+    // Any model in pi's catalog works, as provider/model; echo/echo answers at once, for testing.
+    $('models').replaceChildren(...[runner?.model, 'echo/echo'].filter(Boolean).map((value) => build('option', { value })));
     $('model').placeholder = runner?.model || 'model';
-    for (const id of ['harness', 'model', 'effort', 'dir']) $(id).disabled = !runner;
+    for (const id of ['model', 'effort', 'dir']) $(id).disabled = !runner;
     $('child-label').hidden = !selected?.id;
+    const model = ($('model').value || runner?.model || '').split('/').pop();
     $('body').placeholder = !runner ? ($('runner').value === '-' ? 'An entry for the humans here' : `An entry for ${fallback}; $ command runs on its runner`)
-      : `An entry for ${$('harness').value}@${runner.name}; $ command runs in its folder`;
+      : `An entry for ${model}@${runner.name}; $ command runs in its folder`;
   }
-  $('runner').onchange = $('harness').onchange = renderPicker;
+  $('runner').onchange = $('model').oninput = renderPicker;
 
   // A thread opens with the picker on default; you change it, and it stays as you left it.
   function setPicker() {
@@ -375,7 +379,7 @@
     const body = $('body').value;
     const runner = $('runner').value;
     const entry = runner === '' ? { body } : runner === '-' ? { body, to: null }
-      : { body, to: { runner, harness: $('harness').value, model: $('model').value, effort: $('effort').value, dir: $('dir').value } };
+      : { body, to: { runner, model: $('model').value, effort: $('effort').value, dir: $('dir').value } };
     const { url, id } = selected;
     const child = Boolean(id) && $('child').checked;
     $('body').value = '';
