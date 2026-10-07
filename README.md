@@ -35,7 +35,7 @@ client.html ──▶ server.js   one Pi Durable harness; every thread is a conv
 - An **entry** is one record in a thread. Pi's own kinds are a human's input, an answer, a tool call and its result. Ours are chat for the humans, a command's output, a note and an error.
 - A **runner** is a machine connected to the server. It streams models with its own logins and runs file and shell calls in its folder. It stores nothing.
 - An **agent** is a model on a runner, named like `gpt-6.1-sol@laptop`, with an optional effort level and folder. A thread has one agent at a time, kept as Pi's own agent setting.
-- An entry's **to** names the agent that should answer it.
+- An entry's **to** names the agent that should answer it. A human's input keeps its author and `to` in its Pi request id, written as URL params: `author=oskar&runner=laptop&model=echo%2Fecho&key=…`.
 
 Posting an entry is the one thing you do:
 
@@ -76,7 +76,6 @@ Things to know:
 
 - **No authentication:** keep the server on a trusted network.
 - **Shell not confined:** file paths are confined to the runner's `--dir`, but shell commands can reach outside it.
-- **Local patch:** [patches/](patches) carries a small patch to Pi Durable, applied by `bun install`, so a human's input can carry its author and `to`.
 
 ## API
 
@@ -84,7 +83,7 @@ Send `x-user: name` to say who you are.
 
 - `GET /api/server`: the server's options, and what Pi is running.
 - `GET|POST /api/threads` `{"title","parent"?}`: each thread with its agent and status (working, queued, done, failed, idle).
-- `GET /api/threads/:id`: the thread, Pi's docs (`pi.live`, `pi.inbox`, `pi.agent`, `pi.usage`), and every entry as `{author, to, replyTo, entry}`.
+- `GET /api/threads/:id`: the thread, Pi's docs (`pi.live`, `pi.inbox`, `pi.agent`, `pi.usage`), and every entry as `{author, to, requestId?, replyTo, entry}`.
 - `POST /api/threads/:id/entries` `{"body","to"?: {"runner","model"?,"effort"?,"dir"?} | null, "steer"?: true}`: a steer joins the answer being written.
 - `POST /api/threads/:id/read`: marks it read for you, so its last answer stops counting as done.
 - `POST /api/threads/:id/stop`: withdraws queued inputs and stops the agent.

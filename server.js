@@ -35,7 +35,8 @@ const page = await readFile(new URL('./client.html', import.meta.url));
 const models = createModels();
 const registry = createRegistry();
 registry.install(CodingTools);
-const harness = await Harness.open(await openNodeSqliteStorage(file), {
+const storage = await openNodeSqliteStorage(file);
+const harness = await Harness.open(storage, {
   models,
   registry,
   // A conversation's files and commands are on the runner whose model it uses, in the folder it was given.
@@ -72,6 +73,13 @@ for (const name of Object.keys(await known())) models.setProvider(runnerProvider
 harness.resume();
 
 const agentName = (to) => to && `${to.model.split('/').pop()}@${to.runner}`;
+// An input's request id says who wrote it and who should answer, as URL params: author=oskar&runner=laptop&model=…&key=….
+// Pi Durable keeps it on the input's submission record, beside the entry the input became.
+const requestFor = (author, to) => new URLSearchParams({ author, ...to, key: randomUUID() }).toString();
+function readRequest(requestId) {
+  const { author, key, ...to } = Object.fromEntries(new URLSearchParams(requestId));
+  return { requestId, author, to: to.runner && to.model ? to : null };
+}
 const same = (a, b) => ['runner', 'model', 'effort', 'dir'].every((key) => (a?.[key] ?? '') === (b?.[key] ?? ''));
 const user = (req) => req.headers['x-user'] || 'anon';
 const userMessage = (text) => ({ role: 'user', content: text, timestamp: Date.now() });
@@ -125,24 +133,35 @@ async function agentOf(id) {
 // An entry that asks nobody anything: written at the next boundary, so never into the middle of a run.
 const write = async (threadId, entry, requestId) => (await conversation(threadId)).submit({ type: 'write', entry, requestId }, context);
 
-// Who wrote each entry. A human input is a pi.user entry carrying `{ author, to, requestId }` as data (our patch to
-// Pi Durable). The model's answers and tool results belong to the agent of the input before them. Which inputs an answer
-// replies to comes from Pi's submission records: a run that took a steer or several follow-ups answers them all at once.
+// Every human input in a thread, oldest first, read from Pi's submission records: its request id, and its entry once placed.
+async function inputs(id) {
+  const found = [];
+  let cursor;
+  do {
+    const page = await storage.scanSubmissions({ conversationId: id }, 500, cursor, context);
+    for (const record of page.items) if (record.type === 'input' && record.requestId) found.push({ ...readRequest(record.requestId), record });
+    cursor = page.next;
+  } while (cursor);
+  return found.sort((a, b) => a.record.id - b.record.id);
+}
+
+// Who wrote each entry. A human input's author and `to` come from its request id. The model's answers and tool results
+// belong to the agent of the input before them. An answer replies to every input its run took: a steer, several follow-ups.
 async function annotate(id, entries) {
-  const inputs = entries.filter((entry) => entry.kind === 'pi.user' && entry.data?.requestId);
+  const asks = new Map();
   const replies = new Map();
-  await commit(async (tx) => {
-    for (const input of inputs) {
-      const answer = (await tx.submissionByRequest(id, input.data.requestId))?.answer;
-      if (answer !== undefined) replies.set(answer, [...(replies.get(answer) ?? []), input.id]);
-    }
-  });
+  for (const input of await inputs(id)) {
+    const { entry, answer } = input.record;
+    if (entry !== undefined) asks.set(entry, input);
+    if (answer !== undefined) replies.set(answer, [...(replies.get(answer) ?? []), entry]);
+  }
   let asked = null;
   return entries.map((entry) => {
-    if (entry.kind === 'pi.user' && entry.data) asked = entry.data;
-    const author = entry.data?.author
+    const input = asks.get(entry.id);
+    if (input) asked = input;
+    const author = input?.author ?? entry.data?.author
       ?? (['pi.assistant', 'pi.tool-result'].includes(entry.kind) ? agentName(asked?.to) : entry.kind.startsWith('pi.') ? 'pi' : 'server');
-    return { author, to: entry.data?.to ?? null, replyTo: replies.get(entry.id) ?? [], entry };
+    return { author, to: input?.to ?? entry.data?.to ?? null, ...(input ? { requestId: input.requestId } : {}), replyTo: replies.get(entry.id) ?? [], entry };
   });
 }
 
@@ -204,13 +223,13 @@ async function threadView(id, reader) {
 
 // Waits for an input's answer, even across a restart, then reports it: to the parent thread, and as an error if there is none.
 // The reports' request ids make it safe to follow an input twice.
-async function follow(id, requestId, to) {
+async function follow(id, requestId) {
   const record = await commit((tx) => tx.submissionByRequest(id, requestId));
   if (!record) return;
   const settled = await (await harness.submission(record.id, context)).wait(context);
   const row = await thread(id);
   if (settled.status === 'done' && !row.parent) return;
-  const agent = agentName(to);
+  const agent = agentName(readRequest(requestId).to);
   let text;
   if (settled.status === 'done') {
     const answer = await commit((tx) => tx.entry(settled.answer));
@@ -223,12 +242,10 @@ async function follow(id, requestId, to) {
   if (row.parent) await write(row.parent, { kind: 'agent-ide.note', data: { author: agent, text: `${text} → thread:${id}`, thread: id }, model: [userMessage(`${text} (from thread ${id})`)] }, `report:${requestId}`);
 }
 
-// After a restart, every human input is followed again: those placed, from their entries, and those still queued, from the inbox.
+// After a restart, every human input is followed again, placed or still queued.
 for (const id of await threadIds()) {
   if (!await thread(id)) continue;
-  const inbox = (await harness.snapshot(InboxDoc, id, context))?.items ?? [];
-  const placed = (await history(await harness.conversation(id, context))).filter((entry) => entry.kind === 'pi.user');
-  for (const { data } of [...placed, ...inbox]) if (data?.requestId) follow(id, data.requestId, data.to).catch((error) => console.error(error));
+  for (const { requestId } of await inputs(id)) follow(id, requestId).catch((error) => console.error(error));
 }
 
 // `$ cmd` runs through the runner's environment, like the agent's own bash, and lands as an entry with its output.
@@ -256,7 +273,7 @@ async function postEntry(id, author, input) {
   const body = field(input.body, 'body');
   const command = body.match(/^\$\s+([\s\S]+)/)?.[1];
   const given = 'to' in input ? await address(input.to) : director && !command ? null : agent;
-  const asked = director && !command ? (await history(handle)).filter((e) => e.kind === 'pi.user' && e.data).map((e) => e.data) : [];
+  const asked = director && !command ? await inputs(id) : [];
   const to = director && !command ? await address(director.route({ body, to: given }, asked)) : given;
   if (command) {
     if (!to) throw new Error('Pick a runner to run the command on');
@@ -270,10 +287,10 @@ async function postEntry(id, author, input) {
   const busy = live?.run || inbox?.items?.length;
   if (busy && !same(agent, to)) throw Object.assign(new Error(`${agentName(agent)} is working in this thread; wait, stop it, or ask it instead`), { status: 409 });
   if (!busy) await handle.configure(await agentFor(to), context);
-  const requestId = randomUUID();
+  const requestId = requestFor(author, to);
   const whenBusy = input.steer ? 'steer' : 'followUp';
-  const submission = await handle.submit({ type: 'input', content: `${author}: ${body}`, data: { author, to, requestId }, requestId, whenBusy }, context);
-  follow(id, requestId, to).catch((error) => console.error(error));
+  const submission = await handle.submit({ type: 'input', content: `${author}: ${body}`, requestId, whenBusy }, context);
+  follow(id, requestId).catch((error) => console.error(error));
   return { requestId, submission: submission.id, to };
 }
 
