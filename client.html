@@ -251,10 +251,13 @@
   function renderThread() {
     const server = current();
     const draft = selected && !selected.id;
+    // Where a fork came from is Pi's own record of the conversation.
+    const fork = view?.conversation?.parent;
     $('heading').textContent = draft ? 'New thread' : view?.title || 'Pick a thread, or start one';
     $('meta').replaceChildren(...(view ? [
       build('span', { className: 'id', textContent: `#${view.id} ` }), view.status, view.agent ? ` · agent ${toLabel(view.agent)}` : '',
       view.parent ? build('span', {}, [' · child of ', threadLink(server, view.parent)]) : '',
+      fork ? build('span', {}, [' · forked from ', threadLink(server, fork.conversationId), ` at #${fork.at}`]) : '',
       ['working', 'queued'].includes(view.status) ? build('button', { className: 'link', textContent: 'stop', onclick: () => attempt(post(server.url, `/api/threads/${view.id}/stop`, {})) }) : '',
     ] : draft ? ['Your first entry starts it.'] : []));
     const { entries, ...row } = view || {};
@@ -299,6 +302,7 @@
         build('b', { textContent: item.author }), ' ', build('span', { className: 'id', textContent: `#${item.entry.id} ${item.entry.kind}` }),
         item.to ? build('span', { className: 'chip to', textContent: `→ ${toLabel(item.to)}` }) : '',
         ...item.replyTo.map((input) => build('a', { href: '#', className: 'chip', textContent: `↩ #${input}`, title: 'An input this answers', onclick: (event) => { event.preventDefault(); flash(input); } })),
+        build('button', { className: 'link', textContent: 'fork', title: 'A new thread with everything up to here', onclick: () => attempt(forkAt(server.url, item.entry.id)) }),
         build('div', {}, [body].flat()),
         raw(item),
       ]);
@@ -319,6 +323,12 @@
     ])),
     // Inputs and writes Pi holds until the current run reaches a boundary.
     ...inbox.map((item) => build('li', { className: 'quiet' }, [`queued ${item.mode}: `, item.mode === 'write' ? item.entry.kind : textOf(item.content)])));
+  }
+
+  async function forkAt(url, at) {
+    const { id } = await post(url, `/api/threads/${view.id}/fork`, { at });
+    await refresh(url);
+    select({ url, id });
   }
 
   function flash(id) {

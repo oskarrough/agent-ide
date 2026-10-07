@@ -133,8 +133,8 @@ async function agentOf(id) {
 // An entry that asks nobody anything: written at the next boundary, so never into the middle of a run.
 const write = async (threadId, entry, requestId) => (await conversation(threadId)).submit({ type: 'write', entry, requestId }, context);
 
-// Every human input in a thread, oldest first, read from Pi's submission records: its request id, and its entry once placed.
-async function inputs(id) {
+// The human inputs submitted to this thread itself, oldest first, read from Pi's submission records: its request id, and its entry once placed.
+async function ownInputs(id) {
   const found = [];
   let cursor;
   do {
@@ -143,6 +143,14 @@ async function inputs(id) {
     cursor = page.next;
   } while (cursor);
   return found.sort((a, b) => a.record.id - b.record.id);
+}
+
+// Every human input in a thread's history. A fork's inherited entries were submitted to the thread it came from,
+// so its inputs are that thread's, placed up to the fork's entry, then its own.
+async function inputs(id) {
+  const { parent } = await commit((tx) => tx.conversation(id));
+  const inherited = parent ? (await inputs(parent.conversationId)).filter((input) => input.record.entry <= parent.at) : [];
+  return [...inherited, ...await ownInputs(id)];
 }
 
 // Who wrote each entry. A human input's author and `to` come from its request id. The model's answers and tool results
@@ -242,10 +250,10 @@ async function follow(id, requestId) {
   if (row.parent) await write(row.parent, { kind: 'agent-ide.note', data: { author: agent, text: `${text} → thread:${id}`, thread: id }, model: [userMessage(`${text} (from thread ${id})`)] }, `report:${requestId}`);
 }
 
-// After a restart, every human input is followed again, placed or still queued.
+// After a restart, every human input is followed again, placed or still queued. A fork's inherited ones are its source's to follow.
 for (const id of await threadIds()) {
   if (!await thread(id)) continue;
-  for (const { requestId } of await inputs(id)) follow(id, requestId).catch((error) => console.error(error));
+  for (const { requestId } of await ownInputs(id)) follow(id, requestId).catch((error) => console.error(error));
 }
 
 // `$ cmd` runs through the runner's environment, like the agent's own bash, and lands as an entry with its output.
@@ -307,6 +315,20 @@ async function createThread(author, { title, parent = null }) {
   return { id: created.id };
 }
 
+// A fork is a new thread that starts from one entry of another, with the agent it had then. Pi's conversation record
+// keeps where it came from; it isn't a child, so nothing in it reports back. Pi starts it idle: no answer, no queue.
+async function forkThread(author, id, { at, title }) {
+  const source = await conversation(id);
+  const named = title?.trim() || `${(await thread(id)).title} (fork)`;
+  const fork = await source.fork(Number(at), {
+    ownership: { kind: 'ownerless' },
+    init: async (tx, forkId) => {
+      Object.assign(await tx.doc(Thread, forkId), { title: named, createdAt: new Date().toISOString(), createdBy: author });
+    },
+  }, context);
+  return { id: fork.id };
+}
+
 async function runnerList() {
   return Object.entries(await known()).map(([name, runner]) => ({ name, ...runner, online: runners.isOnline(name), calls: runners.working(name) }));
 }
@@ -345,7 +367,7 @@ const handleRequest = async (req, res) => {
       send(res, 201, await createThread(user(req), await input(req)));
       return notify(null);
     }
-    const match = /^\/api\/threads\/(\d+)(?:\/(entries|read|stop))?$/.exec(route);
+    const match = /^\/api\/threads\/(\d+)(?:\/(entries|read|stop|fork))?$/.exec(route);
     if (match) {
       // A thread's id is its conversation's id, a number.
       const id = Number(match[1]);
@@ -359,6 +381,10 @@ const handleRequest = async (req, res) => {
         return notify(null);
       }
       if (action === 'entries' && req.method === 'POST') return send(res, 201, await postEntry(id, user(req), await input(req)));
+      if (action === 'fork' && req.method === 'POST') {
+        send(res, 201, await forkThread(user(req), id, await input(req)));
+        return notify(null);
+      }
       // Reading a thread marks its newest entry, so its last result stops counting as done for you.
       if (action === 'read' && req.method === 'POST') {
         const newest = (await (await conversation(id)).entries({}, 1, undefined, context)).items[0]?.id;

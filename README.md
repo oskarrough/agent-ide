@@ -45,6 +45,8 @@ Posting an entry is the one thing you do:
 - `$ cmd` runs on the agent's runner, in its folder.
 - Posting into a child thread hands work off. Each answer there is reported to the parent.
 
+Forking a thread at an entry starts a new thread with everything up to there and the agent it had then. Ask another agent from the same point; nothing in the fork reports back.
+
 While an agent works, another entry for it waits its turn. An entry for a different agent is refused until the first is done or stopped.
 
 ## What it explores
@@ -85,6 +87,7 @@ Send `x-user: name` to say who you are.
 - `GET|POST /api/threads` `{"title","parent"?}`: each thread with its agent and status (working, queued, done, failed, idle).
 - `GET /api/threads/:id`: the thread, Pi's docs (`pi.live`, `pi.inbox`, `pi.agent`, `pi.usage`), and every entry as `{author, to, requestId?, replyTo, entry}`.
 - `POST /api/threads/:id/entries` `{"body","to"?: {"runner","model"?,"effort"?,"dir"?} | null, "steer"?: true}`: a steer joins the answer being written.
+- `POST /api/threads/:id/fork` `{"at": entryId, "title"?}`: a new thread from that entry. Pi's `conversation.parent` says where it came from.
 - `POST /api/threads/:id/read`: marks it read for you, so its last answer stops counting as done.
 - `POST /api/threads/:id/stop`: withdraws queued inputs and stops the agent.
 - `DELETE /api/threads/:id`: hides it; Pi Durable keeps everything.
