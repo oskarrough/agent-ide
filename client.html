@@ -26,13 +26,14 @@
   .dot.on { background: #2f9e62; }
   .status { color: #8a5a00; }
   .status.done { color: #2f9e62; }
-  .status.error { color: #ad1b1b; }
+  .status.failed { color: #ad1b1b; }
   .error { color: #ad1b1b; }
   .link { background: none; border: 0; padding: 0 .2rem; color: #59636e; }
   .chip { font-size: 12px; background: #eef1f5; color: #20242a; border-radius: 4px; padding: 0 .35rem; margin-left: .35rem; text-decoration: none; }
   .chip.to { background: #e3eeff; }
   #entries li { border-bottom: 1px solid #eee; padding: .5rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   #entries li.agent { background: #f6f3fb; padding-left: .5rem; }
+  #entries li.quiet { color: #59636e; font-size: 13px; }
   #entries li.note { color: #59636e; font-style: italic; }
   #entries li.error { color: #ad1b1b; }
   #entries li.live { opacity: .75; }
@@ -54,14 +55,13 @@
     <div id="meta" class="mute"></div>
     <pre id="raw-thread" class="raw" hidden></pre>
     <ul id="entries"></ul>
-    <div id="pending"></div>
-    <!-- Posting is the one verb. The `to` says who should answer; nobody means it's for the humans here. -->
+    <!-- Posting is the one verb. Default lets the server pick who answers; nobody means it's for the humans here. -->
     <form id="composer" hidden>
       <div class="row">
         <small>To</small>
         <select id="runner" title="Runner"></select>
         <select id="harness" title="Harness"></select>
-        <input id="model" placeholder="model (default)">
+        <input id="model" placeholder="model (runner's default)">
         <select id="effort" title="Effort"></select>
         <input id="dir" placeholder="folder (.)">
         <label id="child-label"><input type="checkbox" id="child"> in a child thread</label>
@@ -78,13 +78,12 @@
   // Each client names the servers it knows; the URL stays the key.
   const ALIASES = 'agent-ide-aliases';
   const aliases = JSON.parse(localStorage.getItem(ALIASES) || '{}');
-  const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+  // Pi's thinking levels.
+  const EFFORTS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
   // Every server is its own world: its own threads, runners and socket.
   const servers = new Map();
   let selected = null; // { url, id }; an id of null is a new thread, made by its first entry
-  let entries = [];
-  // Which thread the `to` picker was last filled for, so it's filled once per thread and then left to you.
-  let pickedFor = null;
+  let view = null; // the selected thread as the server shows it: row, Pi's docs, entries
   let structure = localStorage.getItem('agent-ide-structure') === '1';
 
   // Every request says who you are; a thread's status depends on it.
@@ -97,7 +96,6 @@
   const post = (url, path, value) => api(url, path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value) });
   const remove = (url, path) => api(url, path, { method: 'DELETE' });
   const attempt = (promise) => promise.catch((error) => alert(error.message));
-  const short = (id) => id.slice(0, 6);
 
   function save() {
     localStorage.setItem(STORE, JSON.stringify([...servers.keys()]));
@@ -108,7 +106,7 @@
     const url = new URL(raw).origin;
     if (!['http:', 'https:'].includes(new URL(url).protocol)) throw new Error('Use an http:// or https:// URL');
     if (servers.has(url)) return;
-    servers.set(url, { url, alias: aliases[url] || '', status: 'connecting', info: null, threads: [], runners: [], socket: null, timer: null });
+    servers.set(url, { url, alias: aliases[url] || '', status: 'connecting', info: null, threads: [], runners: [], socket: null, timer: null, refreshing: null });
     save();
     open(url);
     render();
@@ -125,20 +123,16 @@
     render();
   }
 
+  // The server says which thread changed; the open one reloads, and the lists catch up.
   function open(url) {
     const server = servers.get(url);
     const socket = new WebSocket(url.replace(/^http/, 'ws') + '/ws');
     server.socket = socket;
     socket.onopen = () => { server.status = 'online'; refresh(url); };
     socket.onmessage = ({ data }) => {
-      const { threadId, live } = JSON.parse(data);
-      // An answer in progress replaces its previous frame; the finished answer arrives as an entry, and a refresh drops it.
-      if (live) {
-        const thread = server.threads.find((t) => t.id === threadId);
-        if (thread) thread.live = [...thread.live.filter((l) => l.entryId !== live.entryId), live];
-        if (selected?.url === url && selected.id === threadId) renderEntries();
-      } else if (threadId === null) refresh(url);
-      else if (selected?.url === url && selected.id === threadId) loadEntries();
+      const { threadId } = JSON.parse(data);
+      if (selected?.url === url && selected.id === threadId) loadThread();
+      server.refreshing ??= setTimeout(() => { server.refreshing = null; refresh(url); }, 300);
     };
     socket.onclose = () => {
       if (!servers.has(url)) return;
@@ -154,27 +148,28 @@
     try {
       [server.info, server.threads, server.runners] = await Promise.all([api(url, '/api/server'), api(url, '/api/threads'), api(url, '/api/runners')]);
       if (selected?.url === url && selected.id && !server.threads.some((t) => t.id === selected.id)) select(null);
-      else if (selected?.url === url) markRead();
     } catch (error) { server.status = error.message; }
     render();
   }
 
   function select(next) {
     selected = next;
-    entries = [];
+    view = null;
     render();
-    loadEntries();
+    loadThread();
   }
 
-  async function loadEntries() {
+  // Loading a thread reads it: its last result stops counting as done for you.
+  async function loadThread() {
     if (!selected?.id) return;
     const { url, id } = selected;
     try {
-      const loaded = await api(url, `/api/threads/${id}/entries`);
+      const loaded = await api(url, `/api/threads/${id}`);
       if (selected?.url !== url || selected.id !== id) return;
-      entries = loaded;
-      markRead();
-      if (pickedFor !== id) { pickedFor = id; setPicker(defaultTo()); }
+      const first = !view;
+      view = loaded;
+      post(url, `/api/threads/${id}/read`, {}).catch(() => {});
+      if (first) setPicker();
       renderThread();
     } catch (error) {
       await refresh(url);
@@ -182,25 +177,7 @@
     }
   }
 
-  function current() {
-    const server = selected && servers.get(selected.url);
-    return server && { server, thread: server.threads.find((t) => t.id === selected.id) };
-  }
-
-  // Looking at a thread means you've seen its last result, so it stops showing as done.
-  function markRead() {
-    const { server, thread } = current() || {};
-    if (!thread) return;
-    post(server.url, `/api/threads/${thread.id}/read`, {}).catch(() => {});
-    if (thread.status === 'done') { thread.status = 'idle'; render(); }
-  }
-
-  // Alone, a thread answers whoever it last asked. With a director, entries go to nobody unless you say otherwise.
-  function defaultTo() {
-    const { server } = current() || {};
-    if (server?.info?.director) return null;
-    return entries.findLast((e) => e.to && e.to.harness !== 'shell')?.to ?? null;
-  }
+  const current = () => selected && servers.get(selected.url);
 
   function render() {
     $('servers').replaceChildren(...[...servers.values()].map(serverView));
@@ -210,7 +187,7 @@
 
   const raw = (value) => structure ? build('pre', { className: 'raw', textContent: JSON.stringify(value, null, 2) }) : '';
 
-  // A server: its options, its runners and what each is answering, and its threads with their status.
+  // A server: its options, its runners and what each is doing, and its threads with their status.
   function serverView(server) {
     const { info } = server;
     return build('section', { className: 'server' }, [
@@ -227,7 +204,7 @@
         build('button', { textContent: '×', title: 'Remove server', onclick: () => removeServer(server.url) }),
       ]),
       server.status === 'online' ? '' : build('div', { className: 'error', textContent: server.status }),
-      info ? build('small', { textContent: `director ${info.director ? 'on' : 'off'} · ${info.threads} threads · ${info.owed} waiting for an answer` }) : '',
+      info ? build('small', { textContent: `${info.file} · director ${info.director ? 'on' : 'off'} · ${info.threads} threads · Pi ${info.work.scheduling}, ${info.work.tasks.length} live tasks, ${info.work.submissions.length} open submissions` }) : '',
       raw(info),
       build('h3', { textContent: 'Runners' }),
       build('ul', {}, server.runners.length ? server.runners.map((runner) => runnerView(server, runner))
@@ -236,81 +213,110 @@
       build('ul', {}, nested(server.threads).map(({ thread, depth }) => build('li', { className: 'thread-row', style: `margin-left: ${depth}rem` }, [build('button', {
         className: `thread ${selected?.url === server.url && selected.id === thread.id ? 'active' : ''}`,
         onclick: () => select({ url: server.url, id: thread.id }),
-      }, [(depth ? '↳ ' : '') + thread.title, statusView(server, thread)]), build('button', {
-        textContent: '×', title: `Delete thread: ${thread.title}`, ariaLabel: `Delete thread: ${thread.title}`,
+      }, [(depth ? '↳ ' : '') + thread.title, statusView(thread)]), build('button', {
+        textContent: '×', title: `Hide thread: ${thread.title}`, ariaLabel: `Hide thread: ${thread.title}`,
         onclick: () => attempt(remove(server.url, `/api/threads/${thread.id}`).then(() => refresh(server.url))),
       })]))),
     ]);
   }
 
-  // A runner: whose machine it is, its harnesses, and the entries it is answering right now.
+  // A runner: whose machine and folder it is, its default model, and what the server has asked of it right now.
   function runnerView(server, runner) {
+    const threads = server.threads.filter((t) => ['working', 'queued'].includes(t.status) && t.agent?.endsWith(`@${runner.name}`));
     return build('li', {}, [
-      build('span', { className: `dot ${runner.online ? 'on' : ''}` }), runner.alias || runner.name, ' ',
-      build('small', { textContent: `${runner.alias ? `${runner.name} · ` : ''}${runner.owner}'s · ${runner.harnesses.join(', ')}` }),
-      ...runner.working.map((w) => build('div', {}, [build('small', { className: 'status' }, ['answering ', threadLink(server, w.threadId), ` #${short(w.entryId)}`])])),
+      build('span', { className: `dot ${runner.online ? 'on' : ''}` }), runner.name, ' ',
+      build('small', { textContent: `${runner.alias ? `${runner.alias} · ` : ''}${runner.owner}'s · ${runner.dir} · ${runner.model || 'no default model'}` }),
+      ...threads.map((t) => build('div', {}, [build('small', { className: 'status' }, [`${t.status} in `, threadLink(server, t.id)])])),
+      ...runner.calls.map((c) => build('div', {}, [build('small', { className: 'mute', textContent: `${c.op} ${c.what}` })])),
       raw(runner),
     ]);
   }
 
-  // A thread's status, said briefly: who is working, which runner it's queued for, or that a result is done or failed.
-  function statusView(server, thread) {
-    const pending = (state) => thread.pending.filter((p) => p.state === state);
-    const text = {
-      working: [` · ${[...new Set(pending('working').map((p) => agentLabel(server, p.to)))].join(', ')} working`],
-      queued: [` · queued for ${[...new Set(pending('queued').map((p) => runnerName(server, p.to.runner)))].join(', ')}`],
-      done: [' · done'],
-      error: [' · failed'],
-    }[thread.status];
-    return text ? build('small', { className: `status ${thread.status}` }, text) : '';
+  function statusView(thread) {
+    const text = { working: ` · ${thread.agent || 'shell'} working`, queued: ` · ${thread.agent} waits for its runner`, done: ' · done', failed: ' · failed' }[thread.status];
+    return text ? build('small', { className: `status ${thread.status}` }, [text]) : '';
   }
 
-  const runnerName = (server, name) => server.runners.find((r) => r.name === name)?.alias || name;
-  const agentLabel = (server, to) => `${to.harness}@${runnerName(server, to.runner)}`;
-  const toLabel = (server, to) => [agentLabel(server, to), to.model, to.effort, to.dir && `in ${to.dir}`].filter(Boolean).join(' · ');
+  const agentName = (to) => to && `${to.harness}@${to.runner}`;
+  const toLabel = (to) => [agentName(to), to.model, to.effort, to.dir && `in ${to.dir}`].filter(Boolean).join(' · ');
 
   function threadLink(server, id) {
-    const title = server.threads.find((t) => t.id === id)?.title || short(id);
-    return build('a', { href: '#', textContent: title, onclick: (event) => { event.preventDefault(); select({ url: server.url, id }); } });
+    const title = server.threads.find((t) => t.id === Number(id))?.title || `#${id}`;
+    return build('a', { href: '#', textContent: title, onclick: (event) => { event.preventDefault(); select({ url: server.url, id: Number(id) }); } });
   }
 
-  // The main pane: the thread, its entries, what's still waiting for an answer, and the composer.
+  // The main pane: the thread, its entries, what Pi is doing in it right now, and the composer.
   function renderThread() {
-    const { server, thread } = current() || {};
+    const server = current();
     const draft = selected && !selected.id;
-    $('heading').textContent = draft ? 'New thread' : thread?.title || 'Pick a thread, or start one';
-    $('meta').replaceChildren(...(thread ? [
-      build('span', { className: 'id', textContent: `#${short(thread.id)} ` }), thread.status,
-      thread.parent ? build('span', {}, [' · child of ', threadLink(server, thread.parent)]) : '',
+    $('heading').textContent = draft ? 'New thread' : view?.title || 'Pick a thread, or start one';
+    $('meta').replaceChildren(...(view ? [
+      build('span', { className: 'id', textContent: `#${view.id} ` }), view.status, view.agent ? ` · agent ${view.agent}` : '',
+      view.parent ? build('span', {}, [' · child of ', threadLink(server, view.parent)]) : '',
+      ['working', 'queued'].includes(view.status) ? build('button', { className: 'link', textContent: 'stop', onclick: () => attempt(post(server.url, `/api/threads/${view.id}/stop`, {})) }) : '',
     ] : draft ? ['Your first entry starts it.'] : []));
-    $('raw-thread').hidden = !structure || !thread;
-    $('raw-thread').textContent = thread ? JSON.stringify(thread, null, 2) : '';
-    $('composer').hidden = !(draft || thread);
+    const { entries, ...row } = view || {};
+    $('raw-thread').hidden = !structure || !view;
+    $('raw-thread').textContent = view ? JSON.stringify(row, null, 2) : '';
+    $('composer').hidden = !(draft || view);
     renderEntries();
     renderPicker();
   }
 
+  const textOf = (content) => typeof content === 'string' ? content : (content ?? []).filter((p) => p.type === 'text').map((p) => p.text).join('');
+
+  // One entry, by kind. pi.* are Pi's own; agent-ide.* are ours.
+  function entryBody(server, { author, entry }) {
+    const message = entry.model?.[0];
+    switch (entry.kind) {
+      case 'pi.user': return ['', textOf(message.content).replace(`${author}: `, '')];
+      case 'pi.assistant': return ['agent', [
+        ...message.content.filter((p) => p.type === 'thinking' && p.thinking).map((p) => build('details', {}, [build('summary', { className: 'mute', textContent: 'thinking' }), p.thinking])),
+        textOf(message.content),
+        ...message.content.filter((p) => p.type === 'toolCall').map((p) => build('pre', { textContent: `${p.name} ${JSON.stringify(p.arguments)}` })),
+        ['stop', 'toolUse'].includes(message.stopReason) ? '' : build('div', { className: 'error', textContent: `${message.stopReason}${message.errorMessage ? `: ${message.errorMessage}` : ''}` }),
+      ]];
+      case 'pi.tool-result': return ['agent', [build('details', {}, [build('summary', { className: message.isError ? 'error' : 'mute', textContent: `${message.toolName} result${message.isError ? ' (error)' : ''}` }), build('pre', { textContent: textOf(message.content) })])]];
+      case 'pi.system': return ['quiet', ['system prompt or tools changed']];
+      case 'agent-ide.chat': return ['', entry.data.body];
+      case 'agent-ide.shell': return ['', [build('pre', { textContent: `$ ${entry.data.command}\nexit ${entry.data.code ?? entry.data.error}\n${[entry.data.stdout, entry.data.stderr].filter(Boolean).join('\n')}` })]];
+      case 'agent-ide.note': return ['note', linked(server, entry.data.text)];
+      case 'agent-ide.error': return ['error', entry.data.text];
+      default: return ['quiet', [entry.kind]];
+    }
+  }
+
   function renderEntries() {
-    const { server, thread } = current() || {};
-    if (!thread) { $('entries').replaceChildren(); $('pending').replaceChildren(); return; }
-    $('entries').replaceChildren(...entries.map((e) => build('li', { id: `e-${e.id}`, className: `${e.role} ${e.kind}` }, [
-      build('b', { textContent: e.author }), ' ', build('small', { textContent: new Date(e.createdAt).toLocaleTimeString() }),
-      build('span', { className: 'id', textContent: ` #${short(e.id)}` }),
-      e.to ? build('span', { className: 'chip to', textContent: `→ ${toLabel(server, e.to)}` }) : '',
-      e.replyTo ? build('a', { href: '#', className: 'chip', textContent: `↩ #${short(e.replyTo)}`, title: 'The entry this answers', onclick: (event) => { event.preventDefault(); flash(e.replyTo); } }) : '',
-      stepsView(e.steps, false),
-      e.kind === 'exec' ? execView(JSON.parse(e.body)) : e.to?.harness === 'shell' ? build('pre', { textContent: `$ ${e.body}` }) : build('div', {}, linked(server, e.body)),
-      raw(e),
-    ])), ...thread.live.map((l) => build('li', { className: 'agent live' }, [
-      build('b', { textContent: l.author }), ' ', build('small', { className: 'status', textContent: 'writing…' }),
-      build('a', { href: '#', className: 'chip', textContent: `↩ #${short(l.entryId)}`, onclick: (event) => { event.preventDefault(); flash(l.entryId); } }),
-      stepsView(l.steps, true),
-      build('div', { textContent: l.text }),
-    ])));
-    $('pending').replaceChildren(...thread.pending.map((p) => build('div', { className: 'status' }, [
-      build('small', {}, [`#${short(p.id)} waits for ${agentLabel(server, p.to)}: ${p.state}`]),
-      p.state === 'queued' ? build('button', { className: 'link', textContent: 'cancel', onclick: () => attempt(post(server.url, `/api/entries/${p.id}/cancel`, {})) }) : '',
-    ])));
+    const server = current();
+    if (!view) return $('entries').replaceChildren();
+    const live = view.docs['pi.live'] ?? {};
+    const inbox = view.docs['pi.inbox']?.items ?? [];
+    $('entries').replaceChildren(...view.entries.map((item) => {
+      const [className, body] = entryBody(server, item);
+      return build('li', { id: `e-${item.entry.id}`, className }, [
+        build('b', { textContent: item.author }), ' ', build('span', { className: 'id', textContent: `#${item.entry.id} ${item.entry.kind}` }),
+        item.to ? build('span', { className: 'chip to', textContent: `→ ${toLabel(item.to)}` }) : '',
+        ...item.replyTo.map((input) => build('a', { href: '#', className: 'chip', textContent: `↩ #${input}`, title: 'An input this answers', onclick: (event) => { event.preventDefault(); flash(input); } })),
+        build('div', {}, [body].flat()),
+        raw(item),
+      ]);
+    }),
+    // What Pi is doing right now, straight from pi.live: the answer being written, a retry's backoff, running tools.
+    ...(live.generation ? [build('li', { className: 'agent live' }, [
+      build('b', { textContent: view.agent }), ' ',
+      build('small', { className: 'status', textContent: live.generation.retry ? `retrying after: ${live.generation.retry.error}` : view.status === 'queued' ? 'waits for its runner…' : `writing… attempt ${live.generation.attempt}` }),
+      build('div', { textContent: textOf(live.generation.message?.content) }),
+    ])] : []),
+    ...(live.tools ?? []).filter((slot) => slot.status !== 'done').map((slot) => build('li', { className: 'agent live' }, [
+      build('b', { textContent: view.agent }), ' ', build('small', { className: 'status', textContent: `${slot.name} ${slot.status}` }),
+      build('pre', { textContent: slot.output || '…' }),
+    ])),
+    ...view.shells.map((run) => build('li', { className: 'live' }, [
+      build('b', { textContent: run.author }), ' ', build('small', { className: 'status', textContent: `running on ${run.to.runner}` }),
+      build('pre', { textContent: `$ ${run.command}\n${run.stdout}${run.stderr}` }),
+    ])),
+    // Inputs and writes Pi holds until the current run reaches a boundary.
+    ...inbox.map((item) => build('li', { className: 'quiet' }, [`queued ${item.mode}: `, item.mode === 'write' ? item.entry.kind : textOf(item.content)])));
   }
 
   function flash(id) {
@@ -321,84 +327,62 @@
     setTimeout(() => node.classList.remove('flash'), 1200);
   }
 
-  // The `to` picker: a runner (or nobody), one of its harnesses, and optional model, effort and folder.
+  // The `to` picker. Default leaves it to the server: the thread's last agent, or the director. Nobody means no answer.
   function renderPicker() {
-    const { server } = current() || {};
+    const server = current();
     if (!server) return;
-    keep($('runner'), [['', 'nobody'], ...server.runners.map((r) => [r.name, `${r.alias || r.name}${r.online ? '' : ' (offline)'}`])]);
+    const fallback = server.info?.director ? 'the director decides' : view?.agent || 'nobody yet';
+    keep($('runner'), [['', `default (${fallback})`], ['-', 'nobody'], ...server.runners.map((r) => [r.name, `${r.name}${r.online ? '' : ' (offline)'}`])]);
     const runner = server.runners.find((r) => r.name === $('runner').value);
     keep($('harness'), (runner?.harnesses || []).map((h) => [h, h]));
     keep($('effort'), [['', 'effort (default)'], ...EFFORTS.map((e) => [e, e])]);
-    const nobody = !$('runner').value;
-    for (const id of ['harness', 'model', 'effort', 'dir']) $(id).disabled = nobody;
+    $('model').placeholder = runner?.model || 'model';
+    for (const id of ['harness', 'model', 'effort', 'dir']) $(id).disabled = !runner;
     $('child-label').hidden = !selected?.id;
-    $('body').placeholder = nobody
-      ? `An entry for the humans here${server.info?.director ? '; @agent calls one in' : ''}`
-      : `An entry for ${$('harness').value}@${runnerName(server, $('runner').value)}; $ command runs in its shell`;
+    $('body').placeholder = !runner ? ($('runner').value === '-' ? 'An entry for the humans here' : `An entry for ${fallback}; $ command runs on its runner`)
+      : `An entry for ${$('harness').value}@${runner.name}; $ command runs in its folder`;
   }
   $('runner').onchange = $('harness').onchange = renderPicker;
 
-  function setPicker(to) {
-    if (!to) return void ($('runner').value = '', renderPicker());
-    keep($('runner'), [[to.runner, to.runner]], to.runner);
-    $('runner').value = to.runner;
-    renderPicker();
-    keep($('harness'), [[to.harness, to.harness]], to.harness);
-    $('harness').value = to.harness;
-    $('model').value = to.model || '';
-    $('effort').value = to.effort || '';
-    $('dir').value = to.dir || '';
+  // A thread opens with the picker on default; you change it, and it stays as you left it.
+  function setPicker() {
+    $('runner').value = '';
+    $('model').value = $('dir').value = '';
     renderPicker();
   }
 
-  // Options are rebuilt on refresh. A select keeps its value, and `wanted` stays an option even when it isn't connected.
+  // Options are rebuilt on refresh. A select keeps its value.
   function keep(select, options, wanted = select.value) {
     if (document.activeElement === select) return;
-    if (wanted && !options.some(([v]) => v === wanted)) options = [[wanted, `${wanted} (not connected)`], ...options];
     select.replaceChildren(...options.map(([v, text]) => build('option', { value: v, textContent: text })));
     if (options.some(([v]) => v === wanted)) select.value = wanted;
   }
 
-  // Children sit under their parent.
+  // Children sit under their parent; a child whose parent is hidden sits at the top.
   function nested(threads, parent = null, depth = 0) {
-    return threads.filter((t) => (t.parent || null) === parent).flatMap((thread) => [{ thread, depth }, ...nested(threads, thread.id, depth + 1)]);
+    const ids = new Set(threads.map((t) => t.id));
+    return threads.filter((t) => (ids.has(t.parent) ? t.parent : null) === parent).flatMap((thread) => [{ thread, depth }, ...nested(threads, thread.id, depth + 1)]);
   }
 
   // "thread:<id>" in an entry becomes a link to that thread on the same server.
   function linked(server, body) {
-    return body.split(/(thread:[\w-]+)/).map((part) => part.startsWith('thread:') ? threadLink(server, part.slice(7)) : part);
+    return body.split(/(thread:\d+)/).map((part) => part.startsWith('thread:') ? threadLink(server, part.slice(7)) : part);
   }
 
-  // The tool calls an answer made: open while it works, folded once it's done.
-  function stepsView(steps, open) {
-    if (!steps?.length) return '';
-    return build('details', { open }, [
-      build('summary', { className: 'mute', textContent: `${steps.length} step${steps.length === 1 ? '' : 's'}` }),
-      ...steps.map((step) => build('pre', { textContent: `${step.name}: ${step.args}${step.status === 'done' ? '' : ` (${step.status})`}${step.output ? `\n${step.output}` : ''}` })),
-    ]);
-  }
-
-  function execView({ code, stdout, stderr }) {
-    return build('pre', { textContent: `exit ${code}\n${[stdout, stderr].filter(Boolean).join('\n')}` });
-  }
-
-  // Posting is the one verb. "$ cmd" goes to the picked runner's shell. A child thread hands work off and reports back here.
+  // Posting is the one verb. A child thread hands work off; the server notes it in the parent and reports answers back.
   $('composer').onsubmit = (event) => {
     event.preventDefault();
-    const text = $('body').value;
-    const command = text.match(/^\$\s+(.+)/s)?.[1];
+    const body = $('body').value;
     const runner = $('runner').value;
-    if (command && !runner) return alert('Pick a runner to run the command on');
-    const to = !runner ? null : command ? { runner, harness: 'shell', dir: $('dir').value } : { runner, harness: $('harness').value, model: $('model').value, effort: $('effort').value, dir: $('dir').value };
-    const body = command || text;
+    const entry = runner === '' ? { body } : runner === '-' ? { body, to: null }
+      : { body, to: { runner, harness: $('harness').value, model: $('model').value, effort: $('effort').value, dir: $('dir').value } };
     const { url, id } = selected;
     const child = Boolean(id) && $('child').checked;
     $('body').value = '';
     attempt((async () => {
       const threadId = id && !child ? id : (await post(url, '/api/threads', { title: body.slice(0, 60), parent: id })).id;
-      await post(url, `/api/threads/${threadId}/entries`, { body, to });
-      if (child) await post(url, `/api/threads/${id}/entries`, { body: `Handed off → thread:${threadId}` });
-      if (!id) { await refresh(url); select({ url, id: threadId }); }
+      await post(url, `/api/threads/${threadId}/entries`, entry);
+      if (threadId !== id) { await refresh(url); select({ url, id: threadId }); }
     })());
   };
   $('add-server').onsubmit = (event) => {

@@ -1,2 +1,3 @@
 threads*.db*
+*.sqlite*
 node_modules/
