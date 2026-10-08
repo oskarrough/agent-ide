@@ -6,7 +6,7 @@ import { CompactionTask, defineExtension, defineTask, defineTool, hook } from '@
 import { messageText } from './remote.js';
 
 const KIND = 'agent-ide.line';
-const LINE = 512, BUDGET = 64 * 1024, CONTEXT = 16 * 1024, RETRIES = 5;
+const LINE = 512, BUDGET = 64 * 1024, WHOLE = 64 * 1024, CONTEXT = 16 * 1024, RETRIES = 5;
 const bytes = (text) => Buffer.byteLength(text);
 const key = (l, i) => `${l}:${i}`;
 const RULER = '-'.repeat(LINE);
@@ -141,6 +141,18 @@ export function server(core) {
     return T > 0 ? { summary: render(memory(await core.commit((tx) => lines(tx, home.thread)), T, BUDGET)) } : undefined;
   };
 
+  // An input holds its newest messages whole up to WHOLE, at least the last, and the older ones as the memory over
+  // their range.
+  async function catchUp(threadId, held, all) {
+    let k = held.length - 1, size = bytes(core.said(held[k]));
+    while (k > 0 && size + bytes(core.said(held[k - 1])) + 2 <= WHOLE) size += bytes(core.said(held[--k])) + 2;
+    const whole = held.slice(k).map(core.said).join('\n\n');
+    if (!k) return whole;
+    const at = (e) => all.findIndex((x) => x.id === e.id);
+    const older = memory(await core.commit((tx) => lines(tx, threadId)), at(held[k - 1]) + 1, BUDGET, at(held[0]));
+    return `${render(older)}\n\n${whole}`;
+  }
+
   // A fork zooms into its source's lines too, as `lines` reads them through.
   const zoom = defineTool({
     name: 'zoom',
@@ -165,13 +177,14 @@ export function server(core) {
       hooks: [hook(CompactionTask, { beforeCompact })],
     }),
     posted: (tx, threadId, entry) => tx.createTask(Line, { entry: entry.id }, background(threadId)),
+    catchUp,
   };
 }
 
-// The memory: lines covering messages 0..T-1, merging the most due pair first, (T - last) / 2^l, oldest first on ties,
+// The memory: lines covering messages from..T-1, merging the most due pair first, (T - last) / 2^l, oldest first on ties,
 // only where the parent line is built, until it fits the budget as rendered.
-export function memory(lines, T, budget) {
-  const list = [...Array(T).keys()].map((p) => lines.get(key(0, p)) ?? { l: 0, i: p, text: NOT_YET, size: bytes(NOT_YET) });
+export function memory(lines, T, budget, from = 0) {
+  const list = [...Array(T - from).keys()].map((k) => from + k).map((p) => lines.get(key(0, p)) ?? { l: 0, i: p, text: NOT_YET, size: bytes(NOT_YET) });
   const cost = (x) => bytes(rendered(x)) + 1;
   let size = list.reduce((s, x) => s + cost(x), 0);
   while (size > budget) {

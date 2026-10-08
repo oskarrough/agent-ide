@@ -62,7 +62,9 @@ const Deliver = defineTask({
     async ask({ id, conversationId: threadId, input: { agent, held, steer } }, rt, ctx) {
       const to = await agentOf(agent);
       await runners.online(to.runner, rt.signal);
-      const content = (await messages(threadId)).filter((e) => held.includes(e.id)).map(said).join('\n\n');
+      const all = await messages(threadId);
+      const mine = all.filter((e) => held.includes(e.id));
+      const content = catchUp ? await catchUp(threadId, mine, all) : mine.map(said).join('\n\n');
       const handle = await rt.conversation(agent, ctx);
       const submission = await handle.submit({ type: 'input', content, requestId: requestOf(id, held), whenBusy: steer ? 'steer' : 'followUp' }, ctx);
       const settled = await submission.wait(ctx);
@@ -432,6 +434,7 @@ for (const m of modules) if (m.extension) registry.install(m.extension);
 const posted = modules.flatMap((m) => m.posted ?? []);
 const route = modules.find((m) => m.route)?.route;
 const reply = modules.find((m) => m.reply)?.reply;
+const catchUp = modules.find((m) => m.catchUp)?.catchUp;
 
 for (const [name, runner] of Object.entries(await known())) models.setProvider(runnerProvider(runners, name, runner.models));
 harness.resume();

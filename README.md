@@ -87,9 +87,10 @@ client.html ──▶ server.js   one Pi Durable harness: threads, and each agen
 52. When Pi compacts an agent's conversation, memory writes Pi's summary instead of the agent's model: the thread's lines up to the last message the agent was given before the cut.
 53. That memory merges the most due pair first, `(T - last) / 2^l`, where their line is built, until it fits in 64 KB, and writes each line `id+n|text`, `id` being the position of its first message and `n` how many it covers.
 54. A message not yet given a line shows there as `(not summarized yet: zoom it)`.
-55. With memory, an agent has `zoom {id, n}`, which opens a line into the two it was made from, or into the message whole when `n` is 1.
-56. A prompt section tells it the lines are its memory, and to zoom before it guesses.
-57. [examples/](examples) defines the rest and checks all of it: the HTTP API, the runner end's interface (`serveRunner` in [remote.js](remote.js)), and each sentence above.
+55. With memory, a Deliver task's input holds its newest messages whole up to 64 KB, at least the last, and the older ones as the thread's memory over their range, also within 64 KB.
+56. With memory, an agent has `zoom {id, n}`, which opens a line into the two it was made from, or into the message whole when `n` is 1.
+57. A prompt section tells it the lines are its memory, and to zoom before it guesses.
+58. [examples/](examples) defines the rest and checks all of it: the HTTP API, the runner end's interface (`serveRunner` in [remote.js](remote.js)), and each sentence above.
 
 ## What it promises
 
