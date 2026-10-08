@@ -4,14 +4,7 @@ agent-ide proves that an agent IDE can be small. This file is how we keep it tha
 
 ## What agent-ide is
 
-Four promises, and nothing else:
-
-1. **Threads with many authors.** Humans and agents talk in one thread, and each agent answers from its own conversation.
-2. **Runners.** Tool calls run on a machine you choose, in a folder you choose, with that machine's logins.
-3. **Models of your choice.** Any model pi can name, named the way pi names it.
-4. **Stable messaging.** A message between threads arrives once and its answer comes back once, even across restarts and stops.
-
-A change serves one of these, or it doesn't land.
+The promises under "What it promises" in the README, and nothing else. A change serves one of them, or it doesn't land.
 
 ## What every change keeps
 

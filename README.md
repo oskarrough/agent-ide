@@ -35,31 +35,58 @@ client.html ──▶ server.js   one Pi Durable harness: threads, and each agen
 
 1. The server keeps everything in one Pi Durable harness over one SQLite file: each thread is a Pi conversation, and what agent-ide adds, like a title, a parent, read markers and its agents, is a Pi doc beside it.
 2. A runner is a process on someone's machine that connects to the server's WebSocket and lends it its pi logins and a folder; it stores nothing.
-3. The server registers each runner as a Pi model provider, `runner:NAME`, whose streams run on the runner, and as the execution environment of every conversation whose model is on it: Pi's whole `ExecutionEnv`, called over the socket and working in the runner's folder. Calls to an offline runner wait for it.
-4. An agent is a model on a runner, named `provider/id@runner`. The runner resolves the model the way `pi --model` does, with pi's own resolver, settings and logins: a pattern, a `:thinking` suffix, or nothing for pi's default. The server keeps each model a runner resolved, without credentials, and an offline runner takes only those. `echo/echo` is pi-ai's faux provider, for testing: it answers `echo@RUNNER heard: ` and the last user text.
-5. A thread never runs: every entry in it is a passive message with its `author` and `body`, and `to`, `from`, `re`, `answer`, `error` or `shell` when it has them.
-6. Each agent in a thread answers from its own Pi conversation, made the first time it is asked there and owned by an Anchor task in the thread. The thread's doc maps the agent's name to that conversation, and a doc on the conversation names its thread, the agent's name there, and the messages it hasn't been given. Having no thread doc, it never shows up as a thread.
-7. Every message in a thread is unseen by each of its agents but its own: those with its name and no `from`. A new agent hasn't seen anything.
-8. Posting a message is one Pi commit. It appends the message and creates a Deliver task for each agent its `to` asks, holding all that agent's unseen messages. No `to` asks whom the thread last asked; `to: null` asks nobody.
-9. A Deliver task waits for its runner, then submits its messages as one input to the agent's conversation, each written as `author: body`, or `author, writing from thread N: body` (`answering` for a message with `re`) when it came from another thread. The request id is made from the task's id, so a rerun finds the input it made.
-10. When the input settles, the commit that ends the task copies the agent's final answer into the thread with `re`, the messages it held that asked the agent, and `answer`, the entry it came from. Several inputs can share one answer, and the first speaks for all. An input with no answer posts an `error` message instead, and a child thread reports either to its parent as a message with `from`. Other agents never see its tool calls.
-11. A stopped input posts and reports nothing. If it was withdrawn before Pi placed it, its messages are unseen again, for the next delivery.
-12. `$ cmd` creates a Shell task for the first agent's runner. It commits that it began, runs in the runner's folder, then posts what it printed. A stopped one posts what it printed by then; one a restart cut short posts that it was interrupted.
-13. Pi resumes unfinished tasks after a restart, and every write a task makes lands in the commit that ends it or moves it on, so nothing repeats.
-14. Several agents can work in one thread at once. An agent is working while a delivery to it is live. Stopping a thread is Pi's abort of its conversation, which reaches its tasks and, through each Anchor, its agents' runs and queued inputs.
-15. A fork is Pi's own fork of the thread at an entry, plus a fork of each agent's conversation at its last answer up to there, all in one commit. The forked agent's unseen messages are those up to there that none of its inputs placed by that answer held. A fork reports nowhere.
-16. A thread's status for a reader is one of the [Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status)'s five words: working, or blocked when its working agents' runners are offline, from its live tasks; done or error for a result newer than the reader's read marker; otherwise idle.
-17. Optional behaviour lives in modules, one file each, switched by an env var of its name: [talk.js](talk.js) (on, `TALK=0`) gives agents `post` and `threads` tools; [status.js](status.js) (on, `STATUS=0`) has runners report to their terminal with OSC 7501, a record for the runner and one per thread by its id; [director.js](director.js) (`DIRECTOR=1`) has a message ask the agents it @mentions.
-18. With talk, an agent's `post` is one commit, keyed by its tool call so a replay finds it. When an agent answers posts from another thread, the answer goes back to that thread instead of a report, as a message with `from` and `re`. It asks every agent who posted, and steers into their work if they're busy. Answering it sends nothing back, so the exchange ends there, like email.
-19. [examples/](examples) defines the rest and checks all of it: the HTTP API, the runner end's interface (`serveRunner` in [remote.js](remote.js)), and each sentence above.
+3. The server registers each runner as a Pi model provider, `runner:NAME`, whose streams run on the runner, and as the execution environment of every conversation whose model is on it: Pi's whole `ExecutionEnv`, called over the socket and working in the runner's folder.
+4. Calls to an offline runner wait for it.
+5. An agent is a model on a runner, named `provider/id@runner`.
+6. The runner resolves the model the way `pi --model` does, with pi's own resolver, settings and logins: a pattern, a `:thinking` suffix, or nothing for pi's default.
+7. The server keeps each model a runner resolved, without credentials, and an offline runner takes only those.
+8. `echo/echo` is pi-ai's faux provider, for testing: it answers `echo@RUNNER heard: ` and the last user text.
+9. A thread never runs: every entry in it is a passive message with its `author` and `body`, and `to`, `from`, `re`, `answer`, `error` or `shell` when it has them.
+10. Each agent in a thread answers from its own Pi conversation, made the first time it is asked there and owned by an Anchor task in the thread.
+11. The thread's doc maps the agent's name to that conversation, and a doc on the conversation names its thread, the agent's name there, and the messages it hasn't been given.
+12. Having no thread doc, an agent's conversation never shows up as a thread.
+13. Every message in a thread is unseen by each of its agents but its own: those with its name and no `from`.
+14. A new agent hasn't seen anything.
+15. Posting a message is one Pi commit that appends it and creates a Deliver task for each agent its `to` asks, holding all that agent's unseen messages.
+16. No `to` asks whom the thread last asked; `to: null` asks nobody.
+17. A Deliver task waits for its runner, then submits its messages as one input to the agent's conversation, each written as `author: body`, or `author, writing from thread N: body` (`answering` for a message with `re`) when it came from another thread.
+18. The request id is made from the Deliver task's id, so a rerun finds the input it made.
+19. When the input settles, the commit that ends the task copies the agent's final answer into the thread with `re`, the messages it held that asked the agent, and `answer`, the entry it came from.
+20. Several inputs can share one answer, and the first speaks for all.
+21. An input with no answer posts an `error` message instead.
+22. A child thread reports each answer or error to its parent as a message with `from`.
+23. Other agents never see an agent's tool calls.
+24. A stopped input posts and reports nothing.
+25. If a stopped input was withdrawn before Pi placed it, its messages are unseen again, for the next delivery.
+26. `$ cmd` creates a Shell task for the first agent's runner.
+27. A Shell task commits that it began, runs in the runner's folder, then posts what it printed.
+28. A stopped Shell task posts what it printed by then.
+29. A Shell task a restart cut short posts that it was interrupted.
+30. Pi resumes unfinished tasks after a restart, and every write a task makes lands in the commit that ends it or moves it on, so nothing repeats.
+31. Several agents can work in one thread at once.
+32. An agent is working while a delivery to it is live.
+33. Stopping a thread is Pi's abort of its conversation, which reaches its tasks and, through each Anchor, its agents' runs and queued inputs.
+34. A fork is Pi's own fork of the thread at an entry, plus a fork of each agent's conversation at its last answer up to there, all in one commit.
+35. The forked agent's unseen messages are those up to there that none of its inputs placed by that answer held.
+36. A fork reports nowhere.
+37. A thread's status for a reader is one of the [Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status)'s five words: working, or blocked when its working agents' runners are offline, from its live tasks; done or error for a result newer than the reader's read marker; otherwise idle.
+38. Optional behaviour lives in modules, one file each, switched by an env var of its name.
+39. [talk.js](talk.js) (on, `TALK=0`) gives agents `post` and `threads` tools.
+40. [status.js](status.js) (on, `STATUS=0`) has runners report to their terminal with OSC 7501, a record for the runner and one per thread by its id.
+41. [director.js](director.js) (`DIRECTOR=1`) has a message ask the agents it @mentions.
+42. With talk, an agent's `post` is one commit, keyed by its tool call so a replay finds it.
+43. When an agent answers posts from another thread, the answer goes back to that thread instead of a report, as a message with `from` and `re`.
+44. That answer asks every agent who posted, and steers into their work if they're busy.
+45. A reply to that answer sends nothing back, so the exchange ends there, like email.
+46. [examples/](examples) defines the rest and checks all of it: the HTTP API, the runner end's interface (`serveRunner` in [remote.js](remote.js)), and each sentence above.
 
-## What it explores
+## What it promises
 
-1. A server that decides where threads live and which runner does what. It doesn't have to stay a server.
-2. Runners: optional machines that lend the server their logins and folders.
-3. Multiplayer threads, where several humans and agents talk, and anyone can steer or stop an agent that's working.
-4. Forking a thread at any entry, to try another agent from the same point.
-5. Messages between threads, so one thread can hand work to another and get the answer back.
+1. **Threads with many authors.** Humans and agents talk in one thread, and each agent answers from its own conversation.
+2. **Runners.** Tool calls run on a machine you choose, in a folder you choose, with that machine's logins.
+3. **Models of your choice.** Any model pi can name, named the way pi names it.
+4. **Stable messaging.** A message between threads arrives once and its answer comes back once, even across restarts and stops.
+5. **Forks.** Fork a thread at any entry, with each agent in it, to try another path from the same point.
 
 ## Running it
 
