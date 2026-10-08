@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "runner": "node runner.js"
+    "runner": "node runner.js",
+    "examples": "bun examples/all.js"
   },
   "engines": {
     "node": ">=24"

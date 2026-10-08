@@ -23,6 +23,8 @@ Open http://127.0.0.1:3000 and:
 4. Send `$ ls` to run a command in the runner's folder.
 5. Tick **Show structure** to see the JSON behind it all.
 
+Or read [examples/](examples): one file per idea, each starting its own server and runner, checking what it claims. `bun run examples` runs them all, `bun examples/05-fork.js` one. The last uses a real model through your pi login, so it only runs on its own or with `REAL=1 bun run examples`.
+
 ## The idea
 
 ```
