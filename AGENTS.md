@@ -4,7 +4,7 @@ agent-ide proves that an agent IDE can be small. This file is how we keep it tha
 
 ## What agent-ide is
 
-The promises under "What it promises" in the README, and nothing else. A change serves one of them, or it doesn't land.
+The promises under "What it promises" in the README, and nothing else. The sixth is under exploration: a module, off by default, until its examples prove it. A change serves one of them, or it doesn't land.
 
 ## What every change keeps
 

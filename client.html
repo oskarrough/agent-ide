@@ -37,6 +37,8 @@
   #entries b { font-weight: 600; }
   pre { background: #20242a; color: #e7e9ee; padding: .5rem; margin: .3rem 0 0; overflow-x: auto; font-size: 13px; white-space: pre-wrap; }
   pre.raw { background: #f4f5f7; color: #3a3f47; font-size: 12px; }
+  #memory ul { font: 12px monospace; padding-left: 1rem; }
+  #memory li { cursor: pointer; white-space: pre-wrap; }
   #composer { flex-direction: column; border-top: 1px solid #ddd; padding-top: .5rem; }
   #composer .row { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; }
   #composer .row input:not(#body) { flex: 0 1 9rem; }
@@ -50,6 +52,7 @@
     <h2 id="heading">Pick a thread, or start one</h2>
     <div id="meta" class="mute"></div>
     <pre id="raw-thread" class="raw" hidden></pre>
+    <details id="memory" open hidden><summary>Memory</summary><ul></ul></details>
     <ul id="entries"></ul>
     <form id="composer" hidden>
       <div class="row">
@@ -161,7 +164,9 @@
         $('runner').value = $('model').value = $('dir').value = '';
         renderPicker();
       }
-      if (first) opened.clear();
+      if (first) opened.clear(), zoomed.clear();
+      memory = current()?.info?.modules.includes('memory') ? await api(url, `/api/threads/${id}/memory`) : null;
+      for (const [at, value] of zoomed) zoomed.set(at, await api(url, `/api/threads/${id}/memory?zoom=${at}`).catch(() => value));
       for (const conversation of opened.keys()) opened.set(conversation, await api(url, `/api/conversations/${conversation}`));
       renderThread();
     } catch (error) {
@@ -255,7 +260,29 @@
     $('raw-thread').textContent = view ? JSON.stringify(row, null, 2) : '';
     $('composer').hidden = !(draft || view);
     renderEntries();
+    renderMemory();
     renderPicker();
+  }
+
+  // The thread's memory, `id+n|text`: a click zooms a line into the two it was made from, or its message whole.
+  let memory = null;
+  const zoomed = new Map();
+  function renderMemory() {
+    $('memory').hidden = !view || !memory;
+    if (!memory || !view) return;
+    const lineView = ({ id, n, text }) => {
+      const at = `${id},${n}`;
+      const shown = zoomed.get(at);
+      return build('li', { onclick: (event) => attempt((async () => {
+        event.stopPropagation();
+        if (shown) zoomed.delete(at);
+        else zoomed.set(at, await api(selected.url, `/api/threads/${view.id}/memory?zoom=${at}`));
+        renderMemory();
+      })()) }, [`${id}+${n}|${text}`,
+        shown?.lines ? build('ul', {}, shown.lines.map(lineView)) : '',
+        shown?.message ? build('pre', { textContent: shown.message }) : '']);
+    };
+    $('memory').querySelector('ul').replaceChildren(...memory.lines.map(lineView));
   }
 
   // Each agent's own Pi conversation, shown raw in the structure view.

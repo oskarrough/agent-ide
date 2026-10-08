@@ -62,7 +62,9 @@ const Deliver = defineTask({
     async ask({ id, conversationId: threadId, input: { agent, held, steer } }, rt, ctx) {
       const to = await agentOf(agent);
       await runners.online(to.runner, rt.signal);
-      const content = (await messages(threadId)).filter((e) => held.includes(e.id)).map(said).join('\n\n');
+      const all = await messages(threadId);
+      const mine = all.filter((e) => held.includes(e.id));
+      const content = catchUp ? await catchUp(threadId, mine, all) : mine.map(said).join('\n\n');
       const handle = await rt.conversation(agent, ctx);
       const submission = await handle.submit({ type: 'input', content, requestId: requestOf(id, held), whenBusy: steer ? 'steer' : 'followUp' }, ctx);
       const settled = await submission.wait(ctx);
@@ -258,6 +260,7 @@ async function post(tx, threadId, data, { steer = false, empty = false } = {}) {
     ? (await collect((cursor) => tx.scanEntries({ conversationId: threadId, order: 'ascending' }, 500, cursor))).filter((e) => e.kind === KIND).map((e) => e.id)
     : [];
   const entry = await tx.appendEntry(threadId, { kind: KIND, data });
+  for (const m of posted) await m(tx, threadId, entry);
   for (const [name, agent] of Object.entries(row.agents)) if (name !== data.author || data.from) (await tx.doc(AgentHome, agent)).unseen.push(entry.id);
   for (const t of to) {
     const name = agentName(t);
@@ -425,11 +428,13 @@ async function forkThread(author, id, { at, title }) {
   return { id: fork.id };
 }
 
-const core = { Thread, models, runners, known, address, agentName, agentOf, conversation, thread, home, threadList, messages, lastAsked, field, startThread, post };
-const modules = await load('server', { director: false, talk: true, status: true }, core);
+const core = { Thread, models, runners, known, address, agentName, agentOf, conversation, thread, home, threadList, messages, lastAsked, field, startThread, post, said, seenBy, commit, collect };
+const modules = await load('server', { director: false, talk: true, status: true, memory: false }, core);
 for (const m of modules) if (m.extension) registry.install(m.extension);
+const posted = modules.flatMap((m) => m.posted ?? []);
 const route = modules.find((m) => m.route)?.route;
 const reply = modules.find((m) => m.reply)?.reply;
+const catchUp = modules.find((m) => m.catchUp)?.catchUp;
 
 for (const [name, runner] of Object.entries(await known())) models.setProvider(runnerProvider(runners, name, runner.models));
 harness.resume();
@@ -449,7 +454,8 @@ async function input(req) {
 }
 
 const handleRequest = async (req, res) => {
-  const route = new URL(req.url, 'http://localhost').pathname;
+  const url = new URL(req.url, 'http://localhost');
+  const route = url.pathname;
   if (req.method === 'OPTIONS') {
     res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, x-user' });
     return res.end();
@@ -477,7 +483,7 @@ const handleRequest = async (req, res) => {
       send(res, 200, view.value);
       return view.dispose();
     }
-    const match = /^\/api\/threads\/(\d+)(?:\/(entries|read|stop|fork))?$/.exec(route);
+    const match = /^\/api\/threads\/(\d+)(?:\/(\w+))?$/.exec(route);
     if (match) {
       const id = Number(match[1]);
       const action = match[2];
@@ -488,6 +494,9 @@ const handleRequest = async (req, res) => {
         send(res, 200, { id });
         return notify(null);
       }
+      // A module may serve GET /api/threads/:id/<its name>.
+      const served = modules.find((m) => m.name === action)?.serve;
+      if (served && req.method === 'GET') return send(res, 200, await served(id, url.searchParams));
       if (action === 'entries' && req.method === 'POST') return send(res, 201, await postEntry(id, user(req), await input(req)));
       if (action === 'fork' && req.method === 'POST') {
         send(res, 201, await forkThread(user(req), id, await input(req)));

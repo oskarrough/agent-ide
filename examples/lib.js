@@ -62,6 +62,8 @@ export async function api(method, route, body, user = 'oskar') {
 export const view = async (id) => (await api('GET', `/api/threads/${id}`)).json;
 // An agent's own Pi conversation in a thread: its entries and docs.
 export const conversationOf = async (v, name) => (await api('GET', `/api/conversations/${v.agents.find((a) => a.name === name)?.conversation}`)).json;
+// A thread's memory lines, from its raw Pi conversation.
+export const linesOf = async (id) => (await api('GET', `/api/conversations/${id}`)).json.entries.filter((e) => e.kind === 'agent-ide.line').map((e) => ({ id: e.id, ...e.data }));
 export const answers = (v) => v.entries.filter((e) => e.data.answer);
 export const brief = (v) => JSON.stringify(v?.entries.map((e) => [e.id, e.data.author, e.data.body.slice(0, 40)]));
 export { text };
@@ -91,16 +93,12 @@ export function done() {
   process.exit(failed ? 1 : 0);
 }
 
-// A runner in this process, reconnecting like runner.js, whose only model, echo/echo, answers route(request).
-export async function scriptedRunner(name, route, { onTell } = {}) {
-  const script = fauxProvider({ provider: 'echo', models: [{ id: 'echo' }], tokensPerSecond: 200 });
-  script.setResponses(Array.from({ length: 200 }, () => route));
-  const models = createModels();
-  models.setProvider(script.provider);
+// A runner in this process, reconnecting like runner.js, serving `models` as `serveRunner` does.
+export async function localRunner(name, { models, resolve, echo, onTell, model = '' }) {
   let socket, closing = false;
   const connect = () => {
-    socket = new WebSocket(`ws://127.0.0.1:${port}/ws?${new URLSearchParams({ runner: name, dir, model: 'echo/echo' })}`);
-    const r = serveRunner({ name, dir, models, resolve: () => ({ model: script.getModel() }), echo: script, send: (t) => socket.readyState === WebSocket.OPEN && socket.send(t), onTell });
+    socket = new WebSocket(`ws://127.0.0.1:${port}/ws?${new URLSearchParams({ runner: name, dir, model })}`);
+    const r = serveRunner({ name, dir, models, resolve, echo, send: (t) => socket.readyState === WebSocket.OPEN && socket.send(t), onTell });
     socket.onmessage = ({ data }) => r.receive(data);
     socket.onclose = () => { r.stopAll(); if (!closing) setTimeout(connect, 300); };
     socket.onerror = () => {};
@@ -108,6 +106,16 @@ export async function scriptedRunner(name, route, { onTell } = {}) {
   connect();
   await until(() => api('GET', '/api/runners').then((r) => r.json.some((x) => x.name === name && x.online)));
   return { close: () => { closing = true; socket.close(); } };
+}
+
+// A local runner whose only model, echo/echo, answers route(request). `model` adds to it, like a small `contextWindow`
+// to force a compaction.
+export async function scriptedRunner(name, route, { onTell, model = {} } = {}) {
+  const script = fauxProvider({ provider: 'echo', models: [{ id: 'echo', ...model }], tokensPerSecond: 200 });
+  script.setResponses(Array.from({ length: 2000 }, () => route));
+  const models = createModels();
+  models.setProvider(script.provider);
+  return localRunner(name, { models, resolve: () => ({ model: script.getModel() }), echo: script, onTell, model: 'echo/echo' });
 }
 
 export const say = (t) => fauxAssistantMessage([fauxText(t)]);

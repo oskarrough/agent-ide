@@ -23,7 +23,7 @@ Open http://127.0.0.1:3000 and:
 4. Send `$ ls` to run a command in the runner's folder.
 5. Tick **Show structure** to see the JSON behind it all.
 
-Or read [examples/](examples): one file per idea, each starting its own server and runner, checking what it claims. `bun run examples` runs them all, `bun examples/05-fork.js` one. The last uses a real model through your pi login, so it only runs on its own or with `REAL=1 bun run examples`.
+Or read [examples/](examples): one file per idea, each starting its own server and runner, checking what it claims. `bun run examples` runs them all, `bun examples/05-fork.js` one. Those named `real-model` use a real model through your pi login, so they only run on their own or with `REAL=1 bun run examples`.
 
 ## The machine
 
@@ -41,7 +41,7 @@ client.html ──▶ server.js   one Pi Durable harness: threads, and each agen
 6. The runner resolves the model the way `pi --model` does, with pi's own resolver, settings and logins: a pattern, a `:thinking` suffix, or nothing for pi's default.
 7. The server keeps each model a runner resolved, without credentials, and an offline runner takes only those.
 8. `echo/echo` is pi-ai's faux provider, for testing: it answers `echo@RUNNER heard: ` and the last user text.
-9. A thread never runs: every entry in it is a passive message with its `author` and `body`, and `to`, `from`, `re`, `answer`, `error` or `shell` when it has them.
+9. A thread never runs: every entry in it is a passive message with its `author` and `body`, and `to`, `from`, `re`, `answer`, `error` or `shell` when it has them, or, with memory, a line.
 10. Each agent in a thread answers from its own Pi conversation, made the first time it is asked there and owned by an Anchor task in the thread.
 11. The thread's doc maps the agent's name to that conversation, and a doc on the conversation names its thread, the agent's name there, and the messages it hasn't been given.
 12. Having no thread doc, an agent's conversation never shows up as a thread.
@@ -75,11 +75,23 @@ client.html ──▶ server.js   one Pi Durable harness: threads, and each agen
 40. [talk.js](talk.js) (on, `TALK=0`) gives agents `post` and `threads` tools.
 41. [status.js](status.js) (on, `STATUS=0`) has runners report to their terminal with OSC 7501, a record for the runner and one per thread by its id.
 42. [director.js](director.js) (`DIRECTOR=1`) has a message ask the agents it @mentions.
-43. With talk, an agent's `post` is one commit, keyed by its tool call so a replay finds it.
-44. When an agent answers posts from another thread, the answer goes back to that thread instead of a report, as a message with `from` and `re`.
-45. That answer asks every agent who posted, and steers into their work if they're busy.
-46. A reply to that answer sends nothing back, so the exchange ends there, like email.
-47. [examples/](examples) defines the rest and checks all of it: the HTTP API, the runner end's interface (`serveRunner` in [remote.js](remote.js)), and each sentence above.
+43. [memory.js](memory.js) (`MEMORY=1`, with `MEMORY_MODEL=model@runner`) gives each thread a memory.
+44. With talk, an agent's `post` is one commit, keyed by its tool call so a replay finds it.
+45. When an agent answers posts from another thread, the answer goes back to that thread instead of a report, as a message with `from` and `re`.
+46. That answer asks every agent who posted, and steers into their work if they're busy.
+47. A reply to that answer sends nothing back, so the exchange ends there, like email.
+48. With memory, each message in a thread gets a line of at most 512 bytes: itself when it fits, or else written by `MEMORY_MODEL` from its text and the thread's memory before it, asked again up to five times while too long.
+49. A line request that fails for a rate limit or a dropped connection waits and tries again, by pi-ai's `retryAssistantCall`.
+50. Neighbouring lines merge in pairs up a binary tree, a pair that fits being its own line.
+51. Each line is an `agent-ide.line` entry `{l, i, text, size}` in the thread, written once by a background Line task that the post's commit creates, so stopping a thread never cuts its memory short.
+52. A fork reads its source's lines through for ranges that end before the fork point.
+53. When Pi compacts an agent's conversation, memory writes Pi's summary instead of the agent's model: the thread's lines up to the last message the agent was given before the cut.
+54. That memory merges the most due pair first, `(T - last) / 2^l`, where their line is built, until it fits in 64 KB, and writes each line `id+n|text`, `id` being the position of its first message and `n` how many it covers.
+55. A message not yet given a line shows there as `(not summarized yet: zoom it)`.
+56. With memory, a Deliver task's input holds its newest messages whole up to 64 KB, at least the last, and the older ones as the thread's memory over their range, also within 64 KB.
+57. With memory, an agent has `zoom {id, n}`, which opens a line into the two it was made from, or into the message whole when `n` is 1.
+58. A prompt section tells it the lines are its memory, and to zoom before it guesses.
+59. [examples/](examples) defines the rest and checks all of it: the HTTP API, the runner end's interface (`serveRunner` in [remote.js](remote.js)), and each sentence above.
 
 ## What it promises
 
@@ -88,6 +100,7 @@ client.html ──▶ server.js   one Pi Durable harness: threads, and each agen
 3. **Models of your choice.** Any model pi can name, named the way pi names it.
 4. **Stable messaging.** A message between threads arrives once and its answer comes back once, even across restarts and stops.
 5. **Forks.** Fork a thread at any entry, with each agent in it, to try another path from the same point.
+6. **Memory** (under exploration). A thread never has to end, and anything said in it can be found again, word for word.
 
 ## Running it
 
@@ -96,6 +109,8 @@ bun server.js                          # http://127.0.0.1:3000, stored in agent-
 HOST=0.0.0.0 PORT=3001 bun server.js   # reachable from other machines
 DIRECTOR=1 bun server.js               # multiplayer
 TALK=0 STATUS=0 bun server.js          # the core alone
+MEMORY=1 MEMORY_MODEL=haiku@laptop bun server.js   # threads that never end
+bun scripts/replay-pi.js ~/.pi/agent/sessions/FOLDER   # pi sessions, or one .jsonl, as one long thread
 DB_PATH=other.sqlite bun server.js     # another store; only one server may use a file
 
 bun runner.js --server http://127.0.0.1:3000 --name laptop [--alias "Oskar's laptop"] --dir ~/code [--owner oskar]
@@ -120,7 +135,8 @@ Send `x-user: name` to say who you are. A thread entry is Pi's own, `{id, kind: 
 - `POST /api/threads/:id/read`: marks it read for you, so its last answer stops counting as done.
 - `POST /api/threads/:id/stop`: stops its agents, deliveries and commands, and withdraws their queued inputs.
 - `DELETE /api/threads/:id`: hides it; Pi Durable keeps everything.
+- `GET /api/threads/:id/memory?zoom=id,n`: with memory, the thread's memory as `{lines: [{id, n, text}]}`, or with `zoom` the two lines that line was made from, or `{message}` whole when `n` is 1; the client shows it as a panel.
 - `GET /api/conversations/:id`: any Pi conversation's view as Pi gives it, such as an agent's: its entries and docs.
 - `GET /api/runners`: each runner, its default model, the models it has resolved, and the calls it's answering.
-- Agents' tools, with talk: `post {"thread"?, "title"?, "body", "to"?}`, where no thread starts a child and `to` is `model@runner`, a runner, or `nobody`; and `threads {"thread"?, "last"?}`.
+- Agents' tools, with talk: `post {"thread"?, "title"?, "body", "to"?}`, where no thread starts a child and `to` is `model@runner`, a runner, or `nobody`; and `threads {"thread"?, "last"?}`; with memory, `zoom {"id","n"}`.
 - `/ws`: pushes `{threadId}` whenever a thread changes. Runners connect here too and speak the protocol in [remote.js](remote.js).
