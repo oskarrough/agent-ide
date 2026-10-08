@@ -1,6 +1,7 @@
 // With memory, every message gets a line and neighbouring lines merge in pairs, once each, through a SIGKILL. A short
 // message is its own line; a long one is written by MEMORY_MODEL, retried when too long. A fork reads its source's
-// lines through and builds only its own.
+// lines through and builds only its own. A rate limit is tried again.
+import { fauxAssistantMessage } from '@earendil-works/pi-ai/providers/faux';
 import { api, check, done, linesOf, say, scriptedRunner, server, sleep, text, until, view } from './lib.js';
 
 const env = { MEMORY: '1', MEMORY_MODEL: 'echo/echo@bot' };
@@ -13,6 +14,7 @@ const route = (request) => {
   const all = request.messages.map((m) => text(m)).join('\n');
   const input = first.slice(first.lastIndexOf('<input>'));
   requests.push({ first, all, input });
+  if (input.includes('RATELIMIT') && requests.filter((r) => r.input.includes('RATELIMIT')).length === 1) return fauxAssistantMessage([], { stopReason: 'error', errorMessage: 'Rate limit exceeded' });
   return say(line(input.includes('TOOLONG') && request.messages.length <= 3 ? 700 : 300));
 };
 const long = (tag) => `${tag} ${'y'.repeat(2000 - tag.length - 1)}`;
@@ -44,6 +46,10 @@ check(tooLong.length === 2 && tooLong[1].all.includes('Too long: your line is 70
 check(bl.find((x) => x.l === 0 && x.i === 2)?.size === 300, 'and the line that fits is kept');
 const second = requests.find((r) => r.input.includes('second'));
 check(second?.first.includes(`0+1|${bl.find((x) => x.l === 0 && x.i === 0).text}`), 'the second message\'s request holds the first\'s line in <chat>');
+
+await post(b, long('RATELIMIT'));
+await until(async () => has(await linesOf(b), 0, 3), 20000);
+check(requests.filter((r) => r.input.includes('RATELIMIT')).length === 2 && has(await linesOf(b), 0, 3), 'a rate-limited line request waits and tries again');
 
 const c = await thread('restart');
 const entries = [];

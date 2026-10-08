@@ -1,11 +1,12 @@
 // A thread's memory: a line of at most 512 bytes per message, neighbouring lines merged in pairs up a binary tree, each
 // an `agent-ide.line` entry in the thread written once by a background Line task. Lines are keyed by (l, i): level, and
 // index at that level, so a line covers messages i·2^l to (i+1)·2^l - 1 by position in the thread.
-import { Type } from '@earendil-works/pi-ai';
+import { retryAssistantCall, Type } from '@earendil-works/pi-ai';
 import { CompactionTask, defineExtension, defineTask, defineTool, hook } from '@earendil-works/pi-durable';
 import { messageText } from './remote.js';
 
 const KIND = 'agent-ide.line';
+const RETRY = { enabled: true, maxRetries: 10, baseDelayMs: 2000 };
 const LINE = 512, BUDGET = 64 * 1024, WHOLE = 64 * 1024, CONTEXT = 16 * 1024, RETRIES = 5;
 const bytes = (text) => Buffer.byteLength(text);
 const key = (l, i) => `${l}:${i}`;
@@ -77,7 +78,8 @@ export function server(core) {
     const messages = [{ role: 'system', content: WRITER, timestamp: Date.now() }, { role: 'user', content: task, timestamp: Date.now() }];
     let best;
     for (let n = 0; n < RETRIES; n++) {
-      const reply = await core.models.completeSimple(model, { messages }, { signal });
+      // A rate limit or a dropped connection waits and tries again, as Pi's generations do.
+      const reply = await retryAssistantCall(() => core.models.completeSimple(model, { messages }, { signal }), RETRY, signal);
       if (reply.stopReason === 'error' || reply.stopReason === 'aborted') throw new Error(reply.errorMessage ?? reply.stopReason);
       const text = messageText(reply).trim();
       if (best === undefined || bytes(text) < bytes(best)) best = text;
