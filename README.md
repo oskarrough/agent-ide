@@ -109,6 +109,7 @@ HOST=0.0.0.0 PORT=3001 bun server.js   # reachable from other machines
 DIRECTOR=1 bun server.js               # multiplayer
 TALK=0 STATUS=0 bun server.js          # the core alone
 MEMORY=1 MEMORY_MODEL=haiku@laptop bun server.js   # threads that never end
+bun scripts/replay-pi.js ~/.pi/agent/sessions/FOLDER   # pi sessions, or one .jsonl, as one long thread
 DB_PATH=other.sqlite bun server.js     # another store; only one server may use a file
 
 bun runner.js --server http://127.0.0.1:3000 --name laptop [--alias "Oskar's laptop"] --dir ~/code [--owner oskar]
