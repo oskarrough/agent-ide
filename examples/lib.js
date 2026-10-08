@@ -93,17 +93,12 @@ export function done() {
   process.exit(failed ? 1 : 0);
 }
 
-// A runner in this process, reconnecting like runner.js, whose only model, echo/echo, answers route(request). `model`
-// adds to it, like a small `contextWindow` to force a compaction.
-export async function scriptedRunner(name, route, { onTell, model = {} } = {}) {
-  const script = fauxProvider({ provider: 'echo', models: [{ id: 'echo', ...model }], tokensPerSecond: 200 });
-  script.setResponses(Array.from({ length: 2000 }, () => route));
-  const models = createModels();
-  models.setProvider(script.provider);
+// A runner in this process, reconnecting like runner.js, serving `models` as `serveRunner` does.
+export async function localRunner(name, { models, resolve, echo, onTell, model = '' }) {
   let socket, closing = false;
   const connect = () => {
-    socket = new WebSocket(`ws://127.0.0.1:${port}/ws?${new URLSearchParams({ runner: name, dir, model: 'echo/echo' })}`);
-    const r = serveRunner({ name, dir, models, resolve: () => ({ model: script.getModel() }), echo: script, send: (t) => socket.readyState === WebSocket.OPEN && socket.send(t), onTell });
+    socket = new WebSocket(`ws://127.0.0.1:${port}/ws?${new URLSearchParams({ runner: name, dir, model })}`);
+    const r = serveRunner({ name, dir, models, resolve, echo, send: (t) => socket.readyState === WebSocket.OPEN && socket.send(t), onTell });
     socket.onmessage = ({ data }) => r.receive(data);
     socket.onclose = () => { r.stopAll(); if (!closing) setTimeout(connect, 300); };
     socket.onerror = () => {};
@@ -111,6 +106,16 @@ export async function scriptedRunner(name, route, { onTell, model = {} } = {}) {
   connect();
   await until(() => api('GET', '/api/runners').then((r) => r.json.some((x) => x.name === name && x.online)));
   return { close: () => { closing = true; socket.close(); } };
+}
+
+// A local runner whose only model, echo/echo, answers route(request). `model` adds to it, like a small `contextWindow`
+// to force a compaction.
+export async function scriptedRunner(name, route, { onTell, model = {} } = {}) {
+  const script = fauxProvider({ provider: 'echo', models: [{ id: 'echo', ...model }], tokensPerSecond: 200 });
+  script.setResponses(Array.from({ length: 2000 }, () => route));
+  const models = createModels();
+  models.setProvider(script.provider);
+  return localRunner(name, { models, resolve: () => ({ model: script.getModel() }), echo: script, onTell, model: 'echo/echo' });
 }
 
 export const say = (t) => fauxAssistantMessage([fauxText(t)]);

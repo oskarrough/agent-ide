@@ -1,7 +1,8 @@
 // A thread's memory: a line of at most 512 bytes per message, neighbouring lines merged in pairs up a binary tree, each
 // an `agent-ide.line` entry in the thread written once by a background Line task. Lines are keyed by (l, i): level, and
 // index at that level, so a line covers messages i·2^l to (i+1)·2^l - 1 by position in the thread.
-import { CompactionTask, defineExtension, defineTask, hook } from '@earendil-works/pi-durable';
+import { Type } from '@earendil-works/pi-ai';
+import { CompactionTask, defineExtension, defineTask, defineTool, hook } from '@earendil-works/pi-durable';
 import { messageText } from './remote.js';
 
 const KIND = 'agent-ide.line';
@@ -38,6 +39,14 @@ Use the space up to the limit, and give it by value:
 4. Least of all, tool steps: what was done to what, and the outcome.
 
 Avoid omissions. Name a minor item in a word or two rather than drop it: an absent item can never be found. Copy names, numbers, ids, paths and errors exactly. Tag each item with its author ("oskar: ...; echo/echo@laptop: ..."), and credit quoted text to its real author. Never make anything look further along than it was. If told the line is too long, shorten it. Non-ASCII characters cost 2-4 bytes.`;
+
+const SECTION = `Your memory of this thread may come as <chat> lines \`id+n|text\`, each standing for n messages from position id. The lines form a binary tree: each message is compressed into a line (a short message is its own line), then adjacent lines are merged in pairs, again and again. So recent lines cover one message each, and older lines cover more. A message not summarized yet shows as "${NOT_YET}".
+
+Tools:
+- zoom(id, n) opens line id+n into the two lines it was made from;
+- zoom(id, 1) gives message id whole.
+
+The memory is yours, and its latest word on a thing is the truth. Whenever you need any information, first find its latest mention in the memory and zoom until you have it whole, before any other source, and before you act, guess or ask. Never search for it with other tools; zoom is your only way into the tree. Lines keep little of tool output, so say in your answer what you learned that will matter later.`;
 
 export function server(core) {
   const name = process.env.MEMORY_MODEL;
@@ -132,8 +141,29 @@ export function server(core) {
     return T > 0 ? { summary: render(memory(await core.commit((tx) => lines(tx, home.thread)), T, BUDGET)) } : undefined;
   };
 
+  // A fork zooms into its source's lines too, as `lines` reads them through.
+  const zoom = defineTool({
+    name: 'zoom',
+    description: 'Open a line of your memory of this thread, `id+n|…`: you get the two lines it was made from, or the message whole when n is 1.',
+    parameters: Type.Object({ id: Type.Number(), n: Type.Number() }),
+    replay: 'safe',
+    execute: async ({ id, n }, api) => {
+      const { thread } = await core.home(api.conversationId);
+      const all = await core.messages(thread);
+      const l = Math.log2(n);
+      if (!Number.isInteger(l) || !Number.isInteger(id) || id < 0 || id % n || id >= all.length) throw new Error(`No line ${id}+${n}; zoom one from your memory`);
+      if (n === 1) return { content: [{ type: 'text', text: core.said(all[id]) }] };
+      const have = await core.commit((tx) => lines(tx, thread));
+      const half = (j) => have.get(key(l - 1, j)) ?? { l: l - 1, i: j, text: NOT_YET };
+      return { content: [{ type: 'text', text: [half(2 * (id / n)), half(2 * (id / n) + 1)].filter((x) => x.i * n / 2 < all.length).map(rendered).join('\n') }] };
+    },
+  });
+
   return {
-    extension: defineExtension({ name: 'agent-ide.memory', tasks: [Line], hooks: [hook(CompactionTask, { beforeCompact })] }),
+    extension: defineExtension({
+      name: 'agent-ide.memory', tasks: [Line], tools: [zoom], sections: [{ key: 'memory', tag: false, render: () => SECTION }],
+      hooks: [hook(CompactionTask, { beforeCompact })],
+    }),
     posted: (tx, threadId, entry) => tx.createTask(Line, { entry: entry.id }, background(threadId)),
   };
 }

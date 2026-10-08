@@ -23,7 +23,7 @@ Open http://127.0.0.1:3000 and:
 4. Send `$ ls` to run a command in the runner's folder.
 5. Tick **Show structure** to see the JSON behind it all.
 
-Or read [examples/](examples): one file per idea, each starting its own server and runner, checking what it claims. `bun run examples` runs them all, `bun examples/05-fork.js` one. The last uses a real model through your pi login, so it only runs on its own or with `REAL=1 bun run examples`.
+Or read [examples/](examples): one file per idea, each starting its own server and runner, checking what it claims. `bun run examples` runs them all, `bun examples/05-fork.js` one. Those named `real-model` use a real model through your pi login, so they only run on their own or with `REAL=1 bun run examples`.
 
 ## The machine
 
@@ -87,7 +87,9 @@ client.html ──▶ server.js   one Pi Durable harness: threads, and each agen
 52. When Pi compacts an agent's conversation, memory writes Pi's summary instead of the agent's model: the thread's lines up to the last message the agent was given before the cut.
 53. That memory merges the most due pair first, `(T - last) / 2^l`, where their line is built, until it fits in 64 KB, and writes each line `id+n|text`, `id` being the position of its first message and `n` how many it covers.
 54. A message not yet given a line shows there as `(not summarized yet: zoom it)`.
-55. [examples/](examples) defines the rest and checks all of it: the HTTP API, the runner end's interface (`serveRunner` in [remote.js](remote.js)), and each sentence above.
+55. With memory, an agent has `zoom {id, n}`, which opens a line into the two it was made from, or into the message whole when `n` is 1.
+56. A prompt section tells it the lines are its memory, and to zoom before it guesses.
+57. [examples/](examples) defines the rest and checks all of it: the HTTP API, the runner end's interface (`serveRunner` in [remote.js](remote.js)), and each sentence above.
 
 ## What it promises
 
@@ -132,5 +134,5 @@ Send `x-user: name` to say who you are. A thread entry is Pi's own, `{id, kind: 
 - `DELETE /api/threads/:id`: hides it; Pi Durable keeps everything.
 - `GET /api/conversations/:id`: any Pi conversation's view as Pi gives it, such as an agent's: its entries and docs.
 - `GET /api/runners`: each runner, its default model, the models it has resolved, and the calls it's answering.
-- Agents' tools, with talk: `post {"thread"?, "title"?, "body", "to"?}`, where no thread starts a child and `to` is `model@runner`, a runner, or `nobody`; and `threads {"thread"?, "last"?}`.
+- Agents' tools, with talk: `post {"thread"?, "title"?, "body", "to"?}`, where no thread starts a child and `to` is `model@runner`, a runner, or `nobody`; and `threads {"thread"?, "last"?}`; with memory, `zoom {"id","n"}`.
 - `/ws`: pushes `{threadId}` whenever a thread changes. Runners connect here too and speak the protocol in [remote.js](remote.js).
