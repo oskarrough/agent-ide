@@ -68,17 +68,18 @@ client.html ──▶ server.js   one Pi Durable harness: threads, and each agen
 33. Stopping a thread is Pi's abort of its conversation, which reaches its tasks and, through each Anchor, its agents' runs and queued inputs.
 34. A fork is Pi's own fork of the thread at an entry, plus a fork of each agent's conversation at its last answer up to there, all in one commit.
 35. The forked agent's unseen messages are those up to there that none of its inputs placed by that answer held.
-36. A fork reports nowhere.
-37. A thread's status for a reader is one of the [Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status)'s five words: working, or blocked when its working agents' runners are offline, from its live tasks; done or error for a result newer than the reader's read marker; otherwise idle.
-38. Optional behaviour lives in modules, one file each, switched by an env var of its name.
-39. [talk.js](talk.js) (on, `TALK=0`) gives agents `post` and `threads` tools.
-40. [status.js](status.js) (on, `STATUS=0`) has runners report to their terminal with OSC 7501, a record for the runner and one per thread by its id.
-41. [director.js](director.js) (`DIRECTOR=1`) has a message ask the agents it @mentions.
-42. With talk, an agent's `post` is one commit, keyed by its tool call so a replay finds it.
-43. When an agent answers posts from another thread, the answer goes back to that thread instead of a report, as a message with `from` and `re`.
-44. That answer asks every agent who posted, and steers into their work if they're busy.
-45. A reply to that answer sends nothing back, so the exchange ends there, like email.
-46. [examples/](examples) defines the rest and checks all of it: the HTTP API, the runner end's interface (`serveRunner` in [remote.js](remote.js)), and each sentence above.
+36. An agent asked up to there with no answer yet gets a new conversation in the fork, in the same commit, having seen nothing.
+37. A fork reports nowhere.
+38. A thread's status for a reader is one of the [Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status)'s five words: working, or blocked when its working agents' runners are offline, from its live tasks; done or error for a result newer than the reader's read marker; otherwise idle.
+39. Optional behaviour lives in modules, one file each, switched by an env var of its name.
+40. [talk.js](talk.js) (on, `TALK=0`) gives agents `post` and `threads` tools.
+41. [status.js](status.js) (on, `STATUS=0`) has runners report to their terminal with OSC 7501, a record for the runner and one per thread by its id.
+42. [director.js](director.js) (`DIRECTOR=1`) has a message ask the agents it @mentions.
+43. With talk, an agent's `post` is one commit, keyed by its tool call so a replay finds it.
+44. When an agent answers posts from another thread, the answer goes back to that thread instead of a report, as a message with `from` and `re`.
+45. That answer asks every agent who posted, and steers into their work if they're busy.
+46. A reply to that answer sends nothing back, so the exchange ends there, like email.
+47. [examples/](examples) defines the rest and checks all of it: the HTTP API, the runner end's interface (`serveRunner` in [remote.js](remote.js)), and each sentence above.
 
 ## What it promises
 

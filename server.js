@@ -62,12 +62,11 @@ const Deliver = defineTask({
     async ask({ id, conversationId: threadId, input: { agent, held, steer } }, rt, ctx) {
       const to = await agentOf(agent);
       await runners.online(to.runner, rt.signal);
-      const all = await messages(threadId);
-      const content = all.filter((e) => held.includes(e.id)).map(said).join('\n\n');
+      const content = (await messages(threadId)).filter((e) => held.includes(e.id)).map(said).join('\n\n');
       const handle = await rt.conversation(agent, ctx);
       const submission = await handle.submit({ type: 'input', content, requestId: requestOf(id, held), whenBusy: steer ? 'steer' : 'followUp' }, ctx);
       const settled = await submission.wait(ctx);
-      const told = await outcome(threadId, agent, settled, all);
+      const told = await outcome(threadId, agent, settled);
       await rt.commit(async (tx) => {
         for (const { thread, data, steer } of told) await post(tx, thread, data, { steer });
         if (settled.entry === undefined) await restore(tx, agent, held);
@@ -260,21 +259,11 @@ async function post(tx, threadId, data, { steer = false, empty = false } = {}) {
     : [];
   const entry = await tx.appendEntry(threadId, { kind: KIND, data });
   for (const [name, agent] of Object.entries(row.agents)) if (name !== data.author || data.from) (await tx.doc(AgentHome, agent)).unseen.push(entry.id);
-  const all = await tx.doc(Runners);
   for (const t of to) {
     const name = agentName(t);
-    if (!row.agents[name]) {
-      const anchor = await tx.createTask(Anchor, null, { ...own, conversationId: threadId });
-      row.agents[name] = (await tx.createConversation({ ownership: { kind: 'task', taskId: anchor } })).id;
-      Object.assign(await tx.doc(AgentHome, row.agents[name]), { thread: threadId, name, unseen: [...prior, entry.id] });
-    }
+    row.agents[name] ??= await newAgent(tx, threadId, name, [...prior, entry.id]);
     const agent = row.agents[name];
-    await configure(tx, agent, {
-      model: { provider: `runner:${t.runner}`, modelId: t.model },
-      thinkingLevel: t.effort ?? null,
-      cwd: folder(all[t.runner], t),
-      instructions: `You are ${name} in thread ${threadId}, with humans and other agents. Messages come to you as "name: text". Only your final answer goes back to the thread.`,
-    });
+    await setUp(tx, agent, threadId, t);
     const home = await tx.doc(AgentHome, agent);
     const held = [...home.unseen];
     home.unseen = [];
@@ -282,6 +271,21 @@ async function post(tx, threadId, data, { steer = false, empty = false } = {}) {
   }
   return { entry: entry.id, to };
 }
+
+// An agent's conversation in a thread, owned by an Anchor there, with the thread messages it hasn't seen.
+async function newAgent(tx, threadId, name, unseen) {
+  const anchor = await tx.createTask(Anchor, null, { ...own, conversationId: threadId });
+  const { id } = await tx.createConversation({ ownership: { kind: 'task', taskId: anchor } });
+  Object.assign(await tx.doc(AgentHome, id), { thread: threadId, name, unseen });
+  return id;
+}
+
+const setUp = async (tx, agent, threadId, t) => configure(tx, agent, {
+  model: { provider: `runner:${t.runner}`, modelId: t.model },
+  thinkingLevel: t.effort ?? null,
+  cwd: folder((await tx.doc(Runners))[t.runner], t),
+  instructions: `You are ${agentName(t)} in thread ${threadId}, with humans and other agents. Messages come to you as "name: text". Only your final answer goes back to the thread.`,
+});
 
 // An input withdrawn before it was placed gave its agent nothing: its messages are unseen again.
 async function restore(tx, agent, held) {
@@ -291,15 +295,15 @@ async function restore(tx, agent, held) {
 
 // What a settled input posts, and where: its answer, with `re`, the messages it held that asked the agent, or an error.
 // Inputs that share one answer post it once, by the first. Posts it answers get it back, else a child thread reports
-// it to its parent. A stopped input posts nothing at all.
-async function outcome(threadId, agent, settled, all) {
+// it to its parent. A stopped input posts nothing at all. It reads the thread after settling, for steers that joined.
+async function outcome(threadId, agent, settled) {
   const done = settled.status === 'done';
   if (!done && settled.reason === 'aborted') return [];
   const group = done ? (await collect((cursor) => storage.scanSubmissions({ conversationId: agent }, 500, cursor, context))).filter((r) => r.answer === settled.answer) : [settled];
   if (group[0].id !== settled.id) return [];
   const { name } = await home(agent);
   const ids = new Set(group.flatMap((r) => heldOf(r.requestId)));
-  const held = all.filter((e) => ids.has(e.id));
+  const held = (await messages(threadId)).filter((e) => ids.has(e.id));
   const re = held.filter((e) => e.data.to?.some((t) => agentName(t) === name)).map((e) => e.id);
   const body = done ? messageText((await commit((tx) => tx.entry(settled.answer)))?.model?.[0]) || '(empty answer)'
     : `gave no answer: ${settled.reason}${settled.detail ? ` (${JSON.stringify(settled.detail)})` : ''}`;
@@ -317,10 +321,16 @@ async function status(id, reads, agents, shell, reader) {
   if (shell || agents.some((a) => a.status === 'working')) return 'working';
   if (agents.some((a) => a.status === 'blocked')) return 'blocked';
   const seen = new Set(reader ? [reads[reader]] : Object.values(reads));
-  for (const entry of (await (await harness.conversation(id, context)).entries({}, 50, undefined, context)).items) {
-    if (seen.has(entry.id)) return 'idle';
-    if (entry.data?.answer || entry.data?.error || entry.data?.shell) return entry.data.error ? 'error' : 'done';
-  }
+  const handle = await harness.conversation(id, context);
+  let cursor;
+  do {
+    const page = await handle.entries({}, 50, cursor, context);
+    for (const entry of page.items) {
+      if (seen.has(entry.id)) return 'idle';
+      if (entry.data?.answer || entry.data?.error || entry.data?.shell) return entry.data.error ? 'error' : 'done';
+    }
+    cursor = page.next;
+  } while (cursor);
   return 'idle';
 }
 
@@ -380,11 +390,17 @@ async function seenBy(id, cut) {
 }
 
 // One commit forks the thread at an entry and each agent's conversation at its last answer up to there; an agent's
-// unseen messages are those up to there it hadn't seen by that answer.
+// unseen messages are those up to there it hadn't seen by that answer. An agent asked up to there with no answer yet
+// starts a new conversation, having seen nothing.
 async function forkThread(author, id, { at, title }) {
   const shown = (await messages(id)).filter((e) => e.id <= Number(at));
   const answers = {};
-  for (const { data } of shown) if (data.answer) answers[data.author] = data.answer;
+  const asked = {};
+  for (const { data } of shown) {
+    if (data.answer) answers[data.author] = data.answer;
+    for (const t of data.to ?? []) asked[agentName(t)] = t;
+  }
+  const fresh = Object.entries(asked).filter(([name]) => !answers[name]);
   const agents = await Promise.all(Object.entries(answers).map(async ([name, { conversation: c, entry }]) => {
     const seen = new Set(await seenBy(c, entry));
     return { name, c, entry, unseen: shown.filter((e) => !seen.has(e.id) && (e.data.author !== name || e.data.from)).map((e) => e.id) };
@@ -398,6 +414,10 @@ async function forkThread(author, id, { at, title }) {
         const anchor = await tx.createTask(Anchor, null, { ...own, conversationId: forkId });
         row[name] = (await tx.forkConversation(c, entry, { ownership: { kind: 'task', taskId: anchor } })).id;
         Object.assign(await tx.doc(AgentHome, row[name]), { thread: forkId, name, unseen });
+      }
+      for (const [name, t] of fresh) {
+        row[name] = await newAgent(tx, forkId, name, shown.filter((e) => e.data.author !== name || e.data.from).map((e) => e.id));
+        await setUp(tx, row[name], forkId, t);
       }
       Object.assign(await tx.doc(Thread, forkId), { title: named, createdAt: new Date().toISOString(), createdBy: author, agents: row });
     },
