@@ -18,7 +18,7 @@ const answer = view?.entries.find((e) => e.entry.kind === 'pi.assistant');
 check(input?.author === 'oskar' && input?.to?.model === 'echo/echo' && input?.to?.runner === 'laptop', 'input shows author and to', JSON.stringify(input));
 check(input?.entry.data === undefined, 'pi.user entry carries no data (stock Pi)');
 check(answer?.author === 'echo@laptop', 'answer author is the agent', answer?.author);
-check(answer?.replyTo?.[0] === input?.entry.id, 'answer replies to the input', JSON.stringify(answer?.replyTo));
+check(answer?.re?.[0] === input?.entry.id, 'the answer says which input it answers (re)', JSON.stringify(answer?.re));
 check(view?.agent?.model === 'echo/echo', 'thread agent from Pi', JSON.stringify(view?.agent));
 
 // Ana says something without a `to`: the thread's agent answers her.

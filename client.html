@@ -300,9 +300,10 @@
       return build('li', { id: `e-${item.entry.id}`, className }, [
         build('b', { textContent: item.author }), ' ', build('span', { className: 'id', textContent: `#${item.entry.id} ${item.entry.kind}` }),
         // An input written in another thread: where it came from, and the post it answers there, if it's an answer.
+        // What it answers: inputs here, or, from another thread, the posts it answers there.
         item.from ? build('span', { className: 'chip' }, [item.re ? `↩ answers ${item.re.map((n) => `#${n}`).join(', ')} in ` : 'from ', threadLink(server, item.from)]) : '',
         item.to ? build('span', { className: 'chip to', textContent: `→ ${toLabel(item.to)}` }) : '',
-        ...item.replyTo.map((input) => build('a', { href: '#', className: 'chip', textContent: `↩ #${input}`, title: 'An input this answers', onclick: (event) => { event.preventDefault(); flash(input); } })),
+        ...(item.from ? [] : item.re ?? []).map((input) => build('a', { href: '#', className: 'chip', textContent: `↩ #${input}`, title: 'An input this answers', onclick: (event) => { event.preventDefault(); flash(input); } })),
         build('button', { className: 'link', textContent: 'fork', title: 'A new thread with everything up to here', onclick: () => attempt(forkAt(server.url, item.entry.id)) }),
         build('div', {}, [body].flat()),
         raw(item),

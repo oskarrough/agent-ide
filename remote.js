@@ -166,7 +166,8 @@ export function remoteEnv(runners, name, cwd) {
 // ── Runner end ──
 
 // Answers the server's requests: model streams with this machine's logins, and file and shell calls confined to `dir`.
-// A message with no id is outside any call; it goes to `onTell`.
+// A message with no id is outside any call; it goes to `onTell`. `echo` is the pi-ai faux provider behind `echo/echo`:
+// it answers from a queue, so each request queues one echo. The examples pass a scripted one here instead.
 export function serveRunner({ name, dir, models, echo, send, onTell }) {
   const running = new Map();
   const handles = new Map();

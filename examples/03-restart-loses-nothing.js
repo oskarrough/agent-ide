@@ -26,6 +26,6 @@ const after = await until(async () => {
   return v.entries.filter((e) => e.entry.kind === 'pi.assistant' && e.author === 'echo@laptop').length >= 2 ? v : null;
 }, 15000);
 const benInput = after?.entries.find((e) => e.author === 'ben');
-check(Boolean(benInput) && after.entries.some((e) => e.replyTo.includes(benInput.entry.id)), 'after restart ben is answered and credited', JSON.stringify(after?.entries.map((e) => [e.author, e.entry.kind])));
+check(Boolean(benInput) && after.entries.some((e) => e.re?.includes(benInput.entry.id)), 'after restart ben is answered and credited', JSON.stringify(after?.entries.map((e) => [e.author, e.entry.kind])));
 
 done();

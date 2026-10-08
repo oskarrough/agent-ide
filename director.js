@@ -1,18 +1,19 @@
-// The director, for multiplayer threads: an entry only gets an answer when it says who should give it.
-// Off by default; DIRECTOR=1 turns it on. Without it, an entry with no `to` goes to the thread's agent.
-//
-// An agent is a model on a runner, named like gpt-6.1-sol@laptop. @gpt-6.1-sol@laptop, @gpt-6.1-sol or @laptop picks
-// one the thread has asked before. A mention beats the `to`, so humans can talk among themselves and call in whoever they need.
+// The director, for multiplayer threads: an entry is answered only by an agent it @mentions, so humans can talk among
+// themselves and call in whoever they need. Off by default; DIRECTOR=1 turns it on.
+// Its one hook, route, gets the entry and the thread's past inputs and returns who answers: the first agent mentioned,
+// as @gpt-6.1-sol@laptop, @gpt-6.1-sol or @laptop, among those the thread has asked; else the entry's own `to`, or nobody.
 export const server = () => ({ route });
 
-function route(posted, asked) {
+function route({ body, to }, asked) {
   const agents = new Map();
-  for (const { to } of asked) if (to) agents.set(`${to.model.split('/').pop()}@${to.runner}`, to);
-  const named = [...agents].reverse();
-  const mentioned = (name) => new RegExp(`@${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w@.-])`).test(posted.body);
-  for (const part of [(name) => name, (name) => name.split('@')[0], (name) => name.split('@')[1]]) {
-    const found = named.find(([name]) => mentioned(part(name)));
-    if (found) return found[1];
+  for (const input of asked.toReversed()) {
+    if (!input.to) continue;
+    const model = input.to.model.split('/').pop();
+    for (const name of [`${model}@${input.to.runner}`, model, input.to.runner]) if (!agents.has(name)) agents.set(name, input.to);
   }
-  return posted.to;
+  for (const [, name] of body.matchAll(/@([\w.-]+(?:@[\w.-]+)?)/g)) {
+    const agent = agents.get(name.replace(/\.+$/, ''));
+    if (agent) return agent;
+  }
+  return to;
 }

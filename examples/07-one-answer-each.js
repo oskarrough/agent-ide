@@ -37,14 +37,14 @@ const kid = child && await view(child.id);
 const posts = kid?.entries.filter((e) => e.entry.kind === 'pi.user') ?? [];
 const answers = kid?.entries.filter((e) => e.entry.kind === 'pi.assistant') ?? [];
 const replies = p.entries.filter((e) => e.entry.kind === 'pi.user' && e.re);
-console.log('answers in the child reply to:', JSON.stringify(answers.map((a) => a.replyTo)));
+console.log('answers in the child reply to:', JSON.stringify(answers.map((a) => a.re)));
 console.log('replies in the parent:', JSON.stringify(replies.map((r) => ({ re: r.re, body: r.body.slice(0, 30) }))));
 check(Boolean(settled), 'the parent heard back');
 check(posts.length === 3, 'three posts in the child', kid && kinds(kid));
-const want = answers.map((a) => a.replyTo.join(',')).sort();
+const want = answers.map((a) => (a.re ?? []).join(',')).sort();
 const got = replies.map((r) => r.re.join(',')).sort();
 check(JSON.stringify(want) === JSON.stringify(got), 'one reply per child answer, re = the posts it answers', `want ${JSON.stringify(want)} got ${JSON.stringify(got)}`);
-if (!answers.some((a) => a.replyTo.length > 1)) console.log('(Pi answered each follow-up on its own; grouping not exercised)');
+if (!answers.some((a) => (a.re ?? []).length > 1)) console.log('(Pi answered each follow-up on its own; grouping not exercised)');
 
 bot.close();
 done();

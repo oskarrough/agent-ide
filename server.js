@@ -174,8 +174,10 @@ async function annotate(id, entries) {
     const author = input?.author ?? entry.data?.author
       ?? (['pi.assistant', 'pi.tool-result'].includes(entry.kind) ? agentName(asked?.to) : entry.kind.startsWith('pi.') ? 'pi' : 'server');
     const said = input && messageText(entry.model?.[0]);
-    const wrote = input ? { requestId: input.requestId, from: input.from, re: input.re, body: said.startsWith(heading(input)) ? said.slice(heading(input).length) : said } : {};
-    return { author, to: input?.to ?? entry.data?.to ?? null, ...wrote, replyTo: replies.get(entry.id) ?? [], entry };
+    const wrote = input ? { requestId: input.requestId, from: input.from, body: said.startsWith(heading(input)) ? said.slice(heading(input).length) : said } : {};
+    // re: what this entry answers. An answer's inputs here, or, with from, the posts it answers in that thread.
+    const re = input?.re ?? replies.get(entry.id);
+    return { author, to: input?.to ?? entry.data?.to ?? null, ...wrote, ...(re ? { re } : {}), entry };
   });
 }
 

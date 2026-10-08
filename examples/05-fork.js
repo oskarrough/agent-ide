@@ -27,7 +27,7 @@ check(fv.parent === null, 'a fork is not a child thread', fv.parent);
 check(fv.entries.length === source.entries.indexOf(firstAnswer) + 1 && fv.entries.at(-1).entry.id === firstAnswer.entry.id, 'fork has the history up to the entry', brief(fv));
 const fHello = fv.entries.find((e) => e.entry.kind === 'pi.user');
 check(fHello?.author === 'oskar' && fHello.to?.model === 'echo/echo' && fHello.requestId === hello.requestId, 'inherited input keeps author and to', JSON.stringify(fHello));
-check(answers(fv)[0]?.author === 'echo@laptop' && answers(fv)[0].replyTo[0] === hello.entry.id, 'inherited answer keeps its agent and replyTo', JSON.stringify(answers(fv)[0]));
+check(answers(fv)[0]?.author === 'echo@laptop' && answers(fv)[0].re?.[0] === hello.entry.id, 'inherited answer keeps its agent and re', JSON.stringify(answers(fv)[0]));
 check(fv.agent?.model === 'echo/echo', 'fork keeps the agent it had then', JSON.stringify(fv.agent));
 check((await api('GET', '/api/threads')).json.some((t) => t.id === f), 'fork is in the thread list');
 
@@ -35,7 +35,7 @@ check((await api('GET', '/api/threads')).json.some((t) => t.id === f), 'fork is 
 await api('POST', `/api/threads/${f}/entries`, { body: 'other way' }, 'ben');
 fv = await answered(f, 2);
 const ben = fv?.entries.find((e) => e.author === 'ben');
-check(Boolean(ben) && answers(fv).at(-1).replyTo.includes(ben.entry.id), 'fork answers its own input', brief(fv));
+check(Boolean(ben) && answers(fv).at(-1).re?.includes(ben.entry.id), 'fork answers its own input', brief(fv));
 check((await view(a)).entries.length === source.entries.length, 'source unchanged, no report from the fork', brief(await view(a)));
 
 // A fork of a fork inherits authors through the chain.
