@@ -14,6 +14,6 @@ check(Boolean(blocked), 'a thread waiting for an offline runner is blocked');
 await api('POST', `/api/threads/${id}/stop`, {});
 await sleep(800);
 const stopped = await view(id);
-check(stopped.status === 'idle' && !stopped.entries.some((e) => e.entry.kind === 'agent-ide.error'), 'a stopped thread is idle, with no error entry', `${stopped.status} ${stopped.entries.map((e) => e.entry.kind)}`);
+check(stopped.status === 'idle' && !stopped.entries.some((e) => e.data.error), 'a stopped thread is idle, with no error entry', `${stopped.status} ${JSON.stringify(stopped.entries)}`);
 
 done();

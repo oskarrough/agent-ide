@@ -1,6 +1,6 @@
 // One answer each. An agent posts three times to a child thread that's still busy with the first.
 // Every answer the child gives comes back to the parent exactly once, saying all the posts it answers.
-import { api, call, check, done, kinds, say, scriptedRunner, server, sleep, text, until, view } from './lib.js';
+import { answers as answersOf, api, brief, call, check, done, say, scriptedRunner, server, sleep, text, until, view } from './lib.js';
 
 await server();
 
@@ -26,24 +26,24 @@ const { json: { id: parent } } = await api('POST', '/api/threads', { title: 'dup
 await api('POST', `/api/threads/${parent}/entries`, { body: 'ask twice', to: { runner: 'bot', model: 'echo/echo' } });
 const settled = await until(async () => {
   const v = await view(parent);
-  return v.entries.some((e) => e.entry.kind === 'pi.assistant' && JSON.stringify(e.entry.model).includes('Got it')) && v.status !== 'working' ? v : null;
+  return answersOf(v).some((e) => e.data.body.includes('Got it')) && v.status !== 'working' ? v : null;
 }, 30000);
 await sleep(4000);
 
 const p = await view(parent);
 const child = (await api('GET', '/api/threads')).json.find((t) => t.parent === parent);
 const kid = child && await view(child.id);
-const posts = kid?.entries.filter((e) => e.entry.kind === 'pi.user') ?? [];
-const answers = kid?.entries.filter((e) => e.entry.kind === 'pi.assistant') ?? [];
-const replies = p.entries.filter((e) => e.entry.kind === 'pi.user' && e.re);
-console.log('answers in the child reply to:', JSON.stringify(answers.map((a) => a.re)));
-console.log('replies in the parent:', JSON.stringify(replies.map((r) => ({ re: r.re, body: r.body.slice(0, 30) }))));
+const posts = kid?.entries.filter((e) => e.data.from === parent) ?? [];
+const answers = kid ? answersOf(kid) : [];
+const replies = p.entries.filter((e) => e.data.from === child?.id && e.data.re);
+console.log('answers in the child reply to:', JSON.stringify(answers.map((a) => a.data.re)));
+console.log('replies in the parent:', JSON.stringify(replies.map((r) => ({ re: r.data.re, body: r.data.body.slice(0, 30) }))));
 check(Boolean(settled), 'the parent heard back');
-check(posts.length === 3, 'three posts in the child', kid && kinds(kid));
-const want = answers.map((a) => (a.re ?? []).join(',')).sort();
-const got = replies.map((r) => r.re.join(',')).sort();
+check(posts.length === 3, 'three posts in the child', kid && brief(kid));
+const want = answers.map((a) => (a.data.re ?? []).join(',')).sort();
+const got = replies.map((r) => r.data.re.join(',')).sort();
 check(JSON.stringify(want) === JSON.stringify(got), 'one reply per child answer, re = the posts it answers', `want ${JSON.stringify(want)} got ${JSON.stringify(got)}`);
-if (!answers.some((a) => (a.re ?? []).length > 1)) console.log('(Pi answered each follow-up on its own; grouping not exercised)');
+if (!answers.some((a) => (a.data.re ?? []).length > 1)) console.log('(Pi answered each follow-up on its own; grouping not exercised)');
 
 bot.close();
 done();

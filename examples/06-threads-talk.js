@@ -1,6 +1,6 @@
 // Threads talking: an agent's `post` and `threads` tools. The answer to a post comes back with `from` and `re`
-// and wakes the asker, asking nothing back. The server is killed mid-call; the rerun finds the child it started.
-import { api, call, check, done, kinds, messageText, say, scriptedRunner, server, sleep, text, until, view } from './lib.js';
+// and wakes the agent who posted, asking nothing back. The server is killed mid-call; the rerun finds the child it started.
+import { answers, api, brief, call, check, conversationOf, done, say, scriptedRunner, server, sleep, text, until, view } from './lib.js';
 
 let srv = await server();
 
@@ -30,47 +30,48 @@ srv = await server();
 
 const woke = await until(async () => {
   const v = await view(parent);
-  return v.entries.some((e) => e.entry.kind === 'pi.assistant' && messageText(e).startsWith('Got it')) && v.status !== 'working' ? v : null;
+  return answers(v).some((e) => e.data.body.startsWith('Got it')) && v.status !== 'working' ? v : null;
 }, 20000);
-check(Boolean(woke), 'the child\'s answer woke the parent agent', woke ? '' : kinds(await view(parent)));
+check(Boolean(woke), 'the child\'s answer woke the parent agent', woke ? '' : brief(await view(parent)));
 
 const threads = (await api('GET', '/api/threads')).json;
 check(threads.filter((t) => t.parent === parent).length === 1, 'exactly one child after the restart', JSON.stringify(threads));
 const kid = await view(child.id);
-const asks = kid.entries.filter((e) => e.entry.kind === 'pi.user');
-check(asks.length === 1 && asks[0].author === 'echo@bot' && asks[0].to?.model === 'echo/echo', 'one input in the child, by the parent agent', kinds(kid));
-check(kid.entries.filter((e) => e.entry.kind === 'pi.assistant').length === 1, 'the child answered once', kinds(kid));
+const asks = kid.entries.filter((e) => e.data.from === parent);
+check(asks.length === 1 && asks[0].data.author === 'echo@bot' && asks[0].data.to?.[0].model === 'echo/echo', 'one post in the child, by the parent agent', brief(kid));
+check(answers(kid).length === 1, 'the child answered once', brief(kid));
 const p = await view(parent);
-const replies = p.entries.filter((e) => e.entry.kind === 'pi.user' && e.author === 'echo@bot');
-check(replies.length === 1 && replies[0].to?.runner === 'bot', 'one reply input in the parent, from the child\'s agent', kinds(p));
-check(asks[0]?.from === parent && !asks[0]?.re && asks[0]?.body === 'compute 2+2', 'the post says it came from the parent', JSON.stringify(asks[0] && { from: asks[0].from, re: asks[0].re, body: asks[0].body }));
-check(replies[0]?.from === child.id && replies[0]?.re?.[0] === asks[0]?.entry.id && replies[0]?.body.startsWith('4, after'), 'the reply says where it came from and which post it answers', JSON.stringify(replies[0] && { from: replies[0].from, re: replies[0].re, body: replies[0].body.slice(0, 20) }));
+const replies = p.entries.filter((e) => e.data.from === child.id && e.data.re);
+check(replies.length === 1 && replies[0].data.to?.[0].runner === 'bot', 'one reply in the parent, from the child\'s agent, asking the parent\'s', brief(p));
+check(!asks[0]?.data.re && asks[0]?.data.body === 'compute 2+2', 'the post says it came from the parent', JSON.stringify(asks[0]));
+check(replies[0]?.data.re?.[0] === asks[0]?.id && replies[0]?.data.body.startsWith('4, after'), 'the reply says where it came from and which post it answers', JSON.stringify(replies[0]?.data).slice(0, 300));
 await sleep(1500);
-check((await view(child.id)).entries.filter((e) => e.entry.kind === 'pi.user').length === 1, 'the parent\'s answer to the reply stays in the parent: no ping-pong');
-check(!p.entries.some((e) => e.entry.kind === 'agent-ide.note' && e.entry.data.text.startsWith('echo@bot:')), 'no passive note on top of the reply');
-check(p.entries.some((e) => e.entry.kind === 'agent-ide.note' && e.entry.data.text.includes('handed off')), 'hand-off note in the parent');
+check((await view(child.id)).entries.filter((e) => e.data.from === parent).length === 1, 'the parent\'s answer to the reply stays in the parent: no ping-pong');
+check(!p.entries.some((e) => e.data.from === child.id && !e.data.re), 'no report on top of the reply');
+check(p.entries.some((e) => e.data.body.includes('handed off')), 'hand-off message in the parent');
 
-// read: list threads, then a thread's entries.
+// The tools run in the parent agent's own conversation, so their results are there.
+const results = async () => (await conversationOf(await view(parent), 'echo@bot')).entries.filter((e) => e.kind === 'pi.tool-result').map((e) => text(e.model[0]));
+const idle = () => until(async () => (await view(parent)).status !== 'working');
 await api('POST', `/api/threads/${parent}/entries`, { body: 'list threads' });
-const listed = await until(async () => (await view(parent)).entries.findLast((e) => e.entry.kind === 'pi.tool-result' && messageText(e).includes('#')));
-check(Boolean(listed) && messageText(listed).includes(`#${child.id} sum, child of #${parent}`) && messageText(listed).includes('(yours)'), 'read lists threads', listed && messageText(listed));
-await until(async () => (await view(parent)).status !== 'working');
+const listed = await until(async () => (await results()).find((t) => t.includes('(yours)')));
+check(Boolean(listed) && listed.includes(`#${child.id} sum, child of #${parent}`), 'threads lists threads', listed);
+await idle();
 await api('POST', `/api/threads/${parent}/entries`, { body: `read child ${child.id}` });
-const read = await until(async () => (await view(parent)).entries.findLast((e) => e.entry.kind === 'pi.tool-result' && messageText(e).includes('compute 2+2')));
-check(Boolean(read) && /echo@bot from thread \d+ to echo@bot: compute 2\+2/.test(messageText(read)) && messageText(read).includes('4, after'), 'read shows a thread\'s entries', read && messageText(read));
-await until(async () => (await view(parent)).status !== 'working');
+const read = await until(async () => (await results()).find((t) => t.includes('compute 2+2')));
+check(Boolean(read) && /echo@bot from thread \d+ to echo@bot: compute 2\+2/.test(read) && read.includes('4, after'), 'threads shows a thread\'s messages', read);
+await idle();
 
 // Posting to its own thread is refused, as a tool error the model sees.
 await api('POST', `/api/threads/${parent}/entries`, { body: `post to own thread ${parent}` });
-const refused = await until(async () => (await view(parent)).entries.findLast((e) => e.entry.kind === 'pi.tool-result' && messageText(e).includes('your own thread')));
-check(Boolean(refused), 'posting to its own thread is refused');
-await until(async () => (await view(parent)).status !== 'working');
+check(Boolean(await until(async () => (await results()).find((t) => t.includes('your own thread')))), 'posting to its own thread is refused');
+await idle();
 
-// The human hand-off still works: a human posts in a child, and the answer is a note in the parent.
+// The human hand-off still works: a human posts in a child, and the answer is reported in the parent.
 const { json: { id: human } } = await api('POST', '/api/threads', { title: 'by hand', parent });
 await api('POST', `/api/threads/${human}/entries`, { body: 'hello there', to });
-const note = await until(async () => (await view(parent)).entries.find((e) => e.entry.kind === 'agent-ide.note' && e.entry.data.text.startsWith('echo@bot: heard')));
-check(Boolean(note), 'a human\'s hand-off still reports as a note');
+const report = await until(async () => (await view(parent)).entries.find((e) => e.data.from === human && e.data.body === 'heard: oskar: hello there'));
+check(Boolean(report), 'a human\'s hand-off still reports to the parent');
 
 bot.close();
 done();

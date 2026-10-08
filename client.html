@@ -32,9 +32,6 @@
   .chip.to { background: #e3eeff; }
   #entries li { border-bottom: 1px solid #eee; padding: .5rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   #entries li.agent { background: #f6f3fb; padding-left: .5rem; }
-  #entries li.quiet { color: #59636e; font-size: 13px; }
-  #entries li.note { color: #59636e; font-style: italic; }
-  #entries li.error { color: #ad1b1b; }
   #entries li.live { opacity: .75; }
   #entries li.flash { outline: 2px solid #f0b400; }
   #entries b { font-weight: 600; }
@@ -164,6 +161,8 @@
         $('runner').value = $('model').value = $('dir').value = '';
         renderPicker();
       }
+      if (first) opened.clear();
+      for (const conversation of opened.keys()) opened.set(conversation, await api(url, `/api/conversations/${conversation}`));
       renderThread();
     } catch (error) {
       await refresh(url);
@@ -215,7 +214,7 @@
   }
 
   function runnerView(server, runner) {
-    const threads = server.threads.filter((t) => ['working', 'blocked'].includes(t.status) && t.agent?.runner === runner.name);
+    const threads = server.threads.filter((t) => t.agents.some((a) => a.status !== 'idle' && a.to?.runner === runner.name));
     return build('li', {}, [
       build('span', { className: `dot ${runner.online ? 'on' : ''}` }), runner.name, ' ',
       build('small', { textContent: `${runner.alias ? `${runner.alias} · ` : ''}${runner.owner ? `${runner.owner}'s · ` : ''}${runner.dir} · ${runner.model || 'no default model'}` }),
@@ -226,8 +225,8 @@
   }
 
   function statusView(thread) {
-    const agent = agentName(thread.agent);
-    const text = { working: ` · ${agent || 'shell'} working`, blocked: ` · ${thread.agent?.runner} is offline`, done: ' · done', error: ' · failed' }[thread.status];
+    const busy = thread.agents.filter((a) => a.status !== 'idle').map((a) => a.name).join(', ');
+    const text = { working: ` · ${busy || 'shell'} working`, blocked: ` · ${busy} waits for its runner`, done: ' · done', error: ' · failed' }[thread.status];
     return text ? build('small', { className: `status ${thread.status}` }, [text]) : '';
   }
 
@@ -245,10 +244,11 @@
     const fork = view?.conversation?.parent;
     $('heading').textContent = draft ? 'New thread' : view?.title || 'Pick a thread, or start one';
     $('meta').replaceChildren(...(view ? [
-      build('span', { className: 'id', textContent: `#${view.id} ` }), view.status, view.agent ? ` · agent ${toLabel(view.agent)}` : '',
+      build('span', { className: 'id', textContent: `#${view.id} ` }), view.status,
       view.parent ? build('span', {}, [' · child of ', threadLink(server, view.parent)]) : '',
       fork ? build('span', {}, [' · forked from ', threadLink(server, fork.conversationId), ` at #${fork.at}`]) : '',
       ['working', 'blocked'].includes(view.status) ? build('button', { className: 'link', textContent: 'stop', onclick: () => attempt(post(server.url, `/api/threads/${view.id}/stop`, {})) }) : '',
+      build('ul', {}, view.agents.map(agentView)),
     ] : draft ? ['Your first entry starts it.'] : []));
     const { entries, ...row } = view || {};
     $('raw-thread').hidden = !structure || !view;
@@ -258,59 +258,44 @@
     renderPicker();
   }
 
-  const textOf = (content) => typeof content === 'string' ? content : (content ?? []).filter((p) => p.type === 'text').map((p) => p.text).join('');
-
-  function entryBody(server, { body, entry }) {
-    const message = entry.model?.[0];
-    switch (entry.kind) {
-      case 'pi.user': return ['', body ?? textOf(message.content)];
-      case 'pi.assistant': return ['agent', [
-        ...message.content.filter((p) => p.type === 'thinking' && p.thinking).map((p) => build('details', {}, [build('summary', { className: 'mute', textContent: 'thinking' }), p.thinking])),
-        textOf(message.content),
-        ...message.content.filter((p) => p.type === 'toolCall').map((p) => build('pre', { textContent: `${p.name} ${JSON.stringify(p.arguments)}` })),
-        ['stop', 'toolUse'].includes(message.stopReason) ? '' : build('div', { className: 'error', textContent: `${message.stopReason}${message.errorMessage ? `: ${message.errorMessage}` : ''}` }),
-      ]];
-      case 'pi.tool-result': return ['agent', [build('details', {}, [build('summary', { className: message.isError ? 'error' : 'mute', textContent: `${message.toolName} result${message.isError ? ' (error)' : ''}` }), build('pre', { textContent: textOf(message.content) })])]];
-      case 'pi.system': return ['quiet', ['system prompt or tools changed']];
-      case 'agent-ide.chat': return ['', entry.data.body];
-      case 'agent-ide.shell': return ['', [build('pre', { textContent: `$ ${entry.data.command}\nexit ${entry.data.code ?? entry.data.error}\n${[entry.data.stdout, entry.data.stderr].filter(Boolean).join('\n')}` })]];
-      case 'agent-ide.note': return ['note', linked(server, entry.data.text)];
-      case 'agent-ide.error': return ['error', entry.data.text];
-      default: return ['quiet', [entry.kind]];
-    }
+  // Each agent's own Pi conversation, shown raw in the structure view.
+  const opened = new Map();
+  function agentView(agent) {
+    const shown = opened.get(agent.conversation);
+    return build('li', {}, [
+      build('b', { textContent: agent.name }), ` ${agent.status} `,
+      structure ? build('button', { className: 'link', textContent: `${shown ? 'hide' : 'show'} conversation #${agent.conversation}`, onclick: () => attempt((async () => {
+        if (shown) opened.delete(agent.conversation);
+        else opened.set(agent.conversation, await api(selected.url, `/api/conversations/${agent.conversation}`));
+        renderThread();
+      })()) }) : '',
+      shown && structure ? raw(shown) : '',
+    ]);
   }
+
 
   function renderEntries() {
     const server = current();
     if (!view) return $('entries').replaceChildren();
-    const live = view.docs['pi.live'] ?? {};
-    const inbox = view.docs['pi.inbox']?.items ?? [];
-    $('entries').replaceChildren(...view.entries.map((item) => {
-      const [className, body] = entryBody(server, item);
-      return build('li', { id: `e-${item.entry.id}`, className }, [
-        build('b', { textContent: item.author }), ' ', build('span', { className: 'id', textContent: `#${item.entry.id} ${item.entry.kind}` }),
-        item.from ? build('span', { className: 'chip' }, [item.re ? `↩ answers ${item.re.map((n) => `#${n}`).join(', ')} in ` : 'from ', threadLink(server, item.from)]) : '',
-        item.to ? build('span', { className: 'chip to', textContent: `→ ${toLabel(item.to)}` }) : '',
-        ...(item.from ? [] : item.re ?? []).map((input) => build('a', { href: '#', className: 'chip', textContent: `↩ #${input}`, title: 'An input this answers', onclick: (event) => { event.preventDefault(); flash(input); } })),
-        build('button', { className: 'link', textContent: 'fork', title: 'A new thread with everything up to here', onclick: () => attempt(forkAt(server.url, item.entry.id)) }),
-        build('div', {}, [body].flat()),
-        raw(item),
+    $('entries').replaceChildren(...view.entries.map((entry) => {
+      const m = entry.data;
+      return build('li', { id: `e-${entry.id}`, className: m.error ? 'error' : m.answer ? 'agent' : '' }, [
+        build('b', { textContent: m.author }), ' ', build('span', { className: 'id', textContent: `#${entry.id}` }),
+        m.from ? build('span', { className: 'chip' }, [m.re ? `↩ answers ${m.re.map((n) => `#${n}`).join(', ')} in ` : 'from ', threadLink(server, m.from)]) : '',
+        m.to ? build('span', { className: 'chip to', textContent: `→ ${m.to.map(toLabel).join(', ')}` }) : '',
+        ...(m.from ? [] : m.re ?? []).map((n) => build('a', { href: '#', className: 'chip', textContent: `↩ #${n}`, title: 'A message this answers', onclick: (event) => { event.preventDefault(); flash(n); } })),
+        m.answer ? build('span', { className: 'chip', textContent: `conversation #${m.answer.conversation} at #${m.answer.entry}` }) : '',
+        build('button', { className: 'link', textContent: 'fork', title: 'A new thread with everything up to here', onclick: () => attempt(forkAt(server.url, entry.id)) }),
+        build('div', {}, linked(server, m.body)),
+        m.shell ? build('pre', { textContent: `exit ${m.shell.code ?? m.shell.error} on ${m.shell.runner}\n${[m.shell.stdout, m.shell.stderr].filter(Boolean).join('\n')}` }) : '',
+        raw(entry),
       ]);
     }),
-    ...(live.generation ? [build('li', { className: 'agent live' }, [
-      build('b', { textContent: agentName(view.agent) }), ' ',
-      build('small', { className: 'status', textContent: live.generation.retry ? `retrying after: ${live.generation.retry.error}` : view.status === 'blocked' ? `waits for ${view.agent?.runner}, which is offline…` : `writing… attempt ${live.generation.attempt}` }),
-      build('div', { textContent: textOf(live.generation.message?.content) }),
-    ])] : []),
-    ...(live.tools ?? []).filter((slot) => slot.status !== 'done').map((slot) => build('li', { className: 'agent live' }, [
-      build('b', { textContent: agentName(view.agent) }), ' ', build('small', { className: 'status', textContent: `${slot.name} ${slot.status}` }),
-      build('pre', { textContent: slot.output || '…' }),
-    ])),
+    ...view.agents.filter((a) => a.status !== 'idle').map((a) => build('li', { className: 'agent live' }, [build('b', { textContent: a.name }), ' ', build('small', { className: 'status', textContent: a.status === 'blocked' ? `waits for ${a.to?.runner}, which is offline…` : 'working…' })])),
     ...view.shells.map((run) => build('li', { className: 'live' }, [
       build('b', { textContent: run.author }), ' ', build('small', { className: 'status', textContent: `running on ${run.to.runner}` }),
       build('pre', { textContent: `$ ${run.command}\n${run.stdout}${run.stderr}` }),
-    ])),
-    ...inbox.map((item) => build('li', { className: 'quiet' }, [`queued ${item.mode}: `, item.mode === 'write' ? item.entry.kind : textOf(item.content)])));
+    ])));
   }
 
   async function forkAt(url, at) {
@@ -330,7 +315,8 @@
   function renderPicker() {
     const server = current();
     if (!server) return;
-    const fallback = server.info?.modules.includes('director') ? 'the director decides' : agentName(view?.agent) || 'nobody yet';
+    const last = view?.entries.findLast((e) => e.data.to)?.data.to.map(agentName).join(', ');
+    const fallback = server.info?.modules.includes('director') ? 'the director decides' : last || 'nobody yet';
     keep($('runner'), [['', `default (${fallback})`], ['-', 'nobody'], ...server.runners.map((r) => [r.name, `${r.name}${r.online ? '' : ' (offline)'}`])]);
     const runner = server.runners.find((r) => r.name === $('runner').value);
     keep($('effort'), [['', 'effort (default)'], ...EFFORTS.map((e) => [e, e])]);
@@ -339,8 +325,8 @@
     for (const id of ['model', 'effort', 'dir']) $(id).disabled = !runner;
     $('child-label').hidden = !selected?.id;
     const model = ($('model').value || runner?.model || '').split('/').pop();
-    $('body').placeholder = !runner ? ($('runner').value === '-' ? 'An entry for the humans here' : `An entry for ${fallback}; $ command runs on its runner`)
-      : `An entry for ${model}@${runner.name}; $ command runs in its folder`;
+    $('body').placeholder = !runner ? ($('runner').value === '-' ? 'A message for nobody in particular' : `A message for ${fallback}; $ command runs on its runner`)
+      : `A message for ${model}@${runner.name}; $ command runs in its folder`;
   }
   $('runner').onchange = $('model').oninput = renderPicker;
 

@@ -1,7 +1,7 @@
 // STATUS=1 on a runner skips asking the terminal, for when stdout isn't one.
 
 // One telling at a time, so an older one never lands after a newer one.
-export function server({ runners, known, threadList, agentName }) {
+export function server({ runners, known, threadList }) {
   let telling;
   let again = false;
   function changed() {
@@ -10,8 +10,9 @@ export function server({ runners, known, threadList, agentName }) {
       const all = await known();
       for (const name of Object.keys(all).filter(runners.isOnline)) {
         const threads = (await threadList(all[name].owner))
-          .filter((t) => t.agent?.runner === name && t.status !== 'idle')
-          .map(({ id, title, agent, status }) => ({ id, title, agent: agentName(agent), status }));
+          .map((t) => ({ ...t, agents: t.agents.filter((a) => a.to?.runner === name).map((a) => a.name).join(' ') }))
+          .filter((t) => t.agents && t.status !== 'idle')
+          .map(({ id, title, agents, status }) => ({ id, title, agents, status }));
         runners.tell(name, { op: 'status', threads });
       }
     })().catch((error) => console.error(error)).finally(() => {
@@ -58,7 +59,7 @@ export async function runner({ name, server }) {
   let reported = new Map();
   function report(root, threads = []) {
     const next = new Map([['', programStatus({ state: root.state, app: 'agent-ide', msg: root.msg })]]);
-    for (const t of threads) next.set(String(t.id), programStatus({ state: t.status, id: t.id, title: `#${t.id} ${t.title}`, msg: t.agent }));
+    for (const t of threads) next.set(String(t.id), programStatus({ state: t.status, id: t.id, title: `#${t.id} ${t.title}`, msg: t.agents }));
     for (const id of reported.keys()) if (!next.has(id)) process.stdout.write(programStatus({ state: 'clear', id }));
     for (const [id, sequence] of next) if (reported.get(id) !== sequence) process.stdout.write(sequence);
     reported = next;

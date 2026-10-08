@@ -57,11 +57,11 @@ export async function api(method, route, body, user = 'oskar') {
   return { status: res.status, json: await res.json() };
 }
 export const view = async (id) => (await api('GET', `/api/threads/${id}`)).json;
-export const answers = (v) => v.entries.filter((e) => e.entry.kind === 'pi.assistant');
-export const brief = (v) => JSON.stringify(v?.entries.map((e) => [e.entry.id, e.author, e.entry.kind]));
-export const kinds = (v) => v.entries.map((e) => `${e.author}/${e.entry.kind}`).join(', ');
+// An agent's own Pi conversation in a thread: its entries and docs.
+export const conversationOf = async (v, name) => (await api('GET', `/api/conversations/${v.agents.find((a) => a.name === name)?.conversation}`)).json;
+export const answers = (v) => v.entries.filter((e) => e.data.answer);
+export const brief = (v) => JSON.stringify(v?.entries.map((e) => [e.id, e.data.author, e.data.body.slice(0, 40)]));
 export { text };
-export const messageText = (e) => text(e.entry.model?.[0]);
 
 export async function until(fn, ms = 8000, every = 100) {
   const end = Date.now() + ms;

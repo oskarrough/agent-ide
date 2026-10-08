@@ -38,7 +38,7 @@ check(record('')?.app === 'agent-ide' && record('')?.msg.includes('laptop'), 'ro
 const { json: { id } } = await api('POST', '/api/threads', { title: 'Status test' });
 await api('POST', `/api/threads/${id}/entries`, { body: 'a secret prompt', to: { runner: 'laptop', model: 'echo/echo' } });
 check(Boolean(await until(async () => record(id)?.state === 'done', 8000, 50)), 'thread record done after the answer', JSON.stringify(reports));
-check(record(id)?.title === `#${id} Status test` && record(id)?.msg === 'echo@laptop', 'title is the thread, msg the agent', JSON.stringify(record(id)));
+check(record(id)?.title === `#${id} Status test` && record(id)?.msg === 'echo@laptop', 'title is the thread, msg its agents on this runner', JSON.stringify(record(id)));
 check(!reports.some((r) => `${r.title}${r.msg}`.includes('secret') || `${r.title}${r.msg}`.includes('heard')), 'no prompt or answer text in any report');
 check(!reports.some((r) => r.app && r.id), 'only the root names the app; threads inherit it');
 
@@ -54,7 +54,7 @@ check(record(id)?.state === 'done', 'someone else reading leaves it done for the
 await api('POST', `/api/threads/${id}/read`, {}, 'oskar');
 check(Boolean(await until(async () => !records.has(String(id)), 8000, 50)), 'the owner reading it clears the record', JSON.stringify(reports.at(-1)));
 
-// A thread whose agent is on another runner never shows here.
+// A thread whose agents are on another runner never shows here.
 const { json: { id: other } } = await api('POST', '/api/threads', { title: 'Elsewhere' });
 await api('POST', `/api/threads/${other}/entries`, { body: 'hi', to: { runner: 'quiet', model: 'echo/echo' } });
 await until(async () => (await view(other)).status === 'done', 8000, 50);

@@ -28,25 +28,29 @@ Or read [examples/](examples): one file per idea, each starting its own server a
 ## The machine
 
 ```
-client.html ──▶ server.js   one Pi Durable harness; every thread is a conversation in it
+client.html ──▶ server.js   one Pi Durable harness: threads, and each agent's conversation in them
                    ▲  model streams, file and shell calls
                    └── runner.js   on your machine: its pi logins, its folder
 ```
 
-1. The server keeps everything in one Pi Durable harness over one SQLite file: each thread is a conversation, and what agent-ide adds, like a title, a parent and read markers, is Pi docs beside it.
+1. The server keeps everything in one Pi Durable harness over one SQLite file: each thread is a Pi conversation, and what agent-ide adds, like a title, a parent, read markers and its agents, is a Pi doc beside it.
 2. A runner is a process on someone's machine that connects to the server's WebSocket and lends it its pi logins and a folder; it stores nothing.
-3. The server registers each runner as a Pi model provider, `runner:NAME`, whose streams run on the runner, and as the execution environment of every conversation whose agent uses it: Pi's whole `ExecutionEnv`, called over the socket and working in the runner's folder. Calls to an offline runner wait for it.
-4. An agent is a model on a runner, named `model@runner`, and a thread's agent is Pi's own agent setting; `echo/echo` is pi-ai's faux provider, for testing.
-5. Posting an entry is the one action: its `to` names the agent that answers and becomes the thread's agent, no `to` means the thread's agent, `to: null` means nobody, and `$ cmd` runs on the agent's runner.
-6. A thread runs one agent at a time, so while one works, asking a different agent there is refused.
-7. An input's Pi request id holds its `author`, `to` and `key` as URL params, plus `from` and `re` when it comes from another thread; the model reads them as a heading before the body.
-8. The server follows every input to its answer, again after a restart from Pi's submission records, and reports a child thread's answers to its parent as a note.
-9. A fork is Pi's own conversation fork at an entry; it reports nowhere, and its inherited inputs keep their authors.
-10. A thread's status for a reader is one of the [Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status)'s five words: working, or blocked when its runner is offline, from Pi's live run and inbox; done or error for a result newer than the reader's read marker; otherwise idle.
-11. Anything a restart or a replayed tool call might repeat is keyed, so the repeat finds the first.
-12. Optional behaviour lives in modules, one file each, switched by an env var of its name: [talk.js](talk.js) (on, `TALK=0`) gives agents `post` and `threads` tools; [status.js](status.js) (on, `STATUS=0`) has runners report to their terminal with OSC 7501, a record for the runner and one per thread by its id; [director.js](director.js) (`DIRECTOR=1`) has an entry answered only by an agent it @mentions.
-13. With talk, an answer to an agent's post comes back to the asking thread as an input with `from` and `re` that steers in and asks for nothing back, like email.
-14. [examples/](examples) defines the rest and checks all of it: the HTTP API, the runner end's interface (`serveRunner` in [remote.js](remote.js)), and each sentence above.
+3. The server registers each runner as a Pi model provider, `runner:NAME`, whose streams run on the runner, and as the execution environment of every conversation whose model is on it: Pi's whole `ExecutionEnv`, called over the socket and working in the runner's folder. Calls to an offline runner wait for it.
+4. An agent is a model on a runner, named by the model's id without its provider, so `echo/echo` on `laptop` is `echo@laptop`. `echo/echo` is pi-ai's faux provider, for testing: it answers `echo@RUNNER heard: ` and the last user text.
+5. A thread never runs: every entry in it is a passive message with its `author` and `body`, and `to`, `from`, `re`, `answer`, `error` or `shell` when it has them.
+6. Posting a message is the one action: its `to` names the agents it asks, no `to` asks whom the thread last asked, `to: null` asks nobody, and `$ cmd` runs on the first agent's runner and posts what it printed.
+7. Each agent in a thread answers from its own Pi conversation, made the first time it is asked there. The thread's doc maps the agent's name to that conversation, and a small doc on the conversation names its thread and the agent's name there. Having no thread doc, it never shows up as a thread.
+8. Asking an agent sends its conversation one input. The input holds every thread message the agent hasn't seen yet, except its own: those with its name and no `from`. Each is written as `author: body`, or `author, writing from thread N: body` (`answering` for a message with `re`) when it came from another thread.
+9. Each input's Pi request id records `upto`, the newest thread entry it holds, and `re`, the messages in it that asked the agent. The agent has seen everything up to the highest `upto` among its inputs. An input withdrawn before it was placed doesn't count.
+10. An agent's final answer is copied back into the thread with `re`, the messages that asked it, and `answer`, the entry it came from. An input that ends with no answer posts an `error` message instead, unless it was stopped. Other agents never see its tool calls.
+11. Several agents can work in one thread at once. The thread is working while any of them is, and stopping it stops them all.
+12. The server follows every input to its answer, again after a restart from Pi's submission records, and reports a child thread's answers to its parent as a message with `from`.
+13. A fork is Pi's own fork of the thread at an entry, plus a fork of each agent's conversation at its last answer up to there, all in one commit. A fork reports nowhere.
+14. A thread's status for a reader is one of the [Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status)'s five words: working, or blocked when its working agents' runners are offline, from Pi's live run and inbox of their conversations; done or error for a result newer than the reader's read marker; otherwise idle.
+15. Anything a restart or a replayed tool call might repeat is keyed, so the repeat finds the first.
+16. Optional behaviour lives in modules, one file each, switched by an env var of its name: [talk.js](talk.js) (on, `TALK=0`) gives agents `post` and `threads` tools; [status.js](status.js) (on, `STATUS=0`) has runners report to their terminal with OSC 7501, a record for the runner and one per thread by its id; [director.js](director.js) (`DIRECTOR=1`) has a message ask the agents it @mentions.
+17. With talk, when an agent answers a post from another thread, the answer goes back to that thread as a message with `from` and `re`. That message asks the agent who posted, and steers into its work if it is busy. Answering it sends nothing back, so the exchange ends there, like email.
+18. [examples/](examples) defines the rest and checks all of it: the HTTP API, the runner end's interface (`serveRunner` in [remote.js](remote.js)), and each sentence above.
 
 ## What it explores
 
@@ -72,16 +76,22 @@ The client is served at `/`, or by `bun client.html` with live reload. It can ho
 
 ## API
 
-Send `x-user: name` to say who you are.
+Send `x-user: name` to say who you are. A thread entry is Pi's own, `{id, kind: "agent-ide.message", data}`, and `data` is a message:
+
+```
+{ author, body, to?: [{runner, model, effort?, dir?}], from?: threadId, re?: [entryId],
+  answer?: {conversation, entry}, error?: true, shell?: {runner, code, stdout, stderr} }
+```
 
 - `GET /api/server`: the server's options, its modules, and what Pi is running.
-- `GET|POST /api/threads` `{"title","parent"?}`: each thread with its agent and status.
-- `GET /api/threads/:id`: the thread, Pi's docs (`pi.live`, `pi.inbox`, `pi.agent`, `pi.usage`), and every entry as `{author, to, re?, entry}`, plus `requestId, from, body` on inputs. `re` lists what an entry answers: for an answer, the inputs here; with `from`, the posts it answers in that thread.
-- `POST /api/threads/:id/entries` `{"body","to"?: {"runner","model"?,"effort"?,"dir"?} | null, "steer"?: true}`: a steer joins the answer being written.
+- `GET|POST /api/threads` `{"title","parent"?}`: each thread with its agents and status.
+- `GET /api/threads/:id`: the thread, its Pi conversation record, its `agents` as `{name, conversation, to, status}`, and every entry.
+- `POST /api/threads/:id/entries` `{"body","to"?: agent | [agent] | null, "steer"?: true}`, an agent being `{"runner","model"?,"effort"?,"dir"?}`: a steer joins the answer being written.
 - `POST /api/threads/:id/fork` `{"at": entryId, "title"?}`: a new thread from that entry.
 - `POST /api/threads/:id/read`: marks it read for you, so its last answer stops counting as done.
-- `POST /api/threads/:id/stop`: withdraws queued inputs and stops the agent.
+- `POST /api/threads/:id/stop`: withdraws queued inputs and stops its agents.
 - `DELETE /api/threads/:id`: hides it; Pi Durable keeps everything.
+- `GET /api/conversations/:id`: any Pi conversation's view as Pi gives it, such as an agent's: its entries and docs.
 - `GET /api/runners`: each runner, its default model, and the calls it's answering.
 - Agents' tools, with talk: `post {"thread"?, "title"?, "body", "to"?}`, where no thread starts a child and `to` is `model@runner`, a runner, or `nobody`; and `threads {"thread"?, "last"?}`.
 - `/ws`: pushes `{threadId}` whenever a thread changes. Runners connect here too and speak the protocol in [remote.js](remote.js).

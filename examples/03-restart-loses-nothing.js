@@ -1,6 +1,6 @@
 // A restart loses nothing. Ben posts while the runner is offline, the server restarts, and his input is
 // still queued, still his, and answered once the runner is back.
-import { answered, api, check, done, runner, server, sleep, until, view } from './lib.js';
+import { answered, answers, api, brief, check, done, runner, server, sleep, until, view } from './lib.js';
 
 let srv = await server();
 let laptop = await runner('laptop');
@@ -20,11 +20,8 @@ const queued = await view(id);
 check(queued.status === 'blocked', 'after restart the input waits for the runner', queued.status);
 
 laptop = await runner('laptop', { wait: false });
-const after = await until(async () => {
-  const v = await view(id);
-  return v.entries.filter((e) => e.entry.kind === 'pi.assistant' && e.author === 'echo@laptop').length >= 2 ? v : null;
-}, 15000);
-const benInput = after?.entries.find((e) => e.author === 'ben');
-check(Boolean(benInput) && after.entries.some((e) => e.re?.includes(benInput.entry.id)), 'after restart ben is answered and credited', JSON.stringify(after?.entries.map((e) => [e.author, e.entry.kind])));
+const after = await answered(id, 2, 15000);
+const ben = after?.entries.find((e) => e.data.author === 'ben');
+check(Boolean(ben) && answers(after).at(-1).data.re?.includes(ben.id), 'after restart ben is answered and credited', brief(after));
 
 done();
