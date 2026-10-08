@@ -12,7 +12,7 @@ The promises under "What it promises" in the README, and nothing else. A change 
 - **Stable.** A restart or a stop at any point loses nothing and duplicates nothing. An action that takes more than one commit is a Pi task or transaction, or it's a bug. Durability, ordering, retries and cancellation belong to Pi Durable, so find its primitive before writing your own.
 - **Fast.** No guardrail yet. Don't make it slower.
 - **Small.** The line count only grows with a reason in the commit message.
-- **Rebuildable.** The README and `examples/` are enough to rebuild it.
+- **Planned.** The README is the machine's plan, in rules; the code is how it runs. They change together.
 
 ## Before adding anything
 
@@ -21,29 +21,15 @@ The promises under "What it promises" in the README, and nothing else. A change 
 3. Can it be a module, off by default? Then make it one.
 4. Is there a version that deletes more than it adds? Build that one.
 
-## The loop
+## Reviewing
 
-Run it by hand, when Oskar asks.
+Read the README, the code and Pi Durable's spec as an adversary. Look for three things:
 
-1. **Examples.** `bun run examples` passes.
-2. **Rebuild.** Copy only `README.md`, `examples/` and `package.json` into an empty folder, and run `bun install`. A cheap model writes the code until the examples pass. In `FINDINGS.md` it logs every guess: what it needed, where it found it, and the sentence the README lacked.
-3. **Review.** A model that didn't write the code reads the README, the code and Pi Durable's spec, as an adversary. It looks for three things:
-   - where we rebuild something Pi already does
-   - where a sentence breaks between two steps (a restart, a stop, a fork, a replay)
-   - any concept that serves no promise
+- where we rebuild something Pi already does
+- where a sentence breaks between two steps (a restart, a stop, a fork, a replay)
+- any concept that serves no promise
 
-   A finding counts only if an example reproduces it.
-4. **Scoreboard.** Add a row. Fix what was reproduced. Turn each guess into a README sentence, or cut what caused it.
-
-The round is done when the review reproduces nothing.
-
-## Scoreboard
-
-| main | lines | sentences | rebuild guesses | reproduced findings |
-|---|---|---|---|---|
-| `50bf6a1` | 2,192 | 18 | 31 (Sonnet 5.5) | 3 (GPT-6-Astra) |
-
-Lines count `*.js`, `client.html`, `README.md` and `examples/*.js`.
+A finding counts only if an example reproduces it, and its fix lands with that example.
 
 ## Said no
 
@@ -53,5 +39,5 @@ One line each, so nobody proposes them twice.
 - **TypeScript or a build step.** Plain JS that runs with bun or Node.
 - **UX polish.** The client shows the data, nothing more.
 - **Our own durability.** Pi Durable has it.
-- **Running the loop on every push.** It costs a rebuild and a review each time. We run it by hand until the scoreboard shows it pays.
+- **Rebuilding from the README.** It's a plan, not a spec. A rebuild cost more than it taught.
 - **Speed guardrails, for now.** It's fast already.
