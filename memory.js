@@ -153,23 +153,39 @@ export function server(core) {
     return `${render(older)}\n\n${whole}`;
   }
 
-  // A fork zooms into its source's lines too, as `lines` reads them through.
+  // The two lines `id+n` was made from, or with n = 1 the message whole. A fork opens its source's lines too, as
+  // `lines` reads them through.
+  async function open(thread, id, n) {
+    const all = await core.messages(thread);
+    const l = Math.log2(n);
+    if (!Number.isInteger(l) || !Number.isInteger(id) || id < 0 || id % n || id >= all.length) throw new Error(`No line ${id}+${n}; zoom one from your memory`);
+    if (n === 1) return core.said(all[id]);
+    const have = await core.commit((tx) => lines(tx, thread));
+    const half = (j) => have.get(key(l - 1, j)) ?? { l: l - 1, i: j, text: NOT_YET };
+    return [half(2 * (id / n)), half(2 * (id / n) + 1)].filter((x) => x.i * n / 2 < all.length);
+  }
+
   const zoom = defineTool({
     name: 'zoom',
     description: 'Open a line of your memory of this thread, `id+n|…`: you get the two lines it was made from, or the message whole when n is 1.',
     parameters: Type.Object({ id: Type.Number(), n: Type.Number() }),
     replay: 'safe',
     execute: async ({ id, n }, api) => {
-      const { thread } = await core.home(api.conversationId);
-      const all = await core.messages(thread);
-      const l = Math.log2(n);
-      if (!Number.isInteger(l) || !Number.isInteger(id) || id < 0 || id % n || id >= all.length) throw new Error(`No line ${id}+${n}; zoom one from your memory`);
-      if (n === 1) return { content: [{ type: 'text', text: core.said(all[id]) }] };
-      const have = await core.commit((tx) => lines(tx, thread));
-      const half = (j) => have.get(key(l - 1, j)) ?? { l: l - 1, i: j, text: NOT_YET };
-      return { content: [{ type: 'text', text: [half(2 * (id / n)), half(2 * (id / n) + 1)].filter((x) => x.i * n / 2 < all.length).map(rendered).join('\n') }] };
+      const opened = await open((await core.home(api.conversationId)).thread, id, n);
+      return { content: [{ type: 'text', text: typeof opened === 'string' ? opened : opened.map(rendered).join('\n') }] };
     },
   });
+
+  // GET /api/threads/:id/memory: the thread's memory now, or with `?zoom=id,n` what zoom gives.
+  const asLine = (x) => ({ id: x.i * 2 ** x.l, n: 2 ** x.l, text: x.text });
+  async function serve(thread, query) {
+    if (query.has('zoom')) {
+      const opened = await open(thread, ...query.get('zoom').split(',').map(Number));
+      return typeof opened === 'string' ? { message: opened } : { lines: opened.map(asLine) };
+    }
+    const T = (await core.messages(thread)).length;
+    return { lines: memory(await core.commit((tx) => lines(tx, thread)), T, BUDGET).map(asLine) };
+  }
 
   return {
     extension: defineExtension({
@@ -178,6 +194,7 @@ export function server(core) {
     }),
     posted: (tx, threadId, entry) => tx.createTask(Line, { entry: entry.id }, background(threadId)),
     catchUp,
+    serve,
   };
 }
 

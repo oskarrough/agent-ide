@@ -1,7 +1,8 @@
 // A module exports `server(core)` and/or `runner(core)`, which return its hooks:
 //   server: extension, route(posted, agents) → To[], reply(posts, answeredIn, agent, body) → [{ thread, data }], changed(),
 //           posted(tx, threadId, entry): work added to a post's commit, writes only,
-//           catchUp(threadId, held, all) → the content of a Deliver task's input
+//           catchUp(threadId, held, all) → the content of a Deliver task's input,
+//           serve(threadId, query) → what GET /api/threads/:id/<module name> answers
 //   runner: told(message), disconnected()
 export async function load(end, defaults, core) {
   const on = Object.keys(defaults).filter((name) => {

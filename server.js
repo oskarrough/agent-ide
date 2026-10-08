@@ -454,7 +454,8 @@ async function input(req) {
 }
 
 const handleRequest = async (req, res) => {
-  const route = new URL(req.url, 'http://localhost').pathname;
+  const url = new URL(req.url, 'http://localhost');
+  const route = url.pathname;
   if (req.method === 'OPTIONS') {
     res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, x-user' });
     return res.end();
@@ -482,7 +483,7 @@ const handleRequest = async (req, res) => {
       send(res, 200, view.value);
       return view.dispose();
     }
-    const match = /^\/api\/threads\/(\d+)(?:\/(entries|read|stop|fork))?$/.exec(route);
+    const match = /^\/api\/threads\/(\d+)(?:\/(\w+))?$/.exec(route);
     if (match) {
       const id = Number(match[1]);
       const action = match[2];
@@ -493,6 +494,9 @@ const handleRequest = async (req, res) => {
         send(res, 200, { id });
         return notify(null);
       }
+      // A module may serve GET /api/threads/:id/<its name>.
+      const served = modules.find((m) => m.name === action)?.serve;
+      if (served && req.method === 'GET') return send(res, 200, await served(id, url.searchParams));
       if (action === 'entries' && req.method === 'POST') return send(res, 201, await postEntry(id, user(req), await input(req)));
       if (action === 'fork' && req.method === 'POST') {
         send(res, 201, await forkThread(user(req), id, await input(req)));
