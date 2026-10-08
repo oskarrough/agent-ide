@@ -70,7 +70,7 @@ DB_PATH=other.sqlite bun server.js     # another store; only one server may use 
 bun runner.js --server http://127.0.0.1:3000 --name laptop [--alias "Oskar's laptop"] --dir ~/code [--owner oskar]
 ```
 
-A runner tells its terminal how the threads its agents answer stand, with the [Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status) (OSC 7501): one record per thread that's working, done or failed for its `--owner`, and one for itself. It reports only if the terminal answers the protocol's query; `PROGRAM_STATUS=1` or `0` overrides that.
+A runner tells its terminal how the threads its agents answer stand, with the [Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status) (OSC 7501): one record per thread that's working, done or failed for its `--owner`, or for anyone if it has none, and one for itself. It reports only if the terminal answers the protocol's query; `PROGRAM_STATUS=1` or `0` overrides that.
 
 The client is served at `/`, or by `bun client.html` with live reload. It can hold several servers. `?user=ana` posts as someone else.
 
@@ -88,7 +88,7 @@ Things to know:
 Send `x-user: name` to say who you are.
 
 - `GET /api/server`: the server's options, and what Pi is running.
-- `GET|POST /api/threads` `{"title","parent"?}`: each thread with its agent and status (working, queued, done, error, idle).
+- `GET|POST /api/threads` `{"title","parent"?}`: each thread with its agent and status, in the Program Status Protocol's words: working, blocked (its runner is offline), done, error, idle.
 - `GET /api/threads/:id`: the thread, Pi's docs (`pi.live`, `pi.inbox`, `pi.agent`, `pi.usage`), and every entry as `{author, to, replyTo, entry}`, plus `requestId, from, re, body` on inputs.
 - `POST /api/threads/:id/entries` `{"body","to"?: {"runner","model"?,"effort"?,"dir"?} | null, "steer"?: true}`: a steer joins the answer being written.
 - `POST /api/threads/:id/fork` `{"at": entryId, "title"?}`: a new thread from that entry. Pi's `conversation.parent` says where it came from.

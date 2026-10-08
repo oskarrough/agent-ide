@@ -15,7 +15,8 @@ const { values: args } = parseArgs({ options: {
   // A human-readable second name, set here so it survives a server restart. The name stays the key.
   alias: { type: 'string', default: '' },
   dir: { type: 'string', default: process.cwd() },
-  owner: { type: 'string', default: os.userInfo().username },
+  // Whose reading clears a thread's done in this terminal. Without one, anyone's does.
+  owner: { type: 'string', default: '' },
 } });
 const dir = path.resolve(args.dir);
 const server = new URL(args.server).origin;
@@ -107,7 +108,7 @@ function report(root, threads = []) {
   reported = next;
 }
 
-// A queued thread waits for an offline runner, so this one, online, never hears of one.
+// A blocked thread waits for an offline runner, so this one, online, never hears of one.
 const statusOf = (threads) => {
   const working = threads.filter((t) => t.status === 'working').length;
   return { state: working ? 'working' : 'idle', msg: working ? `${name}: ${working} working` : `${name}: online at ${server}` };

@@ -221,10 +221,10 @@
 
   // A runner: whose machine and folder it is, its default model, and what the server has asked of it right now.
   function runnerView(server, runner) {
-    const threads = server.threads.filter((t) => ['working', 'queued'].includes(t.status) && t.agent?.runner === runner.name);
+    const threads = server.threads.filter((t) => ['working', 'blocked'].includes(t.status) && t.agent?.runner === runner.name);
     return build('li', {}, [
       build('span', { className: `dot ${runner.online ? 'on' : ''}` }), runner.name, ' ',
-      build('small', { textContent: `${runner.alias ? `${runner.alias} · ` : ''}${runner.owner}'s · ${runner.dir} · ${runner.model || 'no default model'}` }),
+      build('small', { textContent: `${runner.alias ? `${runner.alias} · ` : ''}${runner.owner ? `${runner.owner}'s · ` : ''}${runner.dir} · ${runner.model || 'no default model'}` }),
       ...threads.map((t) => build('div', {}, [build('small', { className: 'status' }, [`${t.status} in `, threadLink(server, t.id)])])),
       ...runner.calls.map((c) => build('div', {}, [build('small', { className: 'mute', textContent: `${c.op} ${c.what}` })])),
       raw(runner),
@@ -233,7 +233,7 @@
 
   function statusView(thread) {
     const agent = agentName(thread.agent);
-    const text = { working: ` · ${agent || 'shell'} working`, queued: ` · ${agent} waits for its runner`, done: ' · done', error: ' · failed' }[thread.status];
+    const text = { working: ` · ${agent || 'shell'} working`, blocked: ` · ${thread.agent?.runner} is offline`, done: ' · done', error: ' · failed' }[thread.status];
     return text ? build('small', { className: `status ${thread.status}` }, [text]) : '';
   }
 
@@ -257,7 +257,7 @@
       build('span', { className: 'id', textContent: `#${view.id} ` }), view.status, view.agent ? ` · agent ${toLabel(view.agent)}` : '',
       view.parent ? build('span', {}, [' · child of ', threadLink(server, view.parent)]) : '',
       fork ? build('span', {}, [' · forked from ', threadLink(server, fork.conversationId), ` at #${fork.at}`]) : '',
-      ['working', 'queued'].includes(view.status) ? build('button', { className: 'link', textContent: 'stop', onclick: () => attempt(post(server.url, `/api/threads/${view.id}/stop`, {})) }) : '',
+      ['working', 'blocked'].includes(view.status) ? build('button', { className: 'link', textContent: 'stop', onclick: () => attempt(post(server.url, `/api/threads/${view.id}/stop`, {})) }) : '',
     ] : draft ? ['Your first entry starts it.'] : []));
     const { entries, ...row } = view || {};
     $('raw-thread').hidden = !structure || !view;
@@ -300,7 +300,7 @@
       return build('li', { id: `e-${item.entry.id}`, className }, [
         build('b', { textContent: item.author }), ' ', build('span', { className: 'id', textContent: `#${item.entry.id} ${item.entry.kind}` }),
         // An input written in another thread: where it came from, and the post it answers there, if it's an answer.
-        item.from ? build('span', { className: 'chip' }, [item.re ? `↩ answers #${item.re} in ` : 'from ', threadLink(server, item.from)]) : '',
+        item.from ? build('span', { className: 'chip' }, [item.re ? `↩ answers ${item.re.map((n) => `#${n}`).join(', ')} in ` : 'from ', threadLink(server, item.from)]) : '',
         item.to ? build('span', { className: 'chip to', textContent: `→ ${toLabel(item.to)}` }) : '',
         ...item.replyTo.map((input) => build('a', { href: '#', className: 'chip', textContent: `↩ #${input}`, title: 'An input this answers', onclick: (event) => { event.preventDefault(); flash(input); } })),
         build('button', { className: 'link', textContent: 'fork', title: 'A new thread with everything up to here', onclick: () => attempt(forkAt(server.url, item.entry.id)) }),
@@ -311,7 +311,7 @@
     // What Pi is doing right now, straight from pi.live: the answer being written, a retry's backoff, running tools.
     ...(live.generation ? [build('li', { className: 'agent live' }, [
       build('b', { textContent: agentName(view.agent) }), ' ',
-      build('small', { className: 'status', textContent: live.generation.retry ? `retrying after: ${live.generation.retry.error}` : view.status === 'queued' ? 'waits for its runner…' : `writing… attempt ${live.generation.attempt}` }),
+      build('small', { className: 'status', textContent: live.generation.retry ? `retrying after: ${live.generation.retry.error}` : view.status === 'blocked' ? `waits for ${view.agent?.runner}, which is offline…` : `writing… attempt ${live.generation.attempt}` }),
       build('div', { textContent: textOf(live.generation.message?.content) }),
     ])] : []),
     ...(live.tools ?? []).filter((slot) => slot.status !== 'done').map((slot) => build('li', { className: 'agent live' }, [

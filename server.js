@@ -78,13 +78,13 @@ harness.resume();
 const agentName = (to) => to && `${to.model.split('/').pop()}@${to.runner}`;
 // An input's request id says who wrote it and who should answer, as URL params: author=oskar&runner=laptop&model=…&key=….
 // An input written in another thread says so with `from`, like an email's From. A post asks for an answer back there;
-// an answer says what it answers with `re`, the post's entry, and asks for nothing, so two threads never ping-pong.
+// an answer says what it answers with `re`, the posts' entries, and asks for nothing, so two threads never ping-pong.
 // Pi Durable keeps the request id on the input's submission record, beside the entry the input became. A request id
 // repeated finds the first input.
-const requestFor = (author, to, { key, from, re }) => new URLSearchParams({ author, ...to, ...(from ? { from } : {}), ...(re ? { re } : {}), key }).toString();
+const requestFor = (author, to, { key, from, re }) => new URLSearchParams({ author, ...to, ...(from ? { from } : {}), ...(re ? { re: re.join(',') } : {}), key }).toString();
 function readRequest(requestId) {
   const { author, key, from, re, ...to } = Object.fromEntries(new URLSearchParams(requestId));
-  return { requestId, author, from: from ? Number(from) : null, re: re ? Number(re) : null, to: to.runner && to.model ? to : null };
+  return { requestId, author, key, from: from ? Number(from) : null, re: re ? re.split(',').map(Number) : null, to: to.runner && to.model ? to : null };
 }
 // What the model reads before an input's body, rendered from the request id: who wrote it, and where, if not here.
 const heading = ({ author, from, re }) => from ? `${author}, ${re ? 'answering' : 'writing'} from thread ${from}: ` : `${author}: `;
@@ -124,7 +124,8 @@ async function agentFor(to, id) {
     model: { provider: `runner:${to.runner}`, modelId: to.model },
     thinkingLevel: to.effort ?? null,
     cwd: folder((await known())[to.runner], to),
-    instructions: `You are ${agentName(to)} in thread ${id}, with humans and agents. Each message starts with who wrote it, and the thread they wrote from if it isn't this one.`,
+    instructions: `You are ${agentName(to)} in thread ${id}, with humans and agents. Each message starts with who wrote it, and the thread they wrote from if it isn't this one. `
+      + 'To wait for an answer from another thread, end your turn: the answer wakes you. Don\'t sleep or poll.',
   };
 }
 
@@ -201,18 +202,20 @@ async function history(handle) {
 const isResult = (entry) => (entry.kind === 'pi.assistant' && !['toolUse', 'aborted', 'error'].includes(entry.model?.[0]?.stopReason))
   || entry.kind === 'agent-ide.error' || entry.kind === 'agent-ide.shell';
 
-// Where a thread stands for one reader, in the words of the Program Status Protocol (OSC 7501) where they fit.
-// working and queued come from Pi's own pi.live and pi.inbox; queued means the runner it waits for is offline.
-// done is a result the reader hasn't seen yet; error is a failure they haven't seen.
+// Where a thread stands for one reader, in the five words of the Program Status Protocol (OSC 7501).
+// working and blocked come from Pi's own pi.live and pi.inbox; blocked means someone has to start the runner it waits for.
+// done is a result the reader hasn't seen yet; error is a failure they haven't seen. A stop leaves it idle.
+// With no reader, as for a runner nobody owns, anyone having seen it counts.
 async function status(id, row, agent, reader) {
   const live = await harness.snapshot(LiveDoc, id, context);
   const inbox = await harness.snapshot(InboxDoc, id, context);
   const waiting = live?.run || inbox?.items?.some((item) => item.mode !== 'write');
-  if (waiting) return agent && !runners.isOnline(agent.runner) ? 'queued' : 'working';
+  if (waiting) return agent && !runners.isOnline(agent.runner) ? 'blocked' : 'working';
   if ([...shells.values()].some((run) => run.threadId === id)) return 'working';
+  const seen = new Set(reader ? [row.reads[reader]] : Object.values(row.reads));
   const recent = (await (await harness.conversation(id, context)).entries({}, 50, undefined, context)).items;
   for (const entry of recent) {
-    if (entry.id === row.reads[reader]) return 'idle';
+    if (seen.has(entry.id)) return 'idle';
     if (isResult(entry)) return entry.kind === 'agent-ide.error' ? 'error' : 'done';
   }
   return 'idle';
@@ -251,9 +254,16 @@ async function follow(id, requestId) {
   if (!record) return;
   const settled = await (await harness.submission(record.id, context)).wait(context);
   const row = await thread(id);
-  const { from, re, to } = readRequest(requestId);
+  const { from, re, to, key } = readRequest(requestId);
   const back = from && !re;
   if (settled.status === 'done' && !row.parent && !back) return;
+  // One answer can settle several inputs at once, a steer or follow-ups placed together. The first reports it for all.
+  // An input withdrawn before it was placed has no entry.
+  let posts = settled.entry === undefined ? [] : [settled.entry];
+  if (settled.status === 'done') {
+    posts = (await ownInputs(id)).filter((input) => input.record.answer === settled.answer && input.from === from && !input.re === !re).map((input) => input.record.entry);
+    if (posts[0] !== settled.entry) return;
+  }
   const agent = agentName(to);
   let body;
   if (settled.status === 'done') {
@@ -261,25 +271,29 @@ async function follow(id, requestId) {
     body = messageText(answer?.model?.[0]) || '(empty answer)';
   } else {
     body = `gave no answer: ${settled.reason}${settled.detail ? ` (${JSON.stringify(settled.detail)})` : ''}`;
-    await write(id, { kind: 'agent-ide.error', data: { text: `${agent} ${body}`, post: requestId } }, `error:${requestId}`);
+    // Someone stopping it isn't a failure; the protocol counts a cancel as idle.
+    if (settled.reason !== 'aborted') await write(id, { kind: 'agent-ide.error', data: { text: `${agent} ${body}`, post: requestId } }, `error:${requestId}`);
   }
-  if (back) return reply(from, id, agent, body, record.entry);
+  if (back) return reply(from, id, agent, body, posts, key);
   const text = `${agent}: ${body.split('\n').find(Boolean)?.slice(0, 160)}`;
   if (row.parent) await write(row.parent, { kind: 'agent-ide.note', data: { author: agent, text: `${text} → thread:${id}`, thread: id }, model: [userMessage(`${text} (from thread ${id})`)] }, `report:${requestId}`);
 }
 
 // An answer to an agent's post goes back to that agent as an input from whoever answered. It steers: an idle agent wakes,
 // a working one reads it between tool calls instead of after it's done. If another agent has the thread by now, it waits there as a note.
-async function reply(threadId, answeredIn, agent, body, post) {
+// A post withdrawn before anyone saw it has no entry to answer, so the news of it is a note too.
+async function reply(threadId, answeredIn, agent, body, posts, postKey) {
   const text = body.slice(0, 8000);
-  const key = `re:${post}`;
-  try {
-    await postEntry(threadId, agent, { body: text, to: await agentOf(threadId), steer: true }, { key, from: answeredIn, re: post });
-  } catch (error) {
-    if (error.status !== 409) throw error;
-    const said = `${heading({ author: agent, from: answeredIn, re: post })}${text}`;
-    await write(threadId, { kind: 'agent-ide.note', data: { author: agent, text: `${said} → thread:${answeredIn}`, thread: answeredIn }, model: [userMessage(said)] }, key);
+  const key = `re:${posts.join(',') || postKey}`;
+  if (posts.length) {
+    try {
+      return await postEntry(threadId, agent, { body: text, to: await agentOf(threadId), steer: true }, { key, from: answeredIn, re: posts });
+    } catch (error) {
+      if (error.status !== 409) throw error;
+    }
   }
+  const said = `${heading({ author: agent, from: answeredIn, re: posts })}${text}`;
+  await write(threadId, { kind: 'agent-ide.note', data: { author: agent, text: `${said} → thread:${answeredIn}`, thread: answeredIn }, model: [userMessage(said)] }, key);
 }
 
 // After a restart, every human input is followed again, placed or still queued. A fork's inherited ones are its source's to follow.
@@ -575,7 +589,7 @@ function notify(threadId) {
   }, 100);
 }
 
-// Each runner hears how the threads its agents answer stand for its owner, so it can tell its terminal.
+// Each runner hears how the threads its agents answer stand for its owner, or for anyone if it has none, so it can tell its terminal.
 // Idle threads are left out. One telling at a time, so an older one never lands after a newer one.
 let telling;
 let tellAgain = false;
@@ -635,7 +649,7 @@ async function upgrade(req, socket) {
   }
   sockets.set(name, socket);
   const runner = {
-    alias: url.searchParams.get('alias') || '', owner: url.searchParams.get('owner') || 'anon', host: url.searchParams.get('host') || '',
+    alias: url.searchParams.get('alias') || '', owner: url.searchParams.get('owner') || '', host: url.searchParams.get('host') || '',
     dir: url.searchParams.get('dir') || '/',
     model: url.searchParams.get('model') || '', lastSeen: new Date().toISOString(),
   };
