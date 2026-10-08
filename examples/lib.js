@@ -93,9 +93,10 @@ export function done() {
   process.exit(failed ? 1 : 0);
 }
 
-// A runner in this process, reconnecting like runner.js, whose only model, echo/echo, answers route(request).
-export async function scriptedRunner(name, route, { onTell } = {}) {
-  const script = fauxProvider({ provider: 'echo', models: [{ id: 'echo' }], tokensPerSecond: 200 });
+// A runner in this process, reconnecting like runner.js, whose only model, echo/echo, answers route(request). `model`
+// adds to it, like a small `contextWindow` to force a compaction.
+export async function scriptedRunner(name, route, { onTell, model = {} } = {}) {
+  const script = fauxProvider({ provider: 'echo', models: [{ id: 'echo', ...model }], tokensPerSecond: 200 });
   script.setResponses(Array.from({ length: 2000 }, () => route));
   const models = createModels();
   models.setProvider(script.provider);

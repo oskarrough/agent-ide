@@ -1,11 +1,11 @@
 // A thread's memory: a line of at most 512 bytes per message, neighbouring lines merged in pairs up a binary tree, each
 // an `agent-ide.line` entry in the thread written once by a background Line task. Lines are keyed by (l, i): level, and
 // index at that level, so a line covers messages i·2^l to (i+1)·2^l - 1 by position in the thread.
-import { defineExtension, defineTask } from '@earendil-works/pi-durable';
+import { CompactionTask, defineExtension, defineTask, hook } from '@earendil-works/pi-durable';
 import { messageText } from './remote.js';
 
 const KIND = 'agent-ide.line';
-const LINE = 512, CONTEXT = 16 * 1024, RETRIES = 5;
+const LINE = 512, BUDGET = 64 * 1024, CONTEXT = 16 * 1024, RETRIES = 5;
 const bytes = (text) => Buffer.byteLength(text);
 const key = (l, i) => `${l}:${i}`;
 const RULER = '-'.repeat(LINE);
@@ -118,17 +118,32 @@ export function server(core) {
     abort: (task, rt, ctx) => rt.commit(() => finished('aborted'), ctx),
   });
 
+  // The newest thread position the agent's conversation had been given before `firstKept`, or -1.
+  async function cutPosition(agent, firstKept, threadId) {
+    const newest = Math.max(-1, ...await core.seenBy(agent, firstKept - 1));
+    return (await core.messages(threadId)).findIndex((e) => e.id === newest);
+  }
+
+  // Pi's summary of an agent's conversation becomes its thread's memory up to the cut, and no model writes one.
+  const beforeCompact = async ({ firstKept }, api) => {
+    const home = await core.home(api.conversationId);
+    if (!home?.thread) return undefined;
+    const T = (await cutPosition(api.conversationId, firstKept, home.thread)) + 1;
+    return T > 0 ? { summary: render(memory(await core.commit((tx) => lines(tx, home.thread)), T, BUDGET)) } : undefined;
+  };
+
   return {
-    extension: defineExtension({ name: 'agent-ide.memory', tasks: [Line] }),
+    extension: defineExtension({ name: 'agent-ide.memory', tasks: [Line], hooks: [hook(CompactionTask, { beforeCompact })] }),
     posted: (tx, threadId, entry) => tx.createTask(Line, { entry: entry.id }, background(threadId)),
   };
 }
 
 // The memory: lines covering messages 0..T-1, merging the most due pair first, (T - last) / 2^l, oldest first on ties,
-// only where the parent line is built, until it fits the budget.
+// only where the parent line is built, until it fits the budget as rendered.
 export function memory(lines, T, budget) {
   const list = [...Array(T).keys()].map((p) => lines.get(key(0, p)) ?? { l: 0, i: p, text: NOT_YET, size: bytes(NOT_YET) });
-  let size = list.reduce((s, x) => s + x.size, 0);
+  const cost = (x) => bytes(rendered(x)) + 1;
+  let size = list.reduce((s, x) => s + cost(x), 0);
   while (size > budget) {
     let best;
     for (let k = 0; k + 1 < list.length; k++) {
@@ -141,11 +156,12 @@ export function memory(lines, T, budget) {
       if (!best || due > best.due) best = { k, parent, due };
     }
     if (!best) break;
-    size += best.parent.size - list[best.k].size - list[best.k + 1].size;
+    size += cost(best.parent) - cost(list[best.k]) - cost(list[best.k + 1]);
     list.splice(best.k, 2, best.parent);
   }
   return list;
 }
 
 // `<chat>`, then one `id+n|text` per line, `id` its first message's position and `n` how many it covers.
-export const render = (list) => `<chat>\n${list.map((x) => `${x.i * 2 ** x.l}+${2 ** x.l}|${x.text}`).join('\n')}\n</chat>`;
+const rendered = (x) => `${x.i * 2 ** x.l}+${2 ** x.l}|${x.text}`;
+export const render = (list) => `<chat>\n${list.map(rendered).join('\n')}\n</chat>`;

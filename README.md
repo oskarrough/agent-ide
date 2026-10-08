@@ -84,7 +84,10 @@ client.html ──▶ server.js   one Pi Durable harness: threads, and each agen
 49. Neighbouring lines merge in pairs up a binary tree, a pair that fits being its own line.
 50. Each line is an `agent-ide.line` entry `{l, i, text, size}` in the thread, written once by a background Line task that the post's commit creates, so stopping a thread never cuts its memory short.
 51. A fork reads its source's lines through for ranges that end before the fork point.
-52. [examples/](examples) defines the rest and checks all of it: the HTTP API, the runner end's interface (`serveRunner` in [remote.js](remote.js)), and each sentence above.
+52. When Pi compacts an agent's conversation, memory writes Pi's summary instead of the agent's model: the thread's lines up to the last message the agent was given before the cut.
+53. That memory merges the most due pair first, `(T - last) / 2^l`, where their line is built, until it fits in 64 KB, and writes each line `id+n|text`, `id` being the position of its first message and `n` how many it covers.
+54. A message not yet given a line shows there as `(not summarized yet: zoom it)`.
+55. [examples/](examples) defines the rest and checks all of it: the HTTP API, the runner end's interface (`serveRunner` in [remote.js](remote.js)), and each sentence above.
 
 ## What it promises
 
