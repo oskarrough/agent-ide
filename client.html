@@ -26,7 +26,6 @@
   .dot.on { background: #2f9e62; }
   .status { color: #8a5a00; }
   .status.done { color: #2f9e62; }
-  .status.failed { color: #ad1b1b; }
   .error { color: #ad1b1b; }
   .link { background: none; border: 0; padding: 0 .2rem; color: #59636e; }
   .chip { font-size: 12px; background: #eef1f5; color: #20242a; border-radius: 4px; padding: 0 .35rem; margin-left: .35rem; text-decoration: none; }
@@ -234,7 +233,7 @@
 
   function statusView(thread) {
     const agent = agentName(thread.agent);
-    const text = { working: ` · ${agent || 'shell'} working`, queued: ` · ${agent} waits for its runner`, done: ' · done', failed: ' · failed' }[thread.status];
+    const text = { working: ` · ${agent || 'shell'} working`, queued: ` · ${agent} waits for its runner`, done: ' · done', error: ' · failed' }[thread.status];
     return text ? build('small', { className: `status ${thread.status}` }, [text]) : '';
   }
 

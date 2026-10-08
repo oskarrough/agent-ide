@@ -1,6 +1,6 @@
 // The runner protocol, both ends. Over a runner's WebSocket the server asks for two things:
 // model streams, which the runner answers with its own logins, and file and shell calls in its folder.
-// Server: { id, op: 'stream' | 'env' | 'handle' | 'cancel', … }. Runner: { id, event } | { id, output } | { id, result } | { id, error }.
+// Server: { id, op: 'stream' | 'env' | 'handle' | 'cancel', … } | { op: 'status', threads }. Runner: { id, event } | { id, output } | { id, result } | { id, error }.
 import path from 'node:path';
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai';
 import { fauxAssistantMessage } from '@earendil-works/pi-ai/providers/faux';
@@ -71,6 +71,7 @@ export function createRunners({ onChange }) {
     online,
     call,
     isOnline: (name) => sockets.has(name),
+    tell: (name, message) => sockets.get(name)?.send(message),
     working: (name) => [...calls.values()].filter((c) => c.runner === name).map(({ op, what }) => ({ op, what })),
     connect(name, send) {
       sockets.set(name, { send: (value) => send(encode(value)) });
@@ -165,7 +166,7 @@ export function remoteEnv(runners, name, cwd) {
 // ── Runner end ──
 
 // Answers the server's requests: model streams with this machine's logins, and file and shell calls confined to `dir`.
-export function serveRunner({ name, dir, models, echo, send }) {
+export function serveRunner({ name, dir, models, echo, send, onStatus }) {
   const running = new Map();
   const handles = new Map();
   let nextHandle = 0;
@@ -223,6 +224,7 @@ export function serveRunner({ name, dir, models, echo, send }) {
   return {
     receive(text) {
       const message = decode(text);
+      if (message.op === 'status') return onStatus?.(message.threads);
       if (message.op === 'cancel') return running.get(message.id)?.cancel(new Error('cancelled by the server'));
       const { context, cancel } = withCancel(BACKGROUND_CONTEXT);
       running.set(message.id, { cancel });

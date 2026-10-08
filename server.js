@@ -201,8 +201,9 @@ async function history(handle) {
 const isResult = (entry) => (entry.kind === 'pi.assistant' && !['toolUse', 'aborted', 'error'].includes(entry.model?.[0]?.stopReason))
   || entry.kind === 'agent-ide.error' || entry.kind === 'agent-ide.shell';
 
-// Where a thread stands for one reader. working and queued come from Pi's own pi.live and pi.inbox;
-// queued means the runner it waits for is offline. done is a result the reader hasn't seen yet.
+// Where a thread stands for one reader, in the words of the Program Status Protocol (OSC 7501) where they fit.
+// working and queued come from Pi's own pi.live and pi.inbox; queued means the runner it waits for is offline.
+// done is a result the reader hasn't seen yet; error is a failure they haven't seen.
 async function status(id, row, agent, reader) {
   const live = await harness.snapshot(LiveDoc, id, context);
   const inbox = await harness.snapshot(InboxDoc, id, context);
@@ -212,7 +213,7 @@ async function status(id, row, agent, reader) {
   const recent = (await (await harness.conversation(id, context)).entries({}, 50, undefined, context)).items;
   for (const entry of recent) {
     if (entry.id === row.reads[reader]) return 'idle';
-    if (isResult(entry)) return entry.kind === 'agent-ide.error' ? 'failed' : 'done';
+    if (isResult(entry)) return entry.kind === 'agent-ide.error' ? 'error' : 'done';
   }
   return 'idle';
 }
@@ -570,7 +571,28 @@ function notify(threadId) {
     flushing = undefined;
     for (const id of dirty) broadcast({ threadId: id });
     dirty.clear();
+    tellRunners();
   }, 100);
+}
+
+// Each runner hears how the threads its agents answer stand for its owner, so it can tell its terminal.
+// Idle threads are left out. One telling at a time, so an older one never lands after a newer one.
+let telling;
+let tellAgain = false;
+function tellRunners() {
+  if (telling) return void (tellAgain = true);
+  telling = (async () => {
+    const all = await known();
+    for (const name of [...sockets.keys()].filter(runners.isOnline)) {
+      const threads = (await threadList(all[name]?.owner))
+        .filter((t) => t.agent?.runner === name && t.status !== 'idle')
+        .map(({ id, title, agent, status }) => ({ id, title, agent: agentName(agent), status }));
+      runners.tell(name, { op: 'status', threads });
+    }
+  })().catch((error) => console.error(error)).finally(() => {
+    telling = undefined;
+    if (tellAgain) { tellAgain = false; tellRunners(); }
+  });
 }
 
 // Every commit names the conversations it touched; those threads changed.
