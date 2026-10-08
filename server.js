@@ -77,13 +77,17 @@ harness.resume();
 
 const agentName = (to) => to && `${to.model.split('/').pop()}@${to.runner}`;
 // An input's request id says who wrote it and who should answer, as URL params: author=oskar&runner=laptop&model=…&key=….
-// An agent's post adds `from`, the thread it posted from, where the answer goes back. Pi Durable keeps the request id
-// on the input's submission record, beside the entry the input became. A request id repeated finds the first input.
-const requestFor = (author, to, key, from) => new URLSearchParams({ author, ...to, ...(from ? { from } : {}), key }).toString();
+// An input written in another thread says so with `from`, like an email's From. A post asks for an answer back there;
+// an answer says what it answers with `re`, the post's entry, and asks for nothing, so two threads never ping-pong.
+// Pi Durable keeps the request id on the input's submission record, beside the entry the input became. A request id
+// repeated finds the first input.
+const requestFor = (author, to, { key, from, re }) => new URLSearchParams({ author, ...to, ...(from ? { from } : {}), ...(re ? { re } : {}), key }).toString();
 function readRequest(requestId) {
-  const { author, key, from, ...to } = Object.fromEntries(new URLSearchParams(requestId));
-  return { requestId, author, from: from ? Number(from) : null, to: to.runner && to.model ? to : null };
+  const { author, key, from, re, ...to } = Object.fromEntries(new URLSearchParams(requestId));
+  return { requestId, author, from: from ? Number(from) : null, re: re ? Number(re) : null, to: to.runner && to.model ? to : null };
 }
+// What the model reads before an input's body, rendered from the request id: who wrote it, and where, if not here.
+const heading = ({ author, from, re }) => from ? `${author}, ${re ? 'answering' : 'writing'} from thread ${from}: ` : `${author}: `;
 const same = (a, b) => ['runner', 'model', 'effort', 'dir'].every((key) => (a?.[key] ?? '') === (b?.[key] ?? ''));
 const user = (req) => req.headers['x-user'] || 'anon';
 const userMessage = (text) => ({ role: 'user', content: text, timestamp: Date.now() });
@@ -115,12 +119,12 @@ function folder(runner, to) {
 }
 
 // A `to` as Pi's agent: the model through the runner's provider, effort as thinking level, dir as cwd.
-async function agentFor(to) {
+async function agentFor(to, id) {
   return {
     model: { provider: `runner:${to.runner}`, modelId: to.model },
     thinkingLevel: to.effort ?? null,
     cwd: folder((await known())[to.runner], to),
-    instructions: `You are ${agentName(to)} in a thread with humans and agents. Each person's message starts with their name.`,
+    instructions: `You are ${agentName(to)} in thread ${id}, with humans and agents. Each message starts with who wrote it, and the thread they wrote from if it isn't this one.`,
   };
 }
 
@@ -157,6 +161,9 @@ async function inputs(id) {
   return [...inherited, ...await ownInputs(id)];
 }
 
+const messageText = (message) => typeof message?.content === 'string' ? message.content
+  : (message?.content ?? []).filter((p) => p.type === 'text').map((p) => p.text).join('');
+
 // Who wrote each entry. A human input's author and `to` come from its request id. The model's answers and tool results
 // belong to the agent of the input before them. An answer replies to every input its run took: a steer, several follow-ups.
 async function annotate(id, entries) {
@@ -173,7 +180,9 @@ async function annotate(id, entries) {
     if (input) asked = input;
     const author = input?.author ?? entry.data?.author
       ?? (['pi.assistant', 'pi.tool-result'].includes(entry.kind) ? agentName(asked?.to) : entry.kind.startsWith('pi.') ? 'pi' : 'server');
-    return { author, to: input?.to ?? entry.data?.to ?? null, ...(input ? { requestId: input.requestId } : {}), replyTo: replies.get(entry.id) ?? [], entry };
+    const said = input && messageText(entry.model?.[0]);
+    const wrote = input ? { requestId: input.requestId, from: input.from, re: input.re, body: said.startsWith(heading(input)) ? said.slice(heading(input).length) : said } : {};
+    return { author, to: input?.to ?? entry.data?.to ?? null, ...wrote, replyTo: replies.get(entry.id) ?? [], entry };
   });
 }
 
@@ -188,9 +197,6 @@ async function history(handle) {
   } while (cursor);
   return entries.reverse();
 }
-
-const messageText = (message) => typeof message?.content === 'string' ? message.content
-  : (message?.content ?? []).filter((p) => p.type === 'text').map((p) => p.text).join('');
 
 const isResult = (entry) => (entry.kind === 'pi.assistant' && !['toolUse', 'aborted', 'error'].includes(entry.model?.[0]?.stopReason))
   || entry.kind === 'agent-ide.error' || entry.kind === 'agent-ide.shell';
@@ -244,8 +250,9 @@ async function follow(id, requestId) {
   if (!record) return;
   const settled = await (await harness.submission(record.id, context)).wait(context);
   const row = await thread(id);
-  const { from, to } = readRequest(requestId);
-  if (settled.status === 'done' && !row.parent && !from) return;
+  const { from, re, to } = readRequest(requestId);
+  const back = from && !re;
+  if (settled.status === 'done' && !row.parent && !back) return;
   const agent = agentName(to);
   let body;
   if (settled.status === 'done') {
@@ -255,21 +262,22 @@ async function follow(id, requestId) {
     body = `gave no answer: ${settled.reason}${settled.detail ? ` (${JSON.stringify(settled.detail)})` : ''}`;
     await write(id, { kind: 'agent-ide.error', data: { text: `${agent} ${body}`, post: requestId } }, `error:${requestId}`);
   }
-  if (from) return reply(from, id, agent, body, requestId);
+  if (back) return reply(from, id, agent, body, record.entry);
   const text = `${agent}: ${body.split('\n').find(Boolean)?.slice(0, 160)}`;
   if (row.parent) await write(row.parent, { kind: 'agent-ide.note', data: { author: agent, text: `${text} → thread:${id}`, thread: id }, model: [userMessage(`${text} (from thread ${id})`)] }, `report:${requestId}`);
 }
 
-// An answer to an agent's post goes back to that agent as an input from whoever answered, so it wakes up, or reads it
-// after its current answer. If another agent has the thread by now, it waits there as a note.
-async function reply(threadId, answeredIn, agent, body, requestId) {
-  const text = `${body.slice(0, 8000)}\n\n(answered in thread ${answeredIn})`;
-  const key = `reply:${requestId}`;
+// An answer to an agent's post goes back to that agent as an input from whoever answered. It steers: an idle agent wakes,
+// a working one reads it between tool calls instead of after it's done. If another agent has the thread by now, it waits there as a note.
+async function reply(threadId, answeredIn, agent, body, post) {
+  const text = body.slice(0, 8000);
+  const key = `re:${post}`;
   try {
-    await postEntry(threadId, agent, { body: text, to: await agentOf(threadId) }, key);
+    await postEntry(threadId, agent, { body: text, to: await agentOf(threadId), steer: true }, { key, from: answeredIn, re: post });
   } catch (error) {
     if (error.status !== 409) throw error;
-    await write(threadId, { kind: 'agent-ide.note', data: { author: agent, text: `${agent}: ${text}`, thread: answeredIn }, model: [userMessage(`${agent}: ${text}`)] }, key);
+    const said = `${heading({ author: agent, from: answeredIn, re: post })}${text}`;
+    await write(threadId, { kind: 'agent-ide.note', data: { author: agent, text: `${said} → thread:${answeredIn}`, thread: answeredIn }, model: [userMessage(said)] }, key);
   }
 }
 
@@ -297,8 +305,9 @@ async function shell(id, author, command, to, key) {
 
 // Posting an entry is the one thing you do. Who answers: the entry's `to`; with none, the thread's last agent, or the director.
 // `to: null` means nobody. `$ cmd` runs on the runner instead of asking its agent. `steer: true` joins the running answer.
-// The key makes a post repeatable: posted again with the same key, it finds the first. An agent posts with `from`, its own thread.
-async function postEntry(id, author, input, key = randomUUID(), from = null) {
+// The key makes a post repeatable: posted again with the same key, it finds the first. An agent posts with `from`, its own
+// thread, and an answer going back adds `re`.
+async function postEntry(id, author, input, { key = randomUUID(), from = null, re = null } = {}) {
   const handle = await conversation(id);
   const agent = await agentOf(id);
   const body = field(input.body, 'body');
@@ -317,10 +326,10 @@ async function postEntry(id, author, input, key = randomUUID(), from = null) {
   const inbox = await harness.snapshot(InboxDoc, id, context);
   const busy = live?.run || inbox?.items?.length;
   if (busy && !same(agent, to)) throw Object.assign(new Error(`${agentName(agent)} is working in this thread; wait, stop it, or ask it instead`), { status: 409 });
-  if (!busy) await handle.configure(await agentFor(to), context);
-  const requestId = requestFor(author, to, key, from);
+  if (!busy) await handle.configure(await agentFor(to, id), context);
+  const requestId = requestFor(author, to, { key, from, re });
   const whenBusy = input.steer ? 'steer' : 'followUp';
-  const submission = await handle.submit({ type: 'input', content: `${author}: ${body}`, requestId, whenBusy }, context);
+  const submission = await handle.submit({ type: 'input', content: `${heading({ author, from, re })}${body}`, requestId, whenBusy }, context);
   follow(id, requestId).catch((error) => console.error(error));
   return { requestId, submission: submission.id, to };
 }
@@ -349,7 +358,7 @@ function threadTools() {
   const post = defineTool({
     name: 'post',
     description: 'Post to another thread, or start a new child thread of this one by leaving out `thread`. '
-      + 'Whoever answers, their answer comes back to you here as a message; you need not wait or check.',
+      + 'Whoever answers, their answer comes to you here as a message, even mid-turn; don\'t read the thread to check for it.',
     parameters: Type.Object({
       thread: Type.Optional(Type.Number({ description: 'The thread to post to. Leave out to start a new one.' })),
       title: Type.Optional(Type.String({ description: 'The new thread\'s title' })),
@@ -366,14 +375,14 @@ function threadTools() {
       if (/^\$\s/.test(args.body)) throw new Error('Run commands with your own bash tool, not as a post');
       const id = args.thread ?? (await createThread(agentName(me), { title: args.title, parent: from }, key)).id;
       const to = args.to === undefined ? (args.thread === undefined ? { to: me } : {}) : { to: args.to === 'nobody' ? null : await named(args.to) };
-      const posted = await postEntry(id, agentName(me), { body: args.body, ...to }, key, from);
+      const posted = await postEntry(id, agentName(me), { body: args.body, ...to }, { key, from });
       const who = posted?.to ? agentName(posted.to) : 'nobody';
-      return { content: [{ type: 'text', text: `Posted to thread ${id} for ${who}.${posted?.to ? ' Its answer will come to you here.' : ''}` }], details: { thread: id } };
+      return { content: [{ type: 'text', text: `Posted to thread ${id} for ${who}.${posted?.to ? ' Its answer will come to you here on its own; carry on, or end your turn.' : ''}` }], details: { thread: id } };
     },
   });
   const read = defineTool({
     name: 'read',
-    description: 'Read a thread\'s latest entries, or list every thread by leaving out `thread`.',
+    description: 'Read a thread\'s latest entries, or list every thread by leaving out `thread`. Answers to your own posts come to you; no need to read for them.',
     parameters: Type.Object({
       thread: Type.Optional(Type.Number()),
       last: Type.Optional(Type.Number({ description: 'How many entries, 20 by default' })),
@@ -389,12 +398,11 @@ function threadTools() {
         }
       } else {
         const entries = await annotate(args.thread, await history(await conversation(args.thread)));
-        for (const { author, to, entry } of entries.filter((e) => e.entry.kind !== 'pi.system').slice(-(args.last ?? 20))) {
-          let text = messageText(entry.model?.[0]) || entry.data?.text || (entry.data?.command ? `$ ${entry.data.command}` : '');
-          if (entry.kind === 'pi.user') text = text.replace(`${author}: `, '');
+        for (const { author, to, from, body, entry } of entries.filter((e) => e.entry.kind !== 'pi.system').slice(-(args.last ?? 20))) {
+          const text = body ?? (messageText(entry.model?.[0]) || entry.data?.text || (entry.data?.command ? `$ ${entry.data.command}` : ''));
           const content = entry.model?.[0]?.content;
           const calls = Array.isArray(content) ? content.filter((p) => p.type === 'toolCall').map((p) => ` [${p.name} ${JSON.stringify(p.arguments)}]`).join('') : '';
-          lines.push(`#${entry.id} ${author}${to ? ` to ${agentName(to)}` : ''}: ${text.slice(0, 2000)}${calls}`);
+          lines.push(`#${entry.id} ${author}${from ? ` from thread ${from}` : ''}${to ? ` to ${agentName(to)}` : ''}: ${text.slice(0, 2000)}${calls}`);
         }
       }
       return { content: [{ type: 'text', text: lines.join('\n') || 'Nothing yet.' }] };

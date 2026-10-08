@@ -271,10 +271,10 @@
   const textOf = (content) => typeof content === 'string' ? content : (content ?? []).filter((p) => p.type === 'text').map((p) => p.text).join('');
 
   // One entry, by kind. pi.* are Pi's own; agent-ide.* are ours.
-  function entryBody(server, { author, entry }) {
+  function entryBody(server, { body, entry }) {
     const message = entry.model?.[0];
     switch (entry.kind) {
-      case 'pi.user': return ['', textOf(message.content).replace(`${author}: `, '')];
+      case 'pi.user': return ['', body ?? textOf(message.content)];
       case 'pi.assistant': return ['agent', [
         ...message.content.filter((p) => p.type === 'thinking' && p.thinking).map((p) => build('details', {}, [build('summary', { className: 'mute', textContent: 'thinking' }), p.thinking])),
         textOf(message.content),
@@ -300,6 +300,8 @@
       const [className, body] = entryBody(server, item);
       return build('li', { id: `e-${item.entry.id}`, className }, [
         build('b', { textContent: item.author }), ' ', build('span', { className: 'id', textContent: `#${item.entry.id} ${item.entry.kind}` }),
+        // An input written in another thread: where it came from, and the post it answers there, if it's an answer.
+        item.from ? build('span', { className: 'chip' }, [item.re ? `↩ answers #${item.re} in ` : 'from ', threadLink(server, item.from)]) : '',
         item.to ? build('span', { className: 'chip to', textContent: `→ ${toLabel(item.to)}` }) : '',
         ...item.replyTo.map((input) => build('a', { href: '#', className: 'chip', textContent: `↩ #${input}`, title: 'An input this answers', onclick: (event) => { event.preventDefault(); flash(input); } })),
         build('button', { className: 'link', textContent: 'fork', title: 'A new thread with everything up to here', onclick: () => attempt(forkAt(server.url, item.entry.id)) }),

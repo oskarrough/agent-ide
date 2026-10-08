@@ -45,7 +45,7 @@ Posting an entry is the one thing you do:
 - With `to: null`, nobody answers; it's for the humans.
 - `$ cmd` runs on the agent's runner, in its folder.
 - Posting into a child thread hands work off. Each answer there is reported to the parent as a note.
-- An agent posts the same way, as itself. Its post's request id adds `from=`, its own thread, and the answer comes back there as an input from the agent that gave it. That wakes the asking agent, or queues for it if it's busy.
+- An agent posts the same way, as itself. Like an email, its post says `from=` its own thread, and the answer comes back there as an input that says `from=` the thread that answered and `re=` the post it answers. The answer wakes the asking agent, or reaches it between tool calls if it's busy. An answer asks for nothing back, so two threads never ping-pong; to keep talking, an agent posts again.
 
 Forking a thread at an entry starts a new thread with everything up to there and the agent it had then. Ask another agent from the same point; nothing in the fork reports back.
 
@@ -87,7 +87,7 @@ Send `x-user: name` to say who you are.
 
 - `GET /api/server`: the server's options, and what Pi is running.
 - `GET|POST /api/threads` `{"title","parent"?}`: each thread with its agent and status (working, queued, done, failed, idle).
-- `GET /api/threads/:id`: the thread, Pi's docs (`pi.live`, `pi.inbox`, `pi.agent`, `pi.usage`), and every entry as `{author, to, requestId?, replyTo, entry}`.
+- `GET /api/threads/:id`: the thread, Pi's docs (`pi.live`, `pi.inbox`, `pi.agent`, `pi.usage`), and every entry as `{author, to, replyTo, entry}`, plus `requestId, from, re, body` on inputs.
 - `POST /api/threads/:id/entries` `{"body","to"?: {"runner","model"?,"effort"?,"dir"?} | null, "steer"?: true}`: a steer joins the answer being written.
 - `POST /api/threads/:id/fork` `{"at": entryId, "title"?}`: a new thread from that entry. Pi's `conversation.parent` says where it came from.
 - `POST /api/threads/:id/read`: marks it read for you, so its last answer stops counting as done.
