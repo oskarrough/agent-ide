@@ -1,7 +1,7 @@
 // The same talk with a real model: an agent starts a child thread, which has to ask it for the topic before it
 // can write the poem; the poem comes back and the agent shows it. Uses this machine's pi login, and costs a few tokens.
 // Skipped when there's no login for the model's provider: run `pi`, then `/login`.
-// bun examples/10-real-model.js [provider/model]
+// bun examples/11-real-model.js [provider/model]
 import { readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

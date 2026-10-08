@@ -95,8 +95,8 @@ export function done() {
 }
 
 // A runner in this process whose model is a script: route(request) says what it answers, by what it was told last.
-// It's remote.js's own serveRunner, reconnecting like runner.js does.
-export async function scriptedRunner(name, route) {
+// It's remote.js's own serveRunner, reconnecting like runner.js does. onTell hears what the server tells runners.
+export async function scriptedRunner(name, route, { onTell } = {}) {
   const script = fauxProvider({ provider: 'echo', models: [{ id: 'echo' }], tokensPerSecond: 200 });
   script.setResponses(Array.from({ length: 200 }, () => route));
   const models = createModels();
@@ -104,7 +104,7 @@ export async function scriptedRunner(name, route) {
   let socket, closing = false;
   const connect = () => {
     socket = new WebSocket(`ws://127.0.0.1:${port}/ws?${new URLSearchParams({ runner: name, dir, model: 'echo/echo' })}`);
-    const r = serveRunner({ name, dir, models, echo: script, send: (t) => socket.readyState === WebSocket.OPEN && socket.send(t) });
+    const r = serveRunner({ name, dir, models, echo: script, send: (t) => socket.readyState === WebSocket.OPEN && socket.send(t), onTell });
     socket.onmessage = ({ data }) => r.receive(data);
     socket.onclose = () => { r.stopAll(); if (!closing) setTimeout(connect, 300); };
     socket.onerror = () => {};

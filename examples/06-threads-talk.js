@@ -1,4 +1,4 @@
-// Threads talking. An agent has two tools of its own: `post` to another thread or a new child, and `read` one.
+// Threads talking. An agent has two tools of its own: `post` to another thread or a new child, and `threads` to read one.
 // Its post says which thread it came from; the answer comes back as an input that says who answered (`from`)
 // and which post it answers (`re`), and wakes the asker. An answer asks for nothing back, so no ping-pong.
 // The model is a script, and the server is killed mid-call: the rerun finds the child it already started.
@@ -15,8 +15,8 @@ const bot = await scriptedRunner('bot', (request) => {
   if (t.includes('answering from thread')) return say(`Got it: ${t.split('\n')[0]}`);
   if (t.includes('delegate')) return call('post', { title: 'sum', body: 'compute 2+2', to: 'echo@bot' });
   if (t.includes('compute 2+2')) return say('4, after some thought '.repeat(20));
-  if (t.includes('list threads')) return call('read', {});
-  if (t.includes('read child')) return call('read', { thread: Number(t.match(/child (\d+)/)[1]) });
+  if (t.includes('list threads')) return call('threads', {});
+  if (t.includes('read child')) return call('threads', { thread: Number(t.match(/child (\d+)/)[1]) });
   if (t.includes('own thread')) return call('post', { thread: Number(t.match(/thread (\d+)/)[1]), body: 'hi me' });
   return say(`heard: ${t}`);
 });

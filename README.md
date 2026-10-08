@@ -38,7 +38,7 @@ client.html ──▶ server.js   one Pi Durable harness; every thread is a conv
 - A **runner** is a machine connected to the server. It streams models with its own logins and runs file and shell calls in its folder. It stores nothing.
 - An **agent** is a model on a runner, named like `gpt-6.1-sol@laptop`, with an optional effort level and folder. A thread has one agent at a time, kept as Pi's own agent setting.
 - An entry's **to** names the agent that should answer it. An input keeps its author and `to` in its Pi request id, written as URL params: `author=oskar&runner=laptop&model=echo%2Fecho&key=…`.
-- Agents have two tools of their own, run by the server: `post` to another thread, or to a new child thread, and `read` a thread or the list of them.
+- Agents have two tools of their own, run by the server: `post` to another thread, or to a new child thread, and `threads` to read one or list them.
 
 Posting an entry is the one thing you do:
 
@@ -67,12 +67,21 @@ While an agent works, another entry for it waits its turn. An entry for a differ
 bun server.js                          # http://127.0.0.1:3000, stored in agent-ide-3000.sqlite
 HOST=0.0.0.0 PORT=3001 bun server.js   # reachable from other machines
 DIRECTOR=1 bun server.js               # multiplayer
+TALK=0 STATUS=0 bun server.js          # the core alone
 DB_PATH=other.sqlite bun server.js     # another store; only one server may use a file
 
 bun runner.js --server http://127.0.0.1:3000 --name laptop [--alias "Oskar's laptop"] --dir ~/code [--owner oskar]
 ```
 
-A runner tells its terminal how the threads its agents answer stand, with the [Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status) (OSC 7501): one record per thread that's working, done or failed for its `--owner`, or for anyone if it has none, and one for itself. It reports only if the terminal answers the protocol's query; `PROGRAM_STATUS=1` or `0` overrides that.
+Everything optional is a module, one file each, on or off by an env var of its name, on the server and on a runner alike. Off, it isn't loaded at all. The core is the rest: threads and entries, posting with a `to`, runners, `$ cmd`, fork, child threads reporting to their parent, the API and the push.
+
+- [director.js](director.js), `DIRECTOR=1`, off by default: multiplayer routing, below.
+- [talk.js](talk.js), `TALK=0` turns it off: agents talking to threads with `post` and `threads`, and hearing back.
+- [status.js](status.js), `STATUS=0` turns it off: thread status pushed to runners, and their terminal reports.
+
+[modules.js](modules.js) loads them and names the few hooks they can have.
+
+A runner tells its terminal how the threads its agents answer stand, with the [Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status) (OSC 7501): one record per thread that's working, done or failed for its `--owner`, or for anyone if it has none, and one for itself. It reports only if the terminal answers the protocol's query, or with `STATUS=1`.
 
 The client is served at `/`, or by `bun client.html` with live reload. It can hold several servers. `?user=ana` posts as someone else.
 
@@ -98,5 +107,5 @@ Send `x-user: name` to say who you are.
 - `POST /api/threads/:id/stop`: withdraws queued inputs and stops the agent.
 - `DELETE /api/threads/:id`: hides it; Pi Durable keeps everything.
 - `GET /api/runners`: each runner, its default model, and the calls it's answering.
-- Agents' tools: `post {"thread"?, "title"?, "body", "to"?}`, where no thread starts a child and `to` is `model@runner`, a runner, or `nobody`; and `read {"thread"?, "last"?}`.
+- Agents' tools: `post {"thread"?, "title"?, "body", "to"?}`, where no thread starts a child and `to` is `model@runner`, a runner, or `nobody`; and `threads {"thread"?, "last"?}`.
 - `/ws`: pushes `{threadId}` whenever a thread changes. Runners connect here too and speak the protocol in [remote.js](remote.js).

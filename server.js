@@ -1,17 +1,18 @@
 // Keeps every thread as a conversation in one Pi Durable harness. Runners lend it their models and folders.
 // An agent is a model on a runner: `{ runner, model, effort?, dir? }`, named like gpt-6.1-sol@laptop.
-// PORT=3000 DB_PATH=agent-ide-3000.sqlite [DIRECTOR=1] bun server.js
+// PORT=3000 DB_PATH=agent-ide-3000.sqlite [DIRECTOR=1] [TALK=0] [STATUS=0] bun server.js
+// The rest is optional behaviour, in modules: the director, agents talking to threads, terminal status. See modules.js.
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context';
-import { Type } from '@earendil-works/pi-ai';
 import { createModels } from '@earendil-works/pi-ai/models';
-import { AgentDoc, createRegistry, defineDoc, defineExtension, defineTool, Harness, InboxDoc, LiveDoc } from '@earendil-works/pi-durable';
+import { AgentDoc, createRegistry, defineDoc, Harness, InboxDoc, LiveDoc } from '@earendil-works/pi-durable';
 import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node';
 import { CodingTools } from '@earendil-works/pi-durable/tools';
+import { load } from './modules.js';
 import { createRunners, remoteEnv, runnerProvider } from './remote.js';
 
 const port = Number(process.env.PORT || 3000);
@@ -29,15 +30,11 @@ const clients = new Set();
 const runners = createRunners({ onChange: () => notify(null) });
 // `$ cmd` runs, by key, with their output so far. They become entries when they finish.
 const shells = new Map();
-// Who answers an entry with no `to`. Alone, the thread's last agent. The director, for multiplayer threads, decides instead.
-const director = process.env.DIRECTOR ? await import('./director.js') : null;
 const page = await readFile(new URL('./client.html', import.meta.url));
 
 const models = createModels();
 const registry = createRegistry();
 registry.install(CodingTools);
-// Agents talk to other threads through tools that run here, on the server, defined further down.
-registry.install(threadTools());
 const storage = await openNodeSqliteStorage(file);
 const harness = await Harness.open(storage, {
   models,
@@ -70,10 +67,6 @@ async function threadIds() {
   } while (cursor);
   return ids.sort((a, b) => b - a);
 }
-
-for (const name of Object.keys(await known())) models.setProvider(runnerProvider(runners, name));
-// Work the last process left unfinished carries on: answers, tool calls, retries.
-harness.resume();
 
 const agentName = (to) => to && `${to.model.split('/').pop()}@${to.runner}`;
 // An input's request id says who wrote it and who should answer, as URL params: author=oskar&runner=laptop&model=…&key=….
@@ -124,8 +117,7 @@ async function agentFor(to, id) {
     model: { provider: `runner:${to.runner}`, modelId: to.model },
     thinkingLevel: to.effort ?? null,
     cwd: folder((await known())[to.runner], to),
-    instructions: `You are ${agentName(to)} in thread ${id}, with humans and agents. Each message starts with who wrote it, and the thread they wrote from if it isn't this one. `
-      + 'To wait for an answer from another thread, end your turn: the answer wakes you. Don\'t sleep or poll.',
+    instructions: `You are ${agentName(to)} in thread ${id}, with humans and agents. Each message starts with who wrote it.`,
   };
 }
 
@@ -187,6 +179,9 @@ async function annotate(id, entries) {
   });
 }
 
+// Every entry of a thread with its author, oldest first.
+const entries = async (id) => annotate(id, await history(await conversation(id)));
+
 // The whole history, oldest first: the view's entries are only the active context, which a compaction shortens.
 async function history(handle) {
   const entries = [];
@@ -235,19 +230,17 @@ async function threadList(reader) {
 
 // A thread as the client sees it: our row, Pi's built-in docs (live answer, inbox, agent, usage), every entry with its author.
 async function threadView(id, reader) {
-  const handle = await conversation(id);
-  const row = await thread(id);
-  const view = await handle.viewState(context);
+  const view = await (await conversation(id)).viewState(context);
   const { conversation: record, docs } = view.value;
   view.dispose();
-  const entries = await annotate(id, await history(handle));
+  const row = await thread(id);
   const agent = await agentOf(id);
   const running = [...shells.values()].filter((run) => run.threadId === id);
-  return { id, ...row, agent, status: await status(id, row, agent, reader), conversation: record, docs, shells: running, entries };
+  return { id, ...row, agent, status: await status(id, row, agent, reader), conversation: record, docs, shells: running, entries: await entries(id) };
 }
 
-// Waits for an input's answer, even across a restart, then reports it. An agent's post is answered back in the thread it
-// came from, as an input that wakes that thread's agent. Anyone else's gets a note in the parent thread.
+// Waits for an input's answer, even across a restart, then reports it. An input from another thread that answers nothing
+// is a post, answered back where it came from by a module's `reply` (talk.js). Anyone else's gets a note in the parent thread.
 // No answer is also an error entry here. The reports' request ids make it safe to follow an input twice.
 async function follow(id, requestId) {
   const record = await commit((tx) => tx.submissionByRequest(id, requestId));
@@ -255,7 +248,7 @@ async function follow(id, requestId) {
   const settled = await (await harness.submission(record.id, context)).wait(context);
   const row = await thread(id);
   const { from, re, to, key } = readRequest(requestId);
-  const back = from && !re;
+  const back = Boolean(from && !re && reply);
   if (settled.status === 'done' && !row.parent && !back) return;
   // One answer can settle several inputs at once, a steer or follow-ups placed together. The first reports it for all.
   // An input withdrawn before it was placed has no entry.
@@ -279,29 +272,6 @@ async function follow(id, requestId) {
   if (row.parent) await write(row.parent, { kind: 'agent-ide.note', data: { author: agent, text: `${text} → thread:${id}`, thread: id }, model: [userMessage(`${text} (from thread ${id})`)] }, `report:${requestId}`);
 }
 
-// An answer to an agent's post goes back to that agent as an input from whoever answered. It steers: an idle agent wakes,
-// a working one reads it between tool calls instead of after it's done. If another agent has the thread by now, it waits there as a note.
-// A post withdrawn before anyone saw it has no entry to answer, so the news of it is a note too.
-async function reply(threadId, answeredIn, agent, body, posts, postKey) {
-  const text = body.slice(0, 8000);
-  const key = `re:${posts.join(',') || postKey}`;
-  if (posts.length) {
-    try {
-      return await postEntry(threadId, agent, { body: text, to: await agentOf(threadId), steer: true }, { key, from: answeredIn, re: posts });
-    } catch (error) {
-      if (error.status !== 409) throw error;
-    }
-  }
-  const said = `${heading({ author: agent, from: answeredIn, re: posts })}${text}`;
-  await write(threadId, { kind: 'agent-ide.note', data: { author: agent, text: `${said} → thread:${answeredIn}`, thread: answeredIn }, model: [userMessage(said)] }, key);
-}
-
-// After a restart, every human input is followed again, placed or still queued. A fork's inherited ones are its source's to follow.
-for (const id of await threadIds()) {
-  if (!await thread(id)) continue;
-  for (const { requestId } of await ownInputs(id)) follow(id, requestId).catch((error) => console.error(error));
-}
-
 // `$ cmd` runs through the runner's environment, like the agent's own bash, and lands as an entry with its output.
 async function shell(id, author, command, to, key) {
   const runner = (await known())[to.runner];
@@ -318,7 +288,7 @@ async function shell(id, author, command, to, key) {
   notify(id);
 }
 
-// Posting an entry is the one thing you do. Who answers: the entry's `to`; with none, the thread's last agent, or the director.
+// Posting an entry is the one thing you do. Who answers: the entry's `to`; with none, the thread's last agent, or a module's `route` (director.js).
 // `to: null` means nobody. `$ cmd` runs on the runner instead of asking its agent. `steer: true` joins the running answer.
 // The key makes a post repeatable: posted again with the same key, it finds the first. An agent posts with `from`, its own
 // thread, and an answer going back adds `re`.
@@ -327,9 +297,9 @@ async function postEntry(id, author, input, { key = randomUUID(), from = null, r
   const agent = await agentOf(id);
   const body = field(input.body, 'body');
   const command = body.match(/^\$\s+([\s\S]+)/)?.[1];
-  const given = 'to' in input ? await address(input.to) : director && !command ? null : agent;
-  const asked = director && !command ? await inputs(id) : [];
-  const to = director && !command ? await address(director.route({ body, to: given }, asked)) : given;
+  const routed = route && !command;
+  const given = 'to' in input ? await address(input.to) : routed ? null : agent;
+  const to = routed ? await address(route({ body, to: given }, await inputs(id))) : given;
   if (command) {
     if (!to) throw new Error('Pick a runner to run the command on');
     shell(id, author, command, to, key).catch((error) => console.error(error));
@@ -366,77 +336,6 @@ async function createThread(author, { title, parent = null }, key) {
   return { id };
 }
 
-// The tools an agent uses to talk to other threads. They run on the server and post the way a human does, as the
-// agent, with its own thread as `from`. A tool call's task id keys what it creates and posts, so a replay after a
-// restart finds the thread and the post it made the first time.
-function threadTools() {
-  const post = defineTool({
-    name: 'post',
-    description: 'Post to another thread, or start a new child thread of this one by leaving out `thread`. '
-      + 'Whoever answers, their answer comes to you here as a message, even mid-turn; don\'t read the thread to check for it.',
-    parameters: Type.Object({
-      thread: Type.Optional(Type.Number({ description: 'The thread to post to. Leave out to start a new one.' })),
-      title: Type.Optional(Type.String({ description: 'The new thread\'s title' })),
-      body: Type.String(),
-      to: Type.Optional(Type.String({ description: 'Who should answer: an agent like model@runner or provider/model@runner, a runner for its default model, or "nobody". Leave out for the thread\'s agent; in a new thread, yourself.' })),
-    }),
-    replay: 'safe',
-    execute: async (args, api) => {
-      const from = api.conversationId;
-      const me = await agentOf(from);
-      const key = `call:${api.taskId}`;
-      if (args.thread === from) throw new Error('That is your own thread; just answer');
-      // A replayed call would run it twice, and its output would never reach you. You have bash.
-      if (/^\$\s/.test(args.body)) throw new Error('Run commands with your own bash tool, not as a post');
-      const id = args.thread ?? (await createThread(agentName(me), { title: args.title, parent: from }, key)).id;
-      const to = args.to === undefined ? (args.thread === undefined ? { to: me } : {}) : { to: args.to === 'nobody' ? null : await named(args.to) };
-      const posted = await postEntry(id, agentName(me), { body: args.body, ...to }, { key, from });
-      const who = posted?.to ? agentName(posted.to) : 'nobody';
-      return { content: [{ type: 'text', text: `Posted to thread ${id} for ${who}.${posted?.to ? ' Its answer will come to you here on its own; carry on, or end your turn.' : ''}` }], details: { thread: id } };
-    },
-  });
-  const read = defineTool({
-    name: 'read',
-    description: 'Read a thread\'s latest entries, or list every thread by leaving out `thread`. Answers to your own posts come to you; no need to read for them.',
-    parameters: Type.Object({
-      thread: Type.Optional(Type.Number()),
-      last: Type.Optional(Type.Number({ description: 'How many entries, 20 by default' })),
-    }),
-    replay: 'safe',
-    execute: async (args, api) => {
-      const me = agentName(await agentOf(api.conversationId));
-      const lines = [];
-      if (args.thread === undefined) {
-        for (const row of await threadList(me)) {
-          const parts = [`#${row.id} ${row.title}`, row.parent && `child of #${row.parent}`, row.agent && agentName(row.agent), row.status, row.id === api.conversationId && '(yours)'];
-          lines.push(parts.filter(Boolean).join(', '));
-        }
-      } else {
-        const entries = await annotate(args.thread, await history(await conversation(args.thread)));
-        for (const { author, to, from, body, entry } of entries.filter((e) => e.entry.kind !== 'pi.system').slice(-(args.last ?? 20))) {
-          const text = body ?? (messageText(entry.model?.[0]) || entry.data?.text || (entry.data?.command ? `$ ${entry.data.command}` : ''));
-          const content = entry.model?.[0]?.content;
-          const calls = Array.isArray(content) ? content.filter((p) => p.type === 'toolCall').map((p) => ` [${p.name} ${JSON.stringify(p.arguments)}]`).join('') : '';
-          lines.push(`#${entry.id} ${author}${from ? ` from thread ${from}` : ''}${to ? ` to ${agentName(to)}` : ''}: ${text.slice(0, 2000)}${calls}`);
-        }
-      }
-      return { content: [{ type: 'text', text: lines.join('\n') || 'Nothing yet.' }] };
-    },
-  });
-  return defineExtension({ name: 'agent-ide.threads', tools: [post, read] });
-}
-
-// An agent's name as a `to`: model@runner, provider/model@runner, or a runner for its default model.
-async function named(name) {
-  const at = name.lastIndexOf('@');
-  const runner = name.slice(at + 1);
-  const model = at < 0 ? '' : name.slice(0, at);
-  if (!model || model.includes('/')) return address({ runner, model });
-  const found = models.getProvider(`runner:${runner}`)?.getModels().find((m) => m.id.split('/').pop() === model);
-  if (!found) throw new Error(`${runner} has no model ${model}; name it as provider/model@${runner}`);
-  return address({ runner, model: found.id });
-}
-
 // A fork is a new thread that starts from one entry of another, with the agent it had then. Pi's conversation record
 // keeps where it came from; it isn't a child, so nothing in it reports back. Pi starts it idle: no answer, no queue.
 async function forkThread(author, id, { at, title }) {
@@ -450,6 +349,26 @@ async function forkThread(author, id, { at, title }) {
   }, context);
   return { id: fork.id };
 }
+
+// ── Start ──
+
+// The modules see the core through these, and hook in where server.js asks them by name: extension, route, reply, changed.
+const core = { models, runners, known, address, agentName, agentOf, heading, threadList, entries, createThread, postEntry, write, userMessage, messageText };
+const modules = await load('server', { director: false, talk: true, status: true }, core);
+for (const m of modules) if (m.extension) registry.install(m.extension);
+const route = modules.find((m) => m.route)?.route;
+const reply = modules.find((m) => m.reply)?.reply;
+
+for (const name of Object.keys(await known())) models.setProvider(runnerProvider(runners, name));
+// Work the last process left unfinished carries on: answers, tool calls, retries.
+harness.resume();
+// After a restart, every human input is followed again, placed or still queued. A fork's inherited ones are its source's to follow.
+for (const id of await threadIds()) {
+  if (!await thread(id)) continue;
+  for (const { requestId } of await ownInputs(id)) follow(id, requestId).catch((error) => console.error(error));
+}
+
+// ── HTTP and WebSocket ──
 
 async function runnerList() {
   return Object.entries(await known()).map(([name, runner]) => ({ name, ...runner, online: runners.isOnline(name), calls: runners.working(name) }));
@@ -481,7 +400,7 @@ const handleRequest = async (req, res) => {
   }
   try {
     if (req.method === 'GET' && route === '/api/server') {
-      return send(res, 200, { port, file, director: Boolean(director), threads: (await threadIds()).length, runners: Object.keys(await known()).length, work: await harness.inspect(context) });
+      return send(res, 200, { port, file, modules: modules.map((m) => m.name), threads: (await threadIds()).length, runners: Object.keys(await known()).length, work: await harness.inspect(context) });
     }
     if (req.method === 'GET' && route === '/api/runners') return send(res, 200, await runnerList());
     if (req.method === 'GET' && route === '/api/threads') return send(res, 200, await threadList(user(req)));
@@ -585,28 +504,8 @@ function notify(threadId) {
     flushing = undefined;
     for (const id of dirty) broadcast({ threadId: id });
     dirty.clear();
-    tellRunners();
+    for (const m of modules) m.changed?.();
   }, 100);
-}
-
-// Each runner hears how the threads its agents answer stand for its owner, or for anyone if it has none, so it can tell its terminal.
-// Idle threads are left out. One telling at a time, so an older one never lands after a newer one.
-let telling;
-let tellAgain = false;
-function tellRunners() {
-  if (telling) return void (tellAgain = true);
-  telling = (async () => {
-    const all = await known();
-    for (const name of [...sockets.keys()].filter(runners.isOnline)) {
-      const threads = (await threadList(all[name]?.owner))
-        .filter((t) => t.agent?.runner === name && t.status !== 'idle')
-        .map(({ id, title, agent, status }) => ({ id, title, agent: agentName(agent), status }));
-      runners.tell(name, { op: 'status', threads });
-    }
-  })().catch((error) => console.error(error)).finally(() => {
-    telling = undefined;
-    if (tellAgain) { tellAgain = false; tellRunners(); }
-  });
 }
 
 // Every commit names the conversations it touched; those threads changed.
@@ -674,5 +573,5 @@ for (const host of process.env.HOST ? [process.env.HOST] : ['127.0.0.1', '::1'])
     console.error(error);
     process.exit(1);
   });
-  server.listen(port, host, () => { for (const address of urls(host)) console.log(`http://${address}:${port} on ${file}${director ? ' (director on)' : ''}`); });
+  server.listen(port, host, () => { for (const address of urls(host)) console.log(`http://${address}:${port} on ${file}, modules: ${modules.map((m) => m.name).join(', ') || 'none'}`); });
 }

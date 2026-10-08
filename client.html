@@ -203,7 +203,7 @@
         build('button', { textContent: '×', title: 'Remove server', onclick: () => removeServer(server.url) }),
       ]),
       server.status === 'online' ? '' : build('div', { className: 'error', textContent: server.status }),
-      info ? build('small', { textContent: `${info.file} · director ${info.director ? 'on' : 'off'} · ${info.threads} threads · Pi ${info.work.scheduling}, ${info.work.tasks.length} live tasks, ${info.work.submissions.length} open submissions` }) : '',
+      info ? build('small', { textContent: `${info.file} · modules: ${info.modules.join(', ') || 'none'} · ${info.threads} threads · Pi ${info.work.scheduling}, ${info.work.tasks.length} live tasks, ${info.work.submissions.length} open submissions` }) : '',
       raw(info),
       build('h3', { textContent: 'Runners' }),
       build('ul', {}, server.runners.length ? server.runners.map((runner) => runnerView(server, runner))
@@ -344,7 +344,7 @@
   function renderPicker() {
     const server = current();
     if (!server) return;
-    const fallback = server.info?.director ? 'the director decides' : agentName(view?.agent) || 'nobody yet';
+    const fallback = server.info?.modules.includes('director') ? 'the director decides' : agentName(view?.agent) || 'nobody yet';
     keep($('runner'), [['', `default (${fallback})`], ['-', 'nobody'], ...server.runners.map((r) => [r.name, `${r.name}${r.online ? '' : ' (offline)'}`])]);
     const runner = server.runners.find((r) => r.name === $('runner').value);
     keep($('effort'), [['', 'effort (default)'], ...EFFORTS.map((e) => [e, e])]);

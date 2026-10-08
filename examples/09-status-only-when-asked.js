@@ -9,7 +9,7 @@ async function terminal(answers7501, ms = 4000) {
   let out = '';
   let answered = false;
   const env = { ...process.env };
-  delete env.PROGRAM_STATUS;
+  delete env.STATUS;
   const p = Bun.spawn(['bun', 'runner.js', '--server', base, '--name', 'pty', '--dir', dir], {
     cwd: repo,
     env,

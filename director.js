@@ -1,9 +1,11 @@
 // The director, for multiplayer threads: an entry only gets an answer when it says who should give it.
-// The server loads it with DIRECTOR=1. Without it, an entry with no `to` goes to the thread's agent.
+// Off by default; DIRECTOR=1 turns it on. Without it, an entry with no `to` goes to the thread's agent.
 //
 // An agent is a model on a runner, named like gpt-6.1-sol@laptop. @gpt-6.1-sol@laptop, @gpt-6.1-sol or @laptop picks
 // one the thread has asked before. A mention beats the `to`, so humans can talk among themselves and call in whoever they need.
-export function route(posted, asked) {
+export const server = () => ({ route });
+
+function route(posted, asked) {
   const agents = new Map();
   for (const { to } of asked) if (to) agents.set(`${to.model.split('/').pop()}@${to.runner}`, to);
   const named = [...agents].reverse();

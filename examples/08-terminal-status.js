@@ -1,6 +1,6 @@
 // The runner tells its terminal how its threads stand, over OSC 7501 (the Program Status Protocol): one record
 // for itself and one per thread its agents answer, working, done or error, with no prompt or answer text in them.
-// Here its stdout is a pipe, so reports are forced on with PROGRAM_STATUS=1; 09 shows how a real terminal opts in.
+// Here its stdout is a pipe, so reports are forced on with STATUS=1; 09 shows how a real terminal opts in.
 // bun examples/08-terminal-status.js
 import { api, check, done, runner, server, sleep, until, view } from './lib.js';
 
@@ -33,7 +33,7 @@ const quiet = await runner('quiet', { wait: false });
 let quietOut = '';
 quiet.stdout.on('data', (d) => { quietOut += d; });
 
-watch(await runner('laptop', { args: ['--owner', 'oskar'], env: { PROGRAM_STATUS: '1' }, wait: false }));
+watch(await runner('laptop', { args: ['--owner', 'oskar'], env: { STATUS: '1' }, wait: false }));
 check(Boolean(await until(async () => record('')?.state === 'idle', 8000, 50)), 'root record idle once online', JSON.stringify(reports));
 check(record('')?.app === 'agent-ide' && record('')?.msg.includes('laptop'), 'root record names the app and the runner', JSON.stringify(record('')));
 
