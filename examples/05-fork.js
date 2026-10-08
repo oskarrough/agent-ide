@@ -22,11 +22,11 @@ check(fv.title === 'source (fork)', 'fork gets a title', fv.title);
 check(fv.conversation?.parent?.conversationId === a && fv.conversation.parent.at === firstAnswer.id, 'Pi records where the fork came from', JSON.stringify(fv.conversation));
 check(fv.parent === null, 'a fork is not a child thread', fv.parent);
 check(brief(fv) === brief({ entries: source.entries.slice(0, source.entries.indexOf(firstAnswer) + 1) }), 'fork has the history up to the entry', brief(fv));
-check(fv.entries[0]?.data.author === 'oskar' && answers(fv)[0]?.data.author === 'echo@laptop', 'inherited messages keep their authors', brief(fv));
+check(fv.entries[0]?.data.author === 'oskar' && answers(fv)[0]?.data.author === 'echo/echo@laptop', 'inherited messages keep their authors', brief(fv));
 const [sourceAgent] = source.agents;
 const [forkAgent] = fv.agents;
-const forkOwn = await conversationOf(fv, 'echo@laptop');
-check(forkAgent?.name === 'echo@laptop' && forkAgent.to?.model === 'echo/echo' && forkAgent.conversation !== sourceAgent.conversation, 'the fork has its own conversation for the agent', JSON.stringify(fv.agents));
+const forkOwn = await conversationOf(fv, 'echo/echo@laptop');
+check(forkAgent?.name === 'echo/echo@laptop' && forkAgent.to?.model === 'echo/echo' && forkAgent.conversation !== sourceAgent.conversation, 'the fork has its own conversation for the agent', JSON.stringify(fv.agents));
 check(forkOwn.conversation?.parent?.conversationId === sourceAgent.conversation && forkOwn.conversation.parent.at === firstAnswer.data.answer.entry, 'Pi forked it at the answer the agent had given by then', JSON.stringify(forkOwn.conversation));
 check((await api('GET', '/api/threads')).json.some((t) => t.id === f), 'fork is in the thread list');
 
@@ -35,7 +35,7 @@ await api('POST', `/api/threads/${f}/entries`, { body: 'other way' }, 'ben');
 fv = await answered(f, 2);
 const ben = fv?.entries.find((e) => e.data.author === 'ben');
 check(Boolean(ben) && answers(fv).at(-1).data.re?.includes(ben.id), 'fork answers its own message', brief(fv));
-const inputs = (await conversationOf(fv, 'echo@laptop')).entries.filter((e) => e.kind === 'pi.user').map((e) => text(e.model[0]));
+const inputs = (await conversationOf(fv, 'echo/echo@laptop')).entries.filter((e) => e.kind === 'pi.user').map((e) => text(e.model[0]));
 check(JSON.stringify(inputs) === JSON.stringify(['oskar: hello', 'ben: other way']), 'the forked agent read hello once, then only ben', JSON.stringify(inputs));
 check(brief(await view(a)) === brief(source), 'source unchanged, no report from the fork', brief(await view(a)));
 

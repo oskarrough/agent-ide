@@ -23,6 +23,9 @@ const tmp = mkdtempSync(path.join(os.tmpdir(), 'agent-ide-example-'));
 export const db = path.join(tmp, 'store.sqlite');
 export const dir = path.join(tmp, 'folder');
 mkdirSync(dir);
+// Runners get a home of their own, so no pi logins; 11-real-model lends them the real one.
+const home = path.join(tmp, 'home');
+mkdirSync(home);
 
 const procs = new Set();
 process.on('exit', () => {
@@ -47,7 +50,7 @@ export async function server(env = {}) {
 }
 
 export async function runner(name, { args = [], env = {}, wait = true } = {}) {
-  const p = start('runner.js', ['--server', base, '--name', name, '--dir', dir, ...args], env);
+  const p = start('runner.js', ['--server', base, '--name', name, '--dir', dir, ...args], { HOME: home, ...env });
   if (wait) await until(() => api('GET', '/api/runners').then((r) => r.json.some((x) => x.name === name && x.online)));
   return p;
 }
@@ -88,7 +91,7 @@ export function done() {
   process.exit(failed ? 1 : 0);
 }
 
-// A runner in this process, reconnecting like runner.js, whose model answers route(request).
+// A runner in this process, reconnecting like runner.js, whose only model, echo/echo, answers route(request).
 export async function scriptedRunner(name, route, { onTell } = {}) {
   const script = fauxProvider({ provider: 'echo', models: [{ id: 'echo' }], tokensPerSecond: 200 });
   script.setResponses(Array.from({ length: 200 }, () => route));
@@ -97,7 +100,7 @@ export async function scriptedRunner(name, route, { onTell } = {}) {
   let socket, closing = false;
   const connect = () => {
     socket = new WebSocket(`ws://127.0.0.1:${port}/ws?${new URLSearchParams({ runner: name, dir, model: 'echo/echo' })}`);
-    const r = serveRunner({ name, dir, models, echo: script, send: (t) => socket.readyState === WebSocket.OPEN && socket.send(t), onTell });
+    const r = serveRunner({ name, dir, models, resolve: () => ({ model: script.getModel() }), echo: script, send: (t) => socket.readyState === WebSocket.OPEN && socket.send(t), onTell });
     socket.onmessage = ({ data }) => r.receive(data);
     socket.onclose = () => { r.stopAll(); if (!closing) setTimeout(connect, 300); };
     socket.onerror = () => {};

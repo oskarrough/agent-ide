@@ -17,8 +17,9 @@ if (!logins[provider]) {
 }
 
 await server();
-await runner('laptop');
-await runner('desk');
+const home = { env: { HOME: os.homedir() } };
+await runner('laptop', home);
+await runner('desk', home);
 
 const { json: { id } } = await api('POST', '/api/threads', { title: 'real' });
 await api('POST', `/api/threads/${id}/entries`, {
@@ -35,7 +36,7 @@ console.log(`parent #${id}:\n${show(heard ?? await view(id))}`);
 for (const t of (await api('GET', '/api/threads')).json.filter((t) => t.parent === id)) console.log(`child #${t.id}:\n${show(await view(t.id))}`);
 check(Boolean(heard), 'the parent heard back twice: the question, then the poem');
 
-const name = `${model.split('/').pop()}@laptop`;
+const name = `${model}@laptop`;
 await api('POST', `/api/threads/${id}/entries`, { to: { runner: 'desk', model }, body: 'You just joined. Which agent showed me the poem, and who asked it for one? Answer in one line, with names.' }, 'ana');
 const caughtUp = (await until(async () => answers(await view(id)).find((e) => e.data.author.endsWith('@desk')), 120000, 500))?.data;
 console.log(`  ${caughtUp?.author}: ${caughtUp?.body}`);

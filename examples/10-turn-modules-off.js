@@ -12,7 +12,7 @@ const route = (request) => {
   prompt = JSON.stringify(request.messages.filter((m) => m.role === 'system'));
   const last = request.messages.findLast((m) => m.role !== 'system');
   if (last.role === 'toolResult') return say(`tool said: ${text(last)}`);
-  if (text(last).includes('delegate')) return call('post', { title: 'sum', body: 'compute 2+2', to: 'echo@bot' });
+  if (text(last).includes('delegate')) return call('post', { title: 'sum', body: 'compute 2+2', to: 'echo/echo@bot' });
   return say(`heard: ${text(last)}`);
 };
 
@@ -26,7 +26,7 @@ async function round(env) {
   const { modules } = (await api('GET', '/api/server')).json;
   const { json: { id } } = await api('POST', '/api/threads', { title: 'parent' });
   await api('POST', `/api/threads/${id}/entries`, { body: 'please delegate this', to: { runner: 'bot', model: 'echo/echo' } });
-  const result = await until(async () => (await conversationOf(await view(id), 'echo@bot')).entries.find((e) => e.kind === 'pi.tool-result'));
+  const result = await until(async () => (await conversationOf(await view(id), 'echo/echo@bot')).entries.find((e) => e.kind === 'pi.tool-result'));
   await until(async () => (await view(id)).status !== 'working');
   await sleep(1000);
   const children = (await api('GET', '/api/threads')).json.filter((t) => t.parent === id);

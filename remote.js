@@ -1,9 +1,8 @@
-// The runner protocol, both ends. Server: { id, op: 'stream' | 'env' | 'handle' | 'cancel', … }, or a message with no id, for modules.
+// The runner protocol, both ends. Server: { id, op: 'resolve' | 'stream' | 'env' | 'handle' | 'cancel', … }, or a message with no id, for modules.
 // Runner: { id, event } | { id, output } | { id, result } | { id, error }.
 import path from 'node:path';
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai';
 import { fauxAssistantMessage } from '@earendil-works/pi-ai/providers/faux';
-import { getBuiltinModels, getBuiltinProviders } from '@earendil-works/pi-ai/providers/all';
 import { BACKGROUND_CONTEXT, withCancel } from '@earendil-works/chord/context';
 import { ExecutionError, FileError } from '@earendil-works/pi-durable/env';
 import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node';
@@ -62,6 +61,7 @@ export function createRunners({ onChange }) {
 
   return {
     call,
+    online,
     isOnline: (name) => sockets.has(name),
     tell: (name, message) => sockets.get(name)?.send(message),
     working: (name) => [...calls.values()].filter((c) => c.runner === name).map(({ op, what }) => ({ op, what })),
@@ -85,9 +85,6 @@ export function createRunners({ onChange }) {
   };
 }
 
-const ECHO = { id: 'echo', name: 'echo', api: 'faux', provider: 'echo', baseUrl: '', input: ['text'], reasoning: false, contextWindow: 200000, maxTokens: 10000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
-const catalog = [...getBuiltinProviders().flatMap((p) => getBuiltinModels(p)), ECHO];
-
 function failure(model, partial, message, aborted) {
   return {
     role: 'assistant', content: [], api: model.api, provider: model.provider, model: model.id, timestamp: Date.now(),
@@ -96,9 +93,10 @@ function failure(model, partial, message, aborted) {
   };
 }
 
-export function runnerProvider(runners, name) {
+// Its models are those pi on the runner resolved, by `provider/id`; the runner resolves that again to stream.
+export function runnerProvider(runners, name, resolved = {}) {
   const id = `runner:${name}`;
-  const models = catalog.map((m) => ({ ...m, provider: id, id: `${m.provider}/${m.id}`, name: `${m.name} on ${name}` }));
+  const models = Object.entries(resolved).map(([ref, m]) => ({ ...m, provider: id, id: ref, name: `${m.name} on ${name}` }));
   const stream = (model, context, options = {}) => {
     const events = createAssistantMessageEventStream();
     const { signal, apiKey, env, fetch, onPayload, onResponse, onProviderStreamEvent, ...rest } = options;
@@ -152,8 +150,9 @@ export function remoteEnv(runners, name, cwd) {
   return env;
 }
 
-// `echo` is the pi-ai faux provider behind `echo/echo`. It answers from a queue, so each request queues one echo.
-export function serveRunner({ name, dir, models, echo, send, onTell }) {
+// `resolve(pattern)` is what pi makes of `--model pattern`: { model, thinkingLevel? }. `echo` is the pi-ai faux provider
+// behind `echo/echo`. It answers from a queue, so each request queues one echo.
+export function serveRunner({ name, dir, models, resolve, echo, send, onTell }) {
   const running = new Map();
   const handles = new Map();
   let nextHandle = 0;
@@ -165,14 +164,18 @@ export function serveRunner({ name, dir, models, echo, send, onTell }) {
     return full;
   }
 
+  // A model goes to the server without its headers, which can hold credentials.
+  async function resolved(pattern) {
+    const { model: { headers, ...model }, thinkingLevel } = await resolve(pattern);
+    return { model, ...(thinkingLevel ? { thinkingLevel } : {}) };
+  }
+
   async function stream({ id, model: ref, context, options }, signal) {
-    const [provider, ...rest] = ref.split('/');
-    let model = models.getModel(provider, rest.join('/'));
-    if (provider === 'echo') {
+    let { model } = await resolve(ref);
+    if (model.provider === 'echo') {
       echo.appendResponses([(ctx) => fauxAssistantMessage(`echo@${name} heard: ${messageText(ctx.messages.findLast((m) => m.role === 'user'))}`)]);
       model = echo.getModel();
     }
-    if (!model) throw new Error(`${name} has no model ${ref}`);
     let sentAt = 0;
     for await (const event of models.streamSimple(model, context, { ...options, signal })) {
       const due = ['start', 'done', 'error'].includes(event.type) || event.type.endsWith('_end') || Date.now() - sentAt > 100;
@@ -214,7 +217,8 @@ export function serveRunner({ name, dir, models, echo, send, onTell }) {
       if (message.op === 'cancel') return running.get(message.id)?.cancel(new Error('cancelled by the server'));
       const { context, cancel } = withCancel(BACKGROUND_CONTEXT);
       running.set(message.id, { cancel });
-      const work = message.op === 'stream' ? stream(message, context.abortSignal)
+      const work = message.op === 'resolve' ? resolved(message.model)
+        : message.op === 'stream' ? stream(message, context.abortSignal)
         : message.op === 'env' ? env(message, context)
           : handle(message, context);
       work.then((result) => reply({ id: message.id, result: result ?? null }), (error) => {

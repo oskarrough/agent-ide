@@ -38,7 +38,7 @@ check(record('')?.app === 'agent-ide' && record('')?.msg.includes('laptop'), 'ro
 const { json: { id } } = await api('POST', '/api/threads', { title: 'Status test' });
 await api('POST', `/api/threads/${id}/entries`, { body: 'a secret prompt', to: { runner: 'laptop', model: 'echo/echo' } });
 check(Boolean(await until(async () => record(id)?.state === 'done', 8000, 50)), 'thread record done after the answer', JSON.stringify(reports));
-check(record(id)?.title === `#${id} Status test` && record(id)?.msg === 'echo@laptop', 'title is the thread, msg its agents on this runner', JSON.stringify(record(id)));
+check(record(id)?.title === `#${id} Status test` && record(id)?.msg === 'echo/echo@laptop', 'title is the thread, msg its agents on this runner', JSON.stringify(record(id)));
 check(!reports.some((r) => `${r.title}${r.msg}`.includes('secret') || `${r.title}${r.msg}`.includes('heard')), 'no prompt or answer text in any report');
 check(!reports.some((r) => r.app && r.id), 'only the root names the app; threads inherit it');
 
@@ -68,7 +68,7 @@ check(reports.length === before, 'nothing is re-sent when this runner\'s records
 
 // A failure: the reader sees error until they read it.
 const { json: { id: broken } } = await api('POST', '/api/threads', { title: 'Broken' });
-const bad = await api('POST', `/api/threads/${broken}/entries`, { body: 'hi', to: { runner: 'laptop', model: 'nope/nope' } });
+const bad = await api('POST', `/api/threads/${broken}/entries`, { body: 'hi', to: { runner: 'laptop', model: 'openai/nope' } });
 check(Boolean(await until(async () => record(broken)?.state === 'error', 15000, 50)), 'a thread whose agent gave no answer reports error', `${JSON.stringify(bad)} ${JSON.stringify((await view(broken)).status)}`);
 check((await api('GET', '/api/threads')).json.find((t) => t.id === broken)?.status === 'error', 'the API says error too');
 

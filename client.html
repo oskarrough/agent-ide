@@ -230,7 +230,7 @@
     return text ? build('small', { className: `status ${thread.status}` }, [text]) : '';
   }
 
-  const agentName = (to) => to && `${to.model.split('/').pop()}@${to.runner}`;
+  const agentName = (to) => to && `${to.model}@${to.runner}`;
   const toLabel = (to) => [agentName(to), to.effort, to.dir && `in ${to.dir}`].filter(Boolean).join(' · ');
 
   function threadLink(server, id) {
@@ -320,11 +320,11 @@
     keep($('runner'), [['', `default (${fallback})`], ['-', 'nobody'], ...server.runners.map((r) => [r.name, `${r.name}${r.online ? '' : ' (offline)'}`])]);
     const runner = server.runners.find((r) => r.name === $('runner').value);
     keep($('effort'), [['', 'effort (default)'], ...EFFORTS.map((e) => [e, e])]);
-    $('models').replaceChildren(...[runner?.model, 'echo/echo'].filter(Boolean).map((value) => build('option', { value })));
+    $('models').replaceChildren(...[...new Set([runner?.model, ...runner?.models ?? [], 'echo/echo'])].filter(Boolean).map((value) => build('option', { value })));
     $('model').placeholder = runner?.model || 'model';
     for (const id of ['model', 'effort', 'dir']) $(id).disabled = !runner;
     $('child-label').hidden = !selected?.id;
-    const model = ($('model').value || runner?.model || '').split('/').pop();
+    const model = $('model').value || runner?.model || '';
     $('body').placeholder = !runner ? ($('runner').value === '-' ? 'A message for nobody in particular' : `A message for ${fallback}; $ command runs on its runner`)
       : `A message for ${model}@${runner.name}; $ command runs in its folder`;
   }

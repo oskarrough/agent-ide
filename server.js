@@ -1,20 +1,21 @@
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context';
 import { createModels } from '@earendil-works/pi-ai/models';
-import { AgentDoc, createRegistry, defineDoc, Harness, InboxDoc, LiveDoc } from '@earendil-works/pi-durable';
+import { AgentDoc, configure, createRegistry, defineDoc, defineExtension, defineTask, Harness } from '@earendil-works/pi-durable';
 import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node';
 import { CodingTools } from '@earendil-works/pi-durable/tools';
 import { load } from './modules.js';
 import { createRunners, messageText, remoteEnv, runnerProvider } from './remote.js';
 
 /**
- * @typedef {{ runner: string, model: string, effort?: string, dir?: string }} To  An agent: a model on a runner, named `model@runner`.
+ * @typedef {{ runner: string, model: string, effort?: string, dir?: string }} To  An agent: a model on a runner, as pi
+ *   there resolved it, `provider/id`. Named `provider/id@runner`.
  * @typedef {object} Message  The data of every thread entry: something said there.
- * @property {string} author  A human's name, or an agent's `model@runner`.
+ * @property {string} author  A human's name, or an agent's.
  * @property {string} body
  * @property {To[]} [to]  The agents it asks.
  * @property {number} [from]  The thread it came from.
@@ -24,30 +25,111 @@ import { createRunners, messageText, remoteEnv, runnerProvider } from './remote.
  * @property {{ runner: string, code: number | null, stdout: string, stderr: string, error?: string }} [shell]  What `$ cmd` printed.
  * @typedef {{ id: number, kind: 'agent-ide.message', data: Message }} Entry  A thread entry, as Pi keeps it and the API sends it.
  * @typedef {{ name: string, conversation: number, to: To | null, status: string }} Agent  An agent in a thread, in the API.
+ * @typedef {{ agent: number, held: number[], steer: boolean }} Delivery  A Deliver task's input: the agent's
+ *   conversation, and the thread messages its one input holds.
+ * @typedef {{ author: string, command: string, to: To }} Command  A Shell task's input.
  */
 
 const port = Number(process.env.PORT || 3000);
 const file = process.env.DB_PATH || `agent-ide-${port}.sqlite`;
-// Every runner that ever connected, so its models resolve after a restart.
+const KIND = 'agent-ide.message';
+// Every runner that ever connected, and each model pi resolved on it, so they're known after a restart and offline.
 const Runners = defineDoc({ kind: 'agent-ide.runners', version: 1, scope: 'session', initial: () => ({}) });
-// `agents` maps each agent's name to its Pi conversation. `started` maps an agent's tool call to the thread it started,
-// so a replayed call finds it.
+// `agents` maps each agent's name to its Pi conversation. `sent` maps an agent's `post` call to the thread it posted
+// to, so a replayed call finds it.
 const Thread = defineDoc({
   kind: 'agent-ide.thread', version: 1, scope: 'conversation', history: 'latest', fork: 'initial',
-  initial: () => ({ title: '', parent: null, createdAt: '', createdBy: '', hidden: false, reads: {}, started: {}, agents: {} }),
+  initial: () => ({ title: '', parent: null, createdAt: '', createdBy: '', hidden: false, reads: {}, sent: {}, agents: {} }),
 });
-// On an agent's conversation: the thread it answers in, and its name there.
-const AgentHome = defineDoc({ kind: 'agent-ide.agent', version: 1, scope: 'conversation', history: 'latest', fork: 'initial', initial: () => ({ thread: 0, name: '' }) });
+// On an agent's conversation: the thread it answers in, its name there, and the thread messages it hasn't seen.
+const AgentHome = defineDoc({ kind: 'agent-ide.agent', version: 1, scope: 'conversation', history: 'latest', fork: 'initial', initial: () => ({ thread: 0, name: '', unseen: [] }) });
 const ownerless = { ownership: { kind: 'ownerless' } };
+const own = { ownership: { kind: 'conversation' } };
+const finished = (status = 'completed') => ({ status: 'terminal', outcome: { status, result: null } });
+
+// Owns an agent's conversation for its thread, so stopping the thread reaches the agent's work. Done at once.
+const Anchor = defineTask({
+  name: 'agent-ide.anchor', version: 1, initial: () => ({ phase: 'own' }),
+  phases: { own: (task, rt, ctx) => rt.commit(() => finished(), ctx) },
+  abort: (task, rt, ctx) => rt.commit(() => finished('aborted'), ctx),
+});
+
+// Asks an agent once: it waits for the runner, submits one input under a request id made from its own id, so a rerun
+// finds it, and posts what came of it in the commit that ends it.
+const Deliver = defineTask({
+  name: 'agent-ide.deliver', version: 1, initial: () => ({ phase: 'ask' }),
+  phases: {
+    async ask({ id, conversationId: threadId, input: { agent, held, steer } }, rt, ctx) {
+      const to = await agentOf(agent);
+      await runners.online(to.runner, rt.signal);
+      const all = await messages(threadId);
+      const content = all.filter((e) => held.includes(e.id)).map(said).join('\n\n');
+      const handle = await rt.conversation(agent, ctx);
+      const submission = await handle.submit({ type: 'input', content, requestId: requestOf(id, held), whenBusy: steer ? 'steer' : 'followUp' }, ctx);
+      const settled = await submission.wait(ctx);
+      const told = await outcome(threadId, agent, settled, all);
+      await rt.commit(async (tx) => {
+        for (const { thread, data, steer } of told) await post(tx, thread, data, { steer });
+        if (settled.entry === undefined) await restore(tx, agent, held);
+        return finished();
+      }, ctx);
+    },
+  },
+  // Withdraws its input if still queued. An input never placed gave the agent nothing.
+  async abort({ id, input: { agent, held } }, rt, ctx) {
+    let record = await storage.submissionByRequest(agent, requestOf(id, held), ctx);
+    if (record?.status === 'queued') {
+      await harness.abortSubmission(record.id, ctx, agent);
+      record = await storage.submission(record.id, ctx);
+    }
+    await rt.commit(async (tx) => {
+      if (record?.entry === undefined) await restore(tx, agent, held);
+      return finished('aborted');
+    }, ctx);
+  },
+});
+
+// `$ cmd` in the runner's folder, as an effect sandwich: it commits that it began, runs, then posts what it printed.
+// Reopened after it began, it posts that a restart interrupted it.
+const Shell = defineTask({
+  name: 'agent-ide.shell', version: 1, initial: () => ({ phase: 'run' }),
+  phases: {
+    async run({ id, conversationId: threadId, input }, rt, ctx) {
+      await rt.commit(() => ({ status: 'running', checkpoint: { phase: 'interrupted' } }), ctx);
+      const run = { threadId, author: input.author, to: input.to, command: input.command, stdout: '', stderr: '' };
+      shells.set(id, run);
+      notify(threadId);
+      const env = remoteEnv(runners, input.to.runner, folder((await known())[input.to.runner], input.to));
+      const result = await env.exec(input.command, { onOutput: (text, _context, info) => { run[info.stream] += text; notify(threadId); } }, ctx);
+      const output = result.ok ? { code: result.value.exitCode } : { error: result.error.message };
+      await rt.commit(async (tx) => (await printed(tx, threadId, input, { ...run, ...output }), finished()), ctx);
+      shells.delete(id);
+    },
+    interrupted: ({ conversationId, input }, rt, ctx) =>
+      rt.commit(async (tx) => (await printed(tx, conversationId, input, { error: 'interrupted by a restart' }), finished()), ctx),
+  },
+  async abort({ id, conversationId, input }, rt, ctx) {
+    await rt.commit(async (tx) => (await printed(tx, conversationId, input, { ...shells.get(id), error: 'stopped' }), finished('aborted')), ctx);
+    shells.delete(id);
+  },
+});
+
+/** @param {Command} command */
+function printed(tx, threadId, { author, command, to }, { code = null, stdout = '', stderr = '', error }) {
+  const shell = { runner: to.runner, code, stdout: stdout.slice(-20000), stderr: stderr.slice(-20000), ...(error ? { error } : {}) };
+  return post(tx, threadId, { author, body: `$ ${command}`, shell });
+}
 
 const clients = new Set();
 const runners = createRunners({ onChange: () => notify(null) });
+// What each running `$ cmd` has printed so far, by its task.
 const shells = new Map();
 const page = await readFile(new URL('./client.html', import.meta.url));
 
 const models = createModels();
 const registry = createRegistry();
 registry.install(CodingTools);
+registry.install(defineExtension({ name: 'agent-ide', tasks: [Anchor, Deliver, Shell] }));
 const storage = await openNodeSqliteStorage(file);
 const harness = await Harness.open(storage, {
   models,
@@ -85,7 +167,7 @@ const threadIds = async () => {
   return (await Promise.all(all.map(async (id) => (await thread(id)) && id))).filter(Boolean);
 };
 
-const agentName = (to) => to && `${to.model.split('/').pop()}@${to.runner}`;
+const agentName = (to) => to && `${to.model}@${to.runner}`;
 const user = (req) => req.headers['x-user'] || 'anon';
 
 function field(value, name) {
@@ -93,13 +175,26 @@ function field(value, name) {
   return value.trim();
 }
 
+// A model is whatever pi on the runner makes of it, as `pi --model` would. An offline runner can't resolve, so it
+// takes only a model it resolved before.
 async function address(to) {
   const name = field(to?.runner, 'to.runner');
   const runner = (await known())[name];
   if (!runner) throw new Error(`No runner ${name} has connected to this server`);
-  const model = to.model?.trim() || runner.model;
-  if (!model) throw new Error(`${name} has no default model in pi; name one as provider/model`);
-  const clean = { runner: name, model };
+  const asked = typeof to.model === 'string' ? to.model.trim() : '';
+  let model = runner.models?.[asked];
+  let effort;
+  if (!model) {
+    if (!runners.isOnline(name)) throw new Error(`${name} is offline; name a model it has run, as provider/id`);
+    ({ model, thinkingLevel: effort } = await runners.call(name, { op: 'resolve', model: asked }, {}));
+    const ref = `${model.provider}/${model.id}`;
+    if (!runner.models?.[ref]) {
+      await commit(async (tx) => { (await tx.doc(Runners))[name].models[ref] = model; });
+      models.setProvider(runnerProvider(runners, name, (await known())[name].models));
+    }
+  }
+  const clean = { runner: name, model: `${model.provider}/${model.id}` };
+  if (effort) clean.effort = effort;
   for (const key of ['effort', 'dir']) if (typeof to[key] === 'string' && to[key].trim()) clean[key] = to[key].trim();
   folder(runner, clean);
   return clean;
@@ -122,40 +217,27 @@ async function agentOf(id) {
   return { runner: name, model: agent.model.modelId, ...(agent.thinkingLevel ? { effort: agent.thinkingLevel } : {}), ...(dir ? { dir } : {}) };
 }
 
+// An agent is working while a delivery to it is live: queued, running, or copying its answer back.
 /** @returns {Promise<Agent[]>} */
-async function agentsIn(row) {
+async function agentsIn(row, live) {
   return Promise.all(Object.entries(row.agents).map(async ([name, conversation]) => {
     const to = await agentOf(conversation);
-    const live = await harness.snapshot(LiveDoc, conversation, context);
-    const inbox = await harness.snapshot(InboxDoc, conversation, context);
-    const busy = live?.run || inbox?.items?.some((item) => item.mode !== 'write');
+    const busy = live.some((t) => t.kind === Deliver.definition.name && t.input.agent === conversation);
     return { name, conversation, to, status: !busy ? 'idle' : to && runners.isOnline(to.runner) ? 'working' : 'blocked' };
   }));
 }
-
-// The one place a thread changes: a passive write, keyed so a repeat finds the first. A thread never runs.
-async function say(threadId, data, requestId) {
-  const submission = await (await conversation(threadId)).submit({ type: 'write', entry: { kind: 'agent-ide.message', data }, requestId }, context);
-  return (await submission.wait(context)).entry;
-}
+const liveTasks = async () => (await harness.inspect(context)).tasks.map((t) => t.record);
 
 /** @returns {Promise<Entry[]>} */
 async function messages(id) {
   const handle = await conversation(id);
-  return (await collect((cursor) => handle.entries({ order: 'ascending' }, 500, cursor, context))).filter((e) => e.kind === 'agent-ide.message');
+  return (await collect((cursor) => handle.entries({ order: 'ascending' }, 500, cursor, context))).filter((e) => e.kind === KIND);
 }
+const lastAsked = async (id) => (await messages(id)).findLast((e) => e.data.to)?.data.to ?? [];
 
-// An agent's inputs, each naming in its request id the newest thread entry it holds, `upto`, and those that asked the
-// agent, `re`. A fork inherits its source's inputs up to the fork's entry, unless `own`.
-async function inputs(id, own) {
-  const records = await collect((cursor) => storage.scanSubmissions({ conversationId: id }, 500, cursor, context));
-  const mine = records.filter((r) => r.type === 'input' && r.requestId).map((record) => {
-    const params = new URLSearchParams(record.requestId);
-    return { requestId: record.requestId, upto: Number(params.get('upto')), re: params.get('re') ? params.get('re').split(',').map(Number) : [], record };
-  });
-  const { parent } = own ? {} : await commit((tx) => tx.conversation(id));
-  return parent ? [...(await inputs(parent.conversationId)).filter((i) => i.record.entry <= parent.at), ...mine] : mine;
-}
+// An input's request id names its delivery and the thread messages it holds.
+const requestOf = (task, held) => new URLSearchParams({ task, held }).toString();
+const heldOf = (requestId) => new URLSearchParams(requestId).get('held')?.split(',').filter(Boolean).map(Number) ?? [];
 
 function said({ data: m }) {
   const who = m.from ? `${m.author}, ${m.re ? 'answering' : 'writing'} from thread ${m.from}` : m.author;
@@ -163,39 +245,76 @@ function said({ data: m }) {
   return `${who}: ${m.body}${output}`;
 }
 
-// Sends the agent's conversation, made the first time it's asked here, every message it hasn't seen, but its own.
-async function ask(threadId, to, steer) {
-  const name = agentName(to);
-  const id = await commit(async (tx) => {
-    const row = await tx.doc(Thread, threadId);
-    if (row.agents[name]) return row.agents[name];
-    const created = await tx.createConversation(ownerless);
-    Object.assign(await tx.doc(AgentHome, created.id), { thread: threadId, name });
-    return row.agents[name] = created.id;
-  });
-  const handle = await harness.conversation(id, context);
-  await handle.configure({
-    model: { provider: `runner:${to.runner}`, modelId: to.model },
-    thinkingLevel: to.effort ?? null,
-    cwd: folder((await known())[to.runner], to),
-    instructions: `You are ${name} in thread ${threadId}, with humans and other agents. Messages come to you as "name: text". Only your final answer goes back to the thread.`,
-  }, context);
-  const seen = Math.max(0, ...(await inputs(id)).filter((i) => i.record.status !== 'unanswered' || i.record.entry !== undefined).map((i) => i.upto));
-  const news = (await messages(threadId)).filter((e) => e.id > seen && (e.data.author !== name || e.data.from));
-  if (!news.length) return;
-  const re = news.filter((e) => e.data.to?.some((t) => agentName(t) === name)).map((e) => e.id);
-  const requestId = new URLSearchParams({ upto: news.at(-1).id, re }).toString();
-  await handle.submit({ type: 'input', content: news.map(said).join('\n\n'), requestId, whenBusy: steer ? 'steer' : 'followUp' }, context);
-  follow(threadId, id, requestId).catch((error) => console.error(error));
+/**
+ * Writes a message into a thread, inside the caller's commit: it's unseen by every agent there but its own, and each
+ * agent in its `to` gets a Deliver task holding all it hasn't seen. An agent's conversation is made the first time it's
+ * asked here, owned by an Anchor in the thread. A new agent makes it read the thread, and a commit can't read after
+ * it writes, so post first, or into a new thread (`empty`).
+ * @param {Message} data
+ */
+async function post(tx, threadId, data, { steer = false, empty = false } = {}) {
+  const row = await tx.doc(Thread, threadId);
+  const to = data.to ?? [];
+  const prior = !empty && to.some((t) => !row.agents[agentName(t)])
+    ? (await collect((cursor) => tx.scanEntries({ conversationId: threadId, order: 'ascending' }, 500, cursor))).filter((e) => e.kind === KIND).map((e) => e.id)
+    : [];
+  const entry = await tx.appendEntry(threadId, { kind: KIND, data });
+  for (const [name, agent] of Object.entries(row.agents)) if (name !== data.author || data.from) (await tx.doc(AgentHome, agent)).unseen.push(entry.id);
+  const all = await tx.doc(Runners);
+  for (const t of to) {
+    const name = agentName(t);
+    if (!row.agents[name]) {
+      const anchor = await tx.createTask(Anchor, null, { ...own, conversationId: threadId });
+      row.agents[name] = (await tx.createConversation({ ownership: { kind: 'task', taskId: anchor } })).id;
+      Object.assign(await tx.doc(AgentHome, row.agents[name]), { thread: threadId, name, unseen: [...prior, entry.id] });
+    }
+    const agent = row.agents[name];
+    await configure(tx, agent, {
+      model: { provider: `runner:${t.runner}`, modelId: t.model },
+      thinkingLevel: t.effort ?? null,
+      cwd: folder(all[t.runner], t),
+      instructions: `You are ${name} in thread ${threadId}, with humans and other agents. Messages come to you as "name: text". Only your final answer goes back to the thread.`,
+    });
+    const home = await tx.doc(AgentHome, agent);
+    const held = [...home.unseen];
+    home.unseen = [];
+    if (held.length) await tx.createTask(Deliver, { agent, held, steer }, { ...own, conversationId: threadId });
+  }
+  return { entry: entry.id, to };
 }
 
-// Asks for one thread run one at a time, so no two inputs hold the same message.
-const queues = new Map();
-const serial = (id, fn) => queues.set(id, (queues.get(id) ?? Promise.resolve()).catch(() => {}).then(fn)).get(id);
+// An input withdrawn before it was placed gave its agent nothing: its messages are unseen again.
+async function restore(tx, agent, held) {
+  const home = await tx.doc(AgentHome, agent);
+  home.unseen = [...new Set([...home.unseen, ...held])].sort((a, b) => a - b);
+}
+
+// What a settled input posts, and where: its answer, with `re`, the messages it held that asked the agent, or an error.
+// Inputs that share one answer post it once, by the first. Posts it answers get it back, else a child thread reports
+// it to its parent. A stopped input posts nothing at all.
+async function outcome(threadId, agent, settled, all) {
+  const done = settled.status === 'done';
+  if (!done && settled.reason === 'aborted') return [];
+  const group = done ? (await collect((cursor) => storage.scanSubmissions({ conversationId: agent }, 500, cursor, context))).filter((r) => r.answer === settled.answer) : [settled];
+  if (group[0].id !== settled.id) return [];
+  const { name } = await home(agent);
+  const ids = new Set(group.flatMap((r) => heldOf(r.requestId)));
+  const held = all.filter((e) => ids.has(e.id));
+  const re = held.filter((e) => e.data.to?.some((t) => agentName(t) === name)).map((e) => e.id);
+  const body = done ? messageText((await commit((tx) => tx.entry(settled.answer)))?.model?.[0]) || '(empty answer)'
+    : `gave no answer: ${settled.reason}${settled.detail ? ` (${JSON.stringify(settled.detail)})` : ''}`;
+  const result = done ? { answer: { conversation: agent, entry: settled.answer } } : { error: true };
+  const told = [{ thread: threadId, data: { author: name, body, ...(re.length ? { re } : {}), ...result } }];
+  const posts = held.filter((e) => e.data.from && !e.data.re);
+  if (posts.length && reply) return [...told, ...(await reply(posts, threadId, name, body)).map((r) => ({ ...r, steer: true }))];
+  const { parent } = await thread(threadId);
+  if (parent) told.push({ thread: parent, data: { author: name, body: body.split('\n').find(Boolean)?.slice(0, 160) ?? '', from: threadId } });
+  return told;
+}
 
 // With no reader, as for a runner nobody owns, anyone's read counts.
-async function status(id, reads, agents, reader) {
-  if (agents.some((a) => a.status === 'working') || [...shells.values()].some((run) => run.threadId === id)) return 'working';
+async function status(id, reads, agents, shell, reader) {
+  if (shell || agents.some((a) => a.status === 'working')) return 'working';
   if (agents.some((a) => a.status === 'blocked')) return 'blocked';
   const seen = new Set(reader ? [reads[reader]] : Object.values(reads));
   for (const entry of (await (await harness.conversation(id, context)).entries({}, 50, undefined, context)).items) {
@@ -205,124 +324,95 @@ async function status(id, reads, agents, reader) {
   return 'idle';
 }
 
-async function threadRow(id, reader) {
-  const { reads, started, ...row } = await thread(id);
-  const agents = await agentsIn(row);
-  return { id, ...row, agents, status: await status(id, reads, agents, reader) };
+async function threadRow(id, reader, live) {
+  const { reads, sent, ...row } = await thread(id);
+  const agents = await agentsIn(row, live);
+  const shell = live.some((t) => t.kind === Shell.definition.name && t.conversationId === id);
+  return { id, ...row, agents, status: await status(id, reads, agents, shell, reader) };
 }
-const threadList = async (reader) => (await Promise.all((await threadIds()).map((id) => threadRow(id, reader)))).filter((row) => !row.hidden);
+const threadList = async (reader) => {
+  const live = await liveTasks();
+  return (await Promise.all((await threadIds()).map((id) => threadRow(id, reader, live)))).filter((row) => !row.hidden);
+};
 const threadView = async (id, reader) => ({
-  ...await threadRow(id, reader), conversation: await commit((tx) => tx.conversation(id)),
+  ...await threadRow(id, reader, await liveTasks()), conversation: await commit((tx) => tx.conversation(id)),
   shells: [...shells.values()].filter((run) => run.threadId === id), entries: await messages(id),
 });
 
 const home = (conversationId) => harness.snapshot(AgentHome, conversationId, context);
 
-// Copies an agent's final answer into the thread. One answer can settle several inputs; the first of them speaks for all.
-async function follow(threadId, conversationId, requestId) {
-  const record = await commit((tx) => tx.submissionByRequest(conversationId, requestId));
-  const settled = await (await harness.submission(record.id, context)).wait(context);
-  const done = settled.status === 'done';
-  const together = (await inputs(conversationId, true)).filter((i) => done ? i.record.answer === settled.answer : i.record.id === settled.id);
-  if (together[0].record.id !== settled.id) return;
-  const name = agentName(await agentOf(conversationId));
-  const re = [...new Set(together.flatMap((i) => i.re))];
-  const body = done ? messageText((await commit((tx) => tx.entry(settled.answer)))?.model?.[0]) || '(empty answer)'
-    : `gave no answer: ${settled.reason}${settled.detail ? ` (${JSON.stringify(settled.detail)})` : ''}`;
-  const key = `${conversationId}:${settled.id}`;
-  if (done || settled.reason !== 'aborted') {
-    const outcome = done ? { answer: { conversation: conversationId, entry: settled.answer } } : { error: true };
-    await say(threadId, { author: name, body, ...(re.length ? { re } : {}), ...outcome }, `answer:${key}`);
-  }
-  const posts = (await messages(threadId)).filter((e) => re.includes(e.id) && e.data.from && !e.data.re);
-  if (posts.length && reply) return reply(posts, threadId, name, body, key);
-  const { parent } = await thread(threadId);
-  if (parent) await say(parent, { author: name, body: body.split('\n').find(Boolean)?.slice(0, 160) ?? '', from: threadId }, `report:${key}`);
-}
-
-async function shell(id, author, command, to, key) {
-  const runner = (await known())[to.runner];
-  const run = { threadId: id, author, to, command, stdout: '', stderr: '' };
-  shells.set(key, run);
-  notify(id);
-  const result = await remoteEnv(runners, to.runner, folder(runner, to)).exec(command, {
-    onOutput: (text, _context, info) => { run[info.stream] += text; notify(id); },
-  }, context);
-  const output = { runner: to.runner, code: result.ok ? result.value.exitCode : null, stdout: run.stdout.slice(-20000), stderr: run.stderr.slice(-20000), ...(result.ok ? {} : { error: result.error.message }) };
-  await say(id, { author, body: `$ ${command}`, shell: output }, `shell:${key}`);
-  shells.delete(key);
-  notify(id);
-}
-
-// No `to` asks whom the thread last asked; with the director, whom the body @mentions.
-async function postEntry(id, author, input, { key = randomUUID(), from = null, re = null } = {}) {
+// No `to` asks whom the thread last asked; with the director, whom the body @mentions. `$ cmd` starts a Shell task.
+async function postEntry(id, author, input) {
   await conversation(id);
   const body = field(input.body, 'body');
   const command = body.match(/^\$\s+([\s\S]+)/)?.[1];
   const routed = route && !command;
-  let to = 'to' in input ? await addresses(input.to) : routed ? [] : (await messages(id)).findLast((e) => e.data.to)?.data.to ?? [];
-  if (routed) to = await addresses(route({ body, to }, (await agentsIn(await thread(id))).map((a) => a.to).filter(Boolean)));
+  let to = 'to' in input ? await addresses(input.to) : routed ? [] : await lastAsked(id);
+  if (routed) to = await addresses(route({ body, to }, (await Promise.all(Object.values((await thread(id)).agents).map(agentOf))).filter(Boolean)));
   if (command) {
     if (!to.length) throw new Error('Pick a runner to run the command on');
-    shell(id, author, command, to[0], key).catch((error) => console.error(error));
+    await commit((tx) => tx.createTask(Shell, { author, command, to: to[0] }, { ...own, conversationId: id }));
     return { command, to: to[0] };
   }
-  const message = { author, body, ...(to.length ? { to } : {}), ...(from ? { from } : {}), ...(re ? { re } : {}) };
-  return serial(id, async () => {
-    const entry = await say(id, message, `post:${key}`);
-    for (const agent of to) await ask(id, agent, input.steer);
-    return { entry, to };
-  });
+  return commit((tx) => post(tx, id, { author, body, ...(to.length ? { to } : {}) }, { steer: input.steer === true }));
 }
 
-async function createThread(author, { title, parent = null }, key) {
+// A new thread, and with a parent, a hand-off message there. Inside the caller's commit.
+async function startThread(tx, author, title, parent) {
+  const { id } = await tx.createConversation(ownerless);
+  Object.assign(await tx.doc(Thread, id), { title, parent, createdAt: new Date().toISOString(), createdBy: author });
+  if (parent) await post(tx, parent, { author, body: `handed off → thread:${id}` });
+  return id;
+}
+
+async function createThread(author, { title, parent = null }) {
   if (parent !== null) await conversation(parent = Number(parent));
   title = field(title, 'title');
-  const id = await commit(async (tx) => {
-    const started = parent && key ? ((await tx.doc(Thread, parent)).started ??= {}) : {};
-    if (started[key]) return started[key];
-    const created = await tx.createConversation(ownerless);
-    Object.assign(await tx.doc(Thread, created.id), { title, parent, createdAt: new Date().toISOString(), createdBy: author });
-    if (key) started[key] = created.id;
-    return created.id;
-  });
-  if (parent) await say(parent, { author, body: `handed off → thread:${id}` }, `handoff:${id}`);
-  return { id };
+  return { id: await commit((tx) => startThread(tx, author, title, parent)) };
 }
 
-// One commit forks the thread at an entry and each agent's conversation at its last answer up to there; an agent
-// catches up on the rest when next asked.
+// The thread messages an agent's conversation had seen by its entry `cut`: those held by every input placed by then.
+async function seenBy(id, cut) {
+  const records = await collect((cursor) => storage.scanSubmissions({ conversationId: id }, 500, cursor, context));
+  const held = records.filter((r) => r.type === 'input' && r.entry !== undefined && r.entry <= cut).flatMap((r) => heldOf(r.requestId));
+  const { parent } = await commit((tx) => tx.conversation(id));
+  return parent ? [...held, ...await seenBy(parent.conversationId, Math.min(cut, parent.at))] : held;
+}
+
+// One commit forks the thread at an entry and each agent's conversation at its last answer up to there; an agent's
+// unseen messages are those up to there it hadn't seen by that answer.
 async function forkThread(author, id, { at, title }) {
+  const shown = (await messages(id)).filter((e) => e.id <= Number(at));
   const answers = {};
-  for (const { data } of (await messages(id)).filter((e) => e.id <= Number(at) && e.data.answer)) answers[data.author] = data.answer;
+  for (const { data } of shown) if (data.answer) answers[data.author] = data.answer;
+  const agents = await Promise.all(Object.entries(answers).map(async ([name, { conversation: c, entry }]) => {
+    const seen = new Set(await seenBy(c, entry));
+    return { name, c, entry, unseen: shown.filter((e) => !seen.has(e.id) && (e.data.author !== name || e.data.from)).map((e) => e.id) };
+  }));
   const named = title?.trim() || `${(await thread(id)).title} (fork)`;
   const fork = await (await conversation(id)).fork(Number(at), {
     ...ownerless,
     init: async (tx, forkId) => {
-      const agents = {};
-      for (const [name, { conversation: c, entry }] of Object.entries(answers)) {
-        agents[name] = (await tx.forkConversation(c, entry, ownerless)).id;
-        Object.assign(await tx.doc(AgentHome, agents[name]), { thread: forkId, name });
+      const row = {};
+      for (const { name, c, entry, unseen } of agents) {
+        const anchor = await tx.createTask(Anchor, null, { ...own, conversationId: forkId });
+        row[name] = (await tx.forkConversation(c, entry, { ownership: { kind: 'task', taskId: anchor } })).id;
+        Object.assign(await tx.doc(AgentHome, row[name]), { thread: forkId, name, unseen });
       }
-      Object.assign(await tx.doc(Thread, forkId), { title: named, createdAt: new Date().toISOString(), createdBy: author, agents });
+      Object.assign(await tx.doc(Thread, forkId), { title: named, createdAt: new Date().toISOString(), createdBy: author, agents: row });
     },
   }, context);
   return { id: fork.id };
 }
 
-const core = { models, runners, known, address, agentName, agentOf, thread, home, threadList, messages, createThread, postEntry };
+const core = { Thread, models, runners, known, address, agentName, agentOf, conversation, thread, home, threadList, messages, lastAsked, field, startThread, post };
 const modules = await load('server', { director: false, talk: true, status: true }, core);
 for (const m of modules) if (m.extension) registry.install(m.extension);
 const route = modules.find((m) => m.route)?.route;
 const reply = modules.find((m) => m.reply)?.reply;
 
-for (const name of Object.keys(await known())) models.setProvider(runnerProvider(runners, name));
+for (const [name, runner] of Object.entries(await known())) models.setProvider(runnerProvider(runners, name, runner.models));
 harness.resume();
-for (const id of await threadIds()) {
-  for (const conversation of Object.values((await thread(id)).agents)) {
-    for (const { requestId } of await inputs(conversation, true)) follow(id, conversation, requestId).catch((error) => console.error(error));
-  }
-}
 
 function send(res, status, value) {
   res.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -353,7 +443,7 @@ const handleRequest = async (req, res) => {
       return send(res, 200, { port, file, modules: modules.map((m) => m.name), threads: (await threadIds()).length, runners: Object.keys(await known()).length, work: await harness.inspect(context) });
     }
     if (req.method === 'GET' && route === '/api/runners') {
-      return send(res, 200, Object.entries(await known()).map(([name, runner]) => ({ name, ...runner, online: runners.isOnline(name), calls: runners.working(name) })));
+      return send(res, 200, Object.entries(await known()).map(([name, { models, ...runner }]) => ({ name, ...runner, models: Object.keys(models ?? {}), online: runners.isOnline(name), calls: runners.working(name) })));
     }
     if (req.method === 'GET' && route === '/api/threads') return send(res, 200, await threadList(user(req)));
     if (req.method === 'POST' && route === '/api/threads') {
@@ -388,9 +478,9 @@ const handleRequest = async (req, res) => {
         if (newest && (await thread(id)).reads[user(req)] !== newest) await commit(async (tx) => { (await tx.doc(Thread, id)).reads[user(req)] = newest; });
         return send(res, 200, { read: newest ?? null });
       }
+      // Pi's abort of the thread reaches its tasks, and through each Anchor its agents' runs and queued inputs.
       if (action === 'stop' && req.method === 'POST') {
-        await conversation(id);
-        for (const c of Object.values((await thread(id)).agents)) await (await harness.conversation(c, context)).abort(context);
+        await (await conversation(id)).abort(context);
         return send(res, 200, { stopped: id });
       }
     }
@@ -499,9 +589,10 @@ async function upgrade(req, socket) {
   }
   sockets.set(name, socket);
   const q = (param) => url.searchParams.get(param) || '';
-  const runner = { alias: q('alias'), owner: q('owner'), host: q('host'), dir: q('dir') || '/', model: q('model'), lastSeen: new Date().toISOString() };
+  const resolved = (await known())[name]?.models ?? {};
+  const runner = { alias: q('alias'), owner: q('owner'), host: q('host'), dir: q('dir') || '/', model: q('model'), lastSeen: new Date().toISOString(), models: resolved };
   await commit(async (tx) => { (await tx.doc(Runners))[name] = runner; });
-  if (!models.getProvider(`runner:${name}`)) models.setProvider(runnerProvider(runners, name));
+  if (!models.getProvider(`runner:${name}`)) models.setProvider(runnerProvider(runners, name, resolved));
   readFrames(socket, (text) => runners.receive(text));
   runners.connect(name, (text) => socket.write(frame(text)));
   console.log(`runner ${name} online: ${runner.dir}, default model ${runner.model || 'none'}`);
