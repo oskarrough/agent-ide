@@ -41,7 +41,7 @@ client.html ──▶ server.js   one Pi Durable harness: threads, and each agen
 6. The runner resolves the model the way `pi --model` does, with pi's own resolver, settings and logins: a pattern, a `:thinking` suffix, or nothing for pi's default.
 7. The server keeps each model a runner resolved, without credentials, and an offline runner takes only those.
 8. `echo/echo` is pi-ai's faux provider, for testing: it answers `echo@RUNNER heard: ` and the last user text.
-9. A thread never runs: every entry in it is a passive message with its `author` and `body`, and `to`, `from`, `re`, `answer`, `error` or `shell` when it has them.
+9. A thread never runs: every entry in it is a passive message with its `author` and `body`, and `to`, `from`, `re`, `answer`, `error` or `shell` when it has them, or, with memory, a line.
 10. Each agent in a thread answers from its own Pi conversation, made the first time it is asked there and owned by an Anchor task in the thread.
 11. The thread's doc maps the agent's name to that conversation, and a doc on the conversation names its thread, the agent's name there, and the messages it hasn't been given.
 12. Having no thread doc, an agent's conversation never shows up as a thread.
@@ -75,11 +75,16 @@ client.html ──▶ server.js   one Pi Durable harness: threads, and each agen
 40. [talk.js](talk.js) (on, `TALK=0`) gives agents `post` and `threads` tools.
 41. [status.js](status.js) (on, `STATUS=0`) has runners report to their terminal with OSC 7501, a record for the runner and one per thread by its id.
 42. [director.js](director.js) (`DIRECTOR=1`) has a message ask the agents it @mentions.
-43. With talk, an agent's `post` is one commit, keyed by its tool call so a replay finds it.
-44. When an agent answers posts from another thread, the answer goes back to that thread instead of a report, as a message with `from` and `re`.
-45. That answer asks every agent who posted, and steers into their work if they're busy.
-46. A reply to that answer sends nothing back, so the exchange ends there, like email.
-47. [examples/](examples) defines the rest and checks all of it: the HTTP API, the runner end's interface (`serveRunner` in [remote.js](remote.js)), and each sentence above.
+43. [memory.js](memory.js) (`MEMORY=1`, with `MEMORY_MODEL=model@runner`) gives each thread a memory.
+44. With talk, an agent's `post` is one commit, keyed by its tool call so a replay finds it.
+45. When an agent answers posts from another thread, the answer goes back to that thread instead of a report, as a message with `from` and `re`.
+46. That answer asks every agent who posted, and steers into their work if they're busy.
+47. A reply to that answer sends nothing back, so the exchange ends there, like email.
+48. With memory, each message in a thread gets a line of at most 512 bytes: itself when it fits, or else written by `MEMORY_MODEL` from its text and the thread's memory before it, asked again up to five times while too long.
+49. Neighbouring lines merge in pairs up a binary tree, a pair that fits being its own line.
+50. Each line is an `agent-ide.line` entry `{l, i, text, size}` in the thread, written once by a background Line task that the post's commit creates, so stopping a thread never cuts its memory short.
+51. A fork reads its source's lines through for ranges that end before the fork point.
+52. [examples/](examples) defines the rest and checks all of it: the HTTP API, the runner end's interface (`serveRunner` in [remote.js](remote.js)), and each sentence above.
 
 ## What it promises
 
@@ -88,6 +93,7 @@ client.html ──▶ server.js   one Pi Durable harness: threads, and each agen
 3. **Models of your choice.** Any model pi can name, named the way pi names it.
 4. **Stable messaging.** A message between threads arrives once and its answer comes back once, even across restarts and stops.
 5. **Forks.** Fork a thread at any entry, with each agent in it, to try another path from the same point.
+6. **Memory** (under exploration). A thread never has to end, and anything said in it can be found again, word for word.
 
 ## Running it
 
@@ -96,6 +102,7 @@ bun server.js                          # http://127.0.0.1:3000, stored in agent-
 HOST=0.0.0.0 PORT=3001 bun server.js   # reachable from other machines
 DIRECTOR=1 bun server.js               # multiplayer
 TALK=0 STATUS=0 bun server.js          # the core alone
+MEMORY=1 MEMORY_MODEL=haiku@laptop bun server.js   # threads that never end
 DB_PATH=other.sqlite bun server.js     # another store; only one server may use a file
 
 bun runner.js --server http://127.0.0.1:3000 --name laptop [--alias "Oskar's laptop"] --dir ~/code [--owner oskar]

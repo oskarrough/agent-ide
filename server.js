@@ -258,6 +258,7 @@ async function post(tx, threadId, data, { steer = false, empty = false } = {}) {
     ? (await collect((cursor) => tx.scanEntries({ conversationId: threadId, order: 'ascending' }, 500, cursor))).filter((e) => e.kind === KIND).map((e) => e.id)
     : [];
   const entry = await tx.appendEntry(threadId, { kind: KIND, data });
+  for (const m of posted) await m(tx, threadId, entry);
   for (const [name, agent] of Object.entries(row.agents)) if (name !== data.author || data.from) (await tx.doc(AgentHome, agent)).unseen.push(entry.id);
   for (const t of to) {
     const name = agentName(t);
@@ -425,9 +426,10 @@ async function forkThread(author, id, { at, title }) {
   return { id: fork.id };
 }
 
-const core = { Thread, models, runners, known, address, agentName, agentOf, conversation, thread, home, threadList, messages, lastAsked, field, startThread, post };
-const modules = await load('server', { director: false, talk: true, status: true }, core);
+const core = { Thread, models, runners, known, address, agentName, agentOf, conversation, thread, home, threadList, messages, lastAsked, field, startThread, post, said, seenBy, commit, collect };
+const modules = await load('server', { director: false, talk: true, status: true, memory: false }, core);
 for (const m of modules) if (m.extension) registry.install(m.extension);
+const posted = modules.flatMap((m) => m.posted ?? []);
 const route = modules.find((m) => m.route)?.route;
 const reply = modules.find((m) => m.reply)?.reply;
 

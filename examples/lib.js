@@ -62,6 +62,8 @@ export async function api(method, route, body, user = 'oskar') {
 export const view = async (id) => (await api('GET', `/api/threads/${id}`)).json;
 // An agent's own Pi conversation in a thread: its entries and docs.
 export const conversationOf = async (v, name) => (await api('GET', `/api/conversations/${v.agents.find((a) => a.name === name)?.conversation}`)).json;
+// A thread's memory lines, from its raw Pi conversation.
+export const linesOf = async (id) => (await api('GET', `/api/conversations/${id}`)).json.entries.filter((e) => e.kind === 'agent-ide.line').map((e) => ({ id: e.id, ...e.data }));
 export const answers = (v) => v.entries.filter((e) => e.data.answer);
 export const brief = (v) => JSON.stringify(v?.entries.map((e) => [e.id, e.data.author, e.data.body.slice(0, 40)]));
 export { text };
@@ -94,7 +96,7 @@ export function done() {
 // A runner in this process, reconnecting like runner.js, whose only model, echo/echo, answers route(request).
 export async function scriptedRunner(name, route, { onTell } = {}) {
   const script = fauxProvider({ provider: 'echo', models: [{ id: 'echo' }], tokensPerSecond: 200 });
-  script.setResponses(Array.from({ length: 200 }, () => route));
+  script.setResponses(Array.from({ length: 2000 }, () => route));
   const models = createModels();
   models.setProvider(script.provider);
   let socket, closing = false;
