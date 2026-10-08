@@ -1,11 +1,10 @@
 // One answer each. An agent posts three times to a child thread that's still busy with the first.
 // Every answer the child gives comes back to the parent exactly once, saying all the posts it answers.
-// bun examples/07-one-answer-each.js
 import { api, call, check, done, kinds, say, scriptedRunner, server, sleep, text, until, view } from './lib.js';
 
 await server();
 
-// What the model says, by the last thing it was told: ask once, then twice more while the child is still thinking.
+// Ask once, then twice more while the child is still thinking.
 const bot = await scriptedRunner('bot', (request) => {
   const last = request.messages.findLast((m) => m.role !== 'system');
   const t = text(last);

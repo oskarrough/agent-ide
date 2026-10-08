@@ -1,10 +1,7 @@
-// The runner tells its terminal how its threads stand, over OSC 7501 (the Program Status Protocol): one record
-// for itself and one per thread its agents answer, working, done or error, with no prompt or answer text in them.
-// Here its stdout is a pipe, so reports are forced on with STATUS=1; 09 shows how a real terminal opts in.
-// bun examples/08-terminal-status.js
+// The runner tells its terminal over OSC 7501 how its threads stand: a root record and one per thread, with no
+// prompt or answer text. Its stdout is a pipe here, so STATUS=1 forces reports on; 09 shows a real terminal.
 import { api, check, done, runner, server, sleep, until, view } from './lib.js';
 
-// Every OSC 7501 report the runner writes, decoded, and the records they leave.
 const reports = [];
 const records = new Map();
 const record = (id) => records.get(String(id));
@@ -18,8 +15,9 @@ function watch(p) {
       const report = { ...pairs, title: decode(pairs.title), msg: decode(pairs.msg) };
       reports.push(report);
       const id = pairs.id ?? '';
-      if (pairs.state === 'clear') { for (const key of records.keys()) if (key === id || key.startsWith(`${id}/`) || !id) records.delete(key); }
-      else records.set(id, report);
+      if (pairs.state !== 'clear') records.set(id, report);
+      else if (id) records.delete(id);
+      else records.clear();
     }
     out = out.slice(out.lastIndexOf('\x1b') === -1 ? out.length : out.lastIndexOf('\x1b'));
     if (!out.startsWith('\x1b]7501;')) out = '';
@@ -63,7 +61,6 @@ await until(async () => (await view(other)).status === 'done', 8000, 50);
 await sleep(500);
 check(!reports.some((r) => r.id === String(other)), 'a thread answered on another runner is not reported');
 
-// Unchanged records aren't sent again.
 const before = reports.length;
 await api('POST', `/api/threads/${other}/read`, {}, 'oskar');
 await sleep(500);

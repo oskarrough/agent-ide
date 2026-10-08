@@ -1,12 +1,10 @@
-// Modules turn off whole. Talking to threads and terminal status are on by default; TALK=0 and STATUS=0 remove them.
-// Each check runs with the module on first, so it proves something: then off, the model isn't offered `post` or
-// `threads`, its prompt says nothing about other threads, a post call fails, and runners hear no status.
-// bun examples/10-turn-modules-off.js
+// Modules turn off whole: TALK=0 and STATUS=0 remove talk and status. Each check runs with the module on first,
+// so the off case proves something.
 import { rmSync } from 'node:fs';
 import { getCurrentTools } from '@earendil-works/pi-ai/utils/transcript';
 import { api, call, check, db, done, messageText, runner, say, scriptedRunner, server, sleep, text, until, view } from './lib.js';
 
-// The script records what it was offered: Pi carries the tools and the system prompt in system messages.
+// Pi carries the tools and the system prompt in system messages.
 let offered = [];
 let prompt = '';
 const route = (request) => {
@@ -18,9 +16,10 @@ const route = (request) => {
   return say(`heard: ${text(last)}`);
 };
 
-// A fresh server with these switches, a scripted runner, and one agent asked to delegate.
+const fresh = () => { for (const f of [db, `${db}-wal`, `${db}-shm`]) rmSync(f, { force: true }); };
+
 async function round(env) {
-  for (const f of [db, `${db}-wal`, `${db}-shm`]) rmSync(f, { force: true });
+  fresh();
   const srv = await server(env);
   const told = [];
   const bot = await scriptedRunner('bot', route, { onTell: (message) => told.push(message) });
@@ -55,7 +54,7 @@ check(off.children.length === 0, 'talk off: no child thread');
 check(off.told.length === 0, 'status off: no status pushes', JSON.stringify(off.told));
 
 // The runner end: STATUS=1 reports even to a pipe; STATUS=0 drops the module.
-for (const f of [db, `${db}-wal`, `${db}-shm`]) rmSync(f, { force: true });
+fresh();
 const srv = await server();
 for (const status of ['1', '0']) {
   let out = '';

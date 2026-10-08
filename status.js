@@ -1,12 +1,6 @@
-// Terminal status, both ends. On by default; STATUS=0 turns it off, on the server or a runner. On a runner, STATUS=1
-// also skips asking the terminal, for when stdout isn't one.
-// The server tells each runner how the threads its agents answer stand; the runner tells its terminal with the
-// Program Status Protocol (OSC 7501): one record per thread, by id, and its own root record.
+// STATUS=1 on a runner skips asking the terminal, for when stdout isn't one.
 
-// ── Server end ──
-
-// Each runner hears how the threads its agents answer stand for its owner, or for anyone if it has none.
-// Idle threads are left out. One telling at a time, so an older one never lands after a newer one.
+// One telling at a time, so an older one never lands after a newer one.
 export function server({ runners, known, threadList, agentName }) {
   let telling;
   let again = false;
@@ -28,10 +22,6 @@ export function server({ runners, known, threadList, agentName }) {
   return { changed };
 }
 
-// ── Runner end ──
-
-// Messages are the agent's name, never what was asked or answered. Like pi: only when the terminal answers the
-// query, or with STATUS=1.
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]+/g;
 // Cut by characters so the limits hold in UTF-8: title 192 bytes, msg 2048.
 const base64 = (text, max) => Buffer.from([...text.replace(CONTROL_CHARACTERS, ' ').trim()].slice(0, max).join('')).toString('base64');
@@ -64,7 +54,7 @@ function detect() {
 
 export async function runner({ name, server }) {
   if (!await detect()) return {};
-  // Each report replaces its record whole, so a record is sent again only when it changed. Records not in `next` are cleared.
+  // A report replaces its record whole, so send it only when it changed; clear records no longer there.
   let reported = new Map();
   function report(root, threads = []) {
     const next = new Map([['', programStatus({ state: root.state, app: 'agent-ide', msg: root.msg })]]);
@@ -74,13 +64,11 @@ export async function runner({ name, server }) {
     reported = next;
   }
   return {
-    // A blocked thread waits for an offline runner, so this one, online, never hears of one.
     told({ op, threads }) {
       if (op !== 'status') return;
       const working = threads.filter((t) => t.status === 'working').length;
       report({ state: working ? 'working' : 'idle', msg: working ? `${name}: ${working} working` : `${name}: online at ${server}` }, threads);
     },
-    // Its threads go on without this runner; it hears again how they stand when it reconnects.
     disconnected: () => report({ state: 'idle', msg: `${name}: offline, retrying ${server}` }),
   };
 }

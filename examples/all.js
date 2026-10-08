@@ -1,5 +1,4 @@
-// Runs every example in turn and says which failed. bun run examples
-// The real-model one spends tokens on your pi login, so it only runs with REAL=1.
+// The real-model example spends tokens, so it only runs with REAL=1.
 import { readdirSync } from 'node:fs';
 
 const files = readdirSync(import.meta.dirname).filter((f) => /^\d\d-.*\.js$/.test(f) && (process.env.REAL || !f.includes('real-model'))).sort();

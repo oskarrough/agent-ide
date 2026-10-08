@@ -1,5 +1,4 @@
 // A runner that goes away. A thread waiting for it is blocked, not failed; stopping it leaves it idle, with no error.
-// bun examples/04-offline-runner.js
 import { api, check, done, runner, server, sleep, until, view } from './lib.js';
 
 await server();

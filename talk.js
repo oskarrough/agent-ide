@@ -1,9 +1,7 @@
-// Agents talking to threads: two tools, `post` and `threads`, and hearing back. On by default; TALK=0 turns it off.
-// The tools run on the server and post the way a human does, as the agent, with its own thread as `from`. A tool call's
-// task id keys what it creates and posts, so a replay after a restart finds the thread and the post it made the first time.
-// The answer to a post comes back to the asking thread as an input with `from` and `re`; see reply.
+// A tool call's task id keys what it creates and posts, so a replay finds what it made the first time.
 import { Type } from '@earendil-works/pi-ai';
 import { defineExtension, defineTool } from '@earendil-works/pi-durable';
+import { messageText } from './remote.js';
 
 export function server(core) {
   const { agentName, agentOf, postEntry } = core;
@@ -24,7 +22,7 @@ export function server(core) {
       const me = await agentOf(from);
       const key = `call:${api.taskId}`;
       if (args.thread === from) throw new Error('That is your own thread; just answer');
-      // A replayed call would run it twice, and its output would never reach you. You have bash.
+      // A replay would run it twice, and its output would never reach the agent.
       if (/^\$\s/.test(args.body)) throw new Error('Run commands with your own bash tool, not as a post');
       const id = args.thread ?? (await core.createThread(agentName(me), { title: args.title, parent: from }, key)).id;
       const to = args.to === undefined ? (args.thread === undefined ? { to: me } : {}) : { to: args.to === 'nobody' ? null : await named(args.to) };
@@ -34,7 +32,7 @@ export function server(core) {
     },
   });
 
-  // Not `read`: that's Pi's own tool for files, which a tool of the same name would replace.
+  // Not `read`: a tool of that name would replace Pi's own.
   const threads = defineTool({
     name: 'threads',
     description: 'Read a thread\'s latest entries, or list every thread by leaving out `thread`. Answers to your own posts come to you; no need to read for them.',
@@ -54,7 +52,7 @@ export function server(core) {
       } else {
         const entries = await core.entries(args.thread);
         for (const { author, to, from, body, entry } of entries.filter((e) => e.entry.kind !== 'pi.system').slice(-(args.last ?? 20))) {
-          const text = body ?? (core.messageText(entry.model?.[0]) || entry.data?.text || (entry.data?.command ? `$ ${entry.data.command}` : ''));
+          const text = body ?? (messageText(entry.model?.[0]) || entry.data?.text || (entry.data?.command ? `$ ${entry.data.command}` : ''));
           const content = entry.model?.[0]?.content;
           const calls = Array.isArray(content) ? content.filter((p) => p.type === 'toolCall').map((p) => ` [${p.name} ${JSON.stringify(p.arguments)}]`).join('') : '';
           lines.push(`#${entry.id} ${author}${from ? ` from thread ${from}` : ''}${to ? ` to ${agentName(to)}` : ''}: ${text.slice(0, 2000)}${calls}`);
@@ -70,7 +68,6 @@ export function server(core) {
     render: () => 'A message from another thread says which. To wait for an answer from another thread, end your turn: the answer wakes you. Don\'t sleep or poll.',
   };
 
-  // An agent's name as a `to`: model@runner, provider/model@runner, or a runner for its default model.
   async function named(name) {
     const at = name.lastIndexOf('@');
     const runner = name.slice(at + 1);
@@ -81,9 +78,8 @@ export function server(core) {
     return core.address({ runner, model: found.id });
   }
 
-  // An answer to an agent's post goes back to that agent as an input from whoever answered. It steers: an idle agent wakes,
-  // a working one reads it between tool calls instead of after it's done. If another agent has the thread by now, it waits there as a note.
-  // A post withdrawn before anyone saw it has no entry to answer, so the news of it is a note too.
+  // It steers, so a working agent reads it between tool calls. If another agent has the thread now, or the post was
+  // withdrawn before it had an entry, it lands as a note.
   async function reply(threadId, answeredIn, agent, body, posts, postKey) {
     const text = body.slice(0, 8000);
     const key = `re:${posts.join(',') || postKey}`;

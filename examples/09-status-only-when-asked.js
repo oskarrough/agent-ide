@@ -1,8 +1,5 @@
-// The runner reports status only to a terminal that speaks the protocol. On start it asks the OSC 7501 query
-// and then for device attributes (DA), which every terminal answers. Here we play the terminal in a pty:
-// once answering both, once answering only DA, and read what the runner writes back.
-// Needs Bun's built-in pty (Bun 1.3.5 or later).
-// bun examples/09-status-only-when-asked.js
+// The runner reports status only to a terminal that answers the OSC 7501 query before device attributes (DA),
+// which every terminal answers. We play the terminal in a pty (Bun 1.3.5+): once answering both, once only DA.
 import { base, check, dir, done, repo, server } from './lib.js';
 
 async function terminal(answers7501, ms = 4000) {

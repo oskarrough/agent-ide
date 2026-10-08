@@ -1,13 +1,9 @@
-// Threads talking. An agent has two tools of its own: `post` to another thread or a new child, and `threads` to read one.
-// Its post says which thread it came from; the answer comes back as an input that says who answered (`from`)
-// and which post it answers (`re`), and wakes the asker. An answer asks for nothing back, so no ping-pong.
-// The model is a script, and the server is killed mid-call: the rerun finds the child it already started.
-// bun examples/06-threads-talk.js
+// Threads talking: an agent's `post` and `threads` tools. The answer to a post comes back with `from` and `re`
+// and wakes the asker, asking nothing back. The server is killed mid-call; the rerun finds the child it started.
 import { api, call, check, done, kinds, messageText, say, scriptedRunner, server, sleep, text, until, view } from './lib.js';
 
 let srv = await server();
 
-// What the model says, by the last thing it was told.
 const bot = await scriptedRunner('bot', (request) => {
   const last = request.messages.findLast((m) => m.role !== 'system');
   const t = text(last);
@@ -25,8 +21,7 @@ const to = { runner: 'bot', model: 'echo/echo' };
 const { json: { id: parent } } = await api('POST', '/api/threads', { title: 'parent' });
 await api('POST', `/api/threads/${parent}/entries`, { body: 'please delegate this', to });
 
-// The parent agent starts a child. Kill the server the moment the child appears, so the tool call
-// or the child's answer may replay after the restart.
+// Kill the server the moment the child appears, so the tool call or the child's answer replays.
 const child = await until(async () => (await api('GET', '/api/threads')).json.find((t) => t.parent === parent), 10000, 5);
 check(Boolean(child), 'the agent started a child thread');
 srv.kill('SIGKILL');

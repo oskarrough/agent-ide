@@ -1,6 +1,5 @@
-// The runner protocol, both ends. Over a runner's WebSocket the server asks for two things:
-// model streams, which the runner answers with its own logins, and file and shell calls in its folder.
-// Server: { id, op: 'stream' | 'env' | 'handle' | 'cancel', … }, or a message outside any call, for modules. Runner: { id, event } | { id, output } | { id, result } | { id, error }.
+// The runner protocol, both ends. Server: { id, op: 'stream' | 'env' | 'handle' | 'cancel', … }, or a message with no id, for modules.
+// Runner: { id, event } | { id, output } | { id, result } | { id, error }.
 import path from 'node:path';
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai';
 import { fauxAssistantMessage } from '@earendil-works/pi-ai/providers/faux';
@@ -9,7 +8,6 @@ import { BACKGROUND_CONTEXT, withCancel } from '@earendil-works/chord/context';
 import { ExecutionError, FileError } from '@earendil-works/pi-durable/env';
 import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node';
 
-// Bytes and errors don't survive JSON on their own.
 function encode(value) {
   return JSON.stringify(value, (key, v) => {
     if (v instanceof Uint8Array) return { $bytes: Buffer.from(v).toString('base64') };
@@ -34,9 +32,6 @@ const READERS = {
 const FS = ['absolutePath', 'joinPath', 'readTextFile', 'readTextLines', 'readBinaryFile', 'writeFile', 'appendFile', 'truncateFile', 'flushFile',
   'renameFile', 'fileInfo', 'listDir', 'canonicalPath', 'exists', 'createDir', 'remove', 'createTempDir', 'createTempFile', ...Object.keys(READERS)];
 
-// ── Server end ──
-
-// What the server knows of a runner: its socket while online, and the calls it hasn't answered.
 export function createRunners({ onChange }) {
   const sockets = new Map();
   const waiting = new Map();
@@ -46,13 +41,11 @@ export function createRunners({ onChange }) {
   function online(name, signal) {
     if (sockets.has(name)) return Promise.resolve();
     return new Promise((resolve, reject) => {
-      const list = waiting.get(name) ?? [];
-      waiting.set(name, [...list, resolve]);
+      waiting.set(name, [...waiting.get(name) ?? [], resolve]);
       signal?.addEventListener('abort', () => reject(signal.reason ?? new Error('aborted')), { once: true });
     });
   }
 
-  // One request to a runner. It waits while the runner is offline; a runner that drops mid-call fails the call.
   async function call(name, message, { signal, onMessage }) {
     signal?.throwIfAborted();
     await online(name, signal);
@@ -68,7 +61,6 @@ export function createRunners({ onChange }) {
   }
 
   return {
-    online,
     call,
     isOnline: (name) => sockets.has(name),
     tell: (name, message) => sockets.get(name)?.send(message),
@@ -93,7 +85,6 @@ export function createRunners({ onChange }) {
   };
 }
 
-// The chat models a runner can stream: pi's built-in catalog, as `provider/model` under the runner's provider, and echo.
 const ECHO = { id: 'echo', name: 'echo', api: 'faux', provider: 'echo', baseUrl: '', input: ['text'], reasoning: false, contextWindow: 200000, maxTokens: 10000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
 const catalog = [...getBuiltinProviders().flatMap((p) => getBuiltinModels(p)), ECHO];
 
@@ -105,7 +96,6 @@ function failure(model, partial, message, aborted) {
   };
 }
 
-// A pi-ai Provider whose streams run on the runner. The server holds no login: the runner signs each request with its own.
 export function runnerProvider(runners, name) {
   const id = `runner:${name}`;
   const models = catalog.map((m) => ({ ...m, provider: id, id: `${m.provider}/${m.id}`, name: `${m.name} on ${name}` }));
@@ -115,7 +105,7 @@ export function runnerProvider(runners, name) {
     let partial;
     runners.call(name, { op: 'stream', model: model.id, context: { messages: context.messages }, options: rest }, {
       signal,
-      // The runner sends the growing message only now and then; deltas in between reuse the last one.
+      // The runner sends the growing message only now and then; deltas in between reuse the last.
       onMessage: ({ event }) => {
         if (event.partial) partial = event.partial;
         else if (!['done', 'error'].includes(event.type)) event.partial = partial;
@@ -135,11 +125,10 @@ export function runnerProvider(runners, name) {
   };
 }
 
-// An ExecutionEnv whose files and commands are on the runner, in its folder.
 export function remoteEnv(runners, name, cwd) {
   const env = { id: `runner:${name}`, cwd };
-  const request = (message, context, onMessage) =>
-    runners.call(name, message, { signal: context?.abortSignal, onMessage }).catch((error) => ({ ok: false, error: new FileError('unknown', error.message) }));
+  const request = (message, context) =>
+    runners.call(name, message, { signal: context?.abortSignal }).catch((error) => ({ ok: false, error: new FileError('unknown', error.message) }));
   const reader = (handle, methods) => Object.fromEntries(methods.map((method) => [method, (...args) => {
     const context = args.pop();
     return request({ op: 'handle', handle, method, args }, context);
@@ -163,11 +152,7 @@ export function remoteEnv(runners, name, cwd) {
   return env;
 }
 
-// ── Runner end ──
-
-// Answers the server's requests: model streams with this machine's logins, and file and shell calls confined to `dir`.
-// A message with no id is outside any call; it goes to `onTell`. `echo` is the pi-ai faux provider behind `echo/echo`:
-// it answers from a queue, so each request queues one echo. The examples pass a scripted one here instead.
+// `echo` is the pi-ai faux provider behind `echo/echo`. It answers from a queue, so each request queues one echo.
 export function serveRunner({ name, dir, models, echo, send, onTell }) {
   const running = new Map();
   const handles = new Map();
@@ -184,8 +169,7 @@ export function serveRunner({ name, dir, models, echo, send, onTell }) {
     const [provider, ...rest] = ref.split('/');
     let model = models.getModel(provider, rest.join('/'));
     if (provider === 'echo') {
-      // pi-ai's faux provider, told what to say for this one request.
-      echo.appendResponses([(ctx) => fauxAssistantMessage(`echo@${name} heard: ${lastUserText(ctx.messages)}`)]);
+      echo.appendResponses([(ctx) => fauxAssistantMessage(`echo@${name} heard: ${messageText(ctx.messages.findLast((m) => m.role === 'user'))}`)]);
       model = echo.getModel();
     }
     if (!model) throw new Error(`${name} has no model ${ref}`);
@@ -238,17 +222,13 @@ export function serveRunner({ name, dir, models, echo, send, onTell }) {
         else reply({ id: message.id, error: error.message });
       }).finally(() => running.delete(message.id));
     },
-    // The server is gone: whatever it asked for is nobody's anymore.
     stopAll() {
       for (const { cancel } of running.values()) cancel(new Error('server disconnected'));
       running.clear();
       handles.clear();
     },
-    busy: () => running.size,
   };
 }
 
-function lastUserText(messages) {
-  const content = messages.findLast((m) => m.role === 'user')?.content;
-  return typeof content === 'string' ? content : (content ?? []).filter((p) => p.type === 'text').map((p) => p.text).join('');
-}
+export const messageText = (message) => typeof message?.content === 'string' ? message.content
+  : (message?.content ?? []).filter((p) => p.type === 'text').map((p) => p.text).join('');

@@ -1,6 +1,3 @@
-// Connects this machine to one server and lends it two things: model access with this machine's pi logins, and a folder
-// to read, write and run commands in. It keeps no conversations; the server's Pi Durable harness does.
-// bun runner.js --server http://localhost:3000 [--name oskar-laptop] [--alias "Oskar's laptop"] [--dir ~/code/foo]
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -13,10 +10,8 @@ import { serveRunner } from './remote.js';
 const { values: args } = parseArgs({ options: {
   server: { type: 'string', default: 'http://localhost:3000' },
   name: { type: 'string', default: os.hostname() },
-  // A human-readable second name, set here so it survives a server restart. The name stays the key.
   alias: { type: 'string', default: '' },
   dir: { type: 'string', default: process.cwd() },
-  // Whose reading clears a thread's done in this terminal. Without one, anyone's does.
   owner: { type: 'string', default: '' },
 } });
 const dir = path.resolve(args.dir);
@@ -26,7 +21,7 @@ const name = args.name;
 const piDir = path.join(os.homedir(), '.pi', 'agent');
 const authFile = path.join(piDir, 'auth.json');
 
-// pi's auth.json, read fresh every time, so a token pi refreshed is the one we use, and one we refresh is the one pi uses.
+// Read fresh every time, so a token pi refreshed is the one we use, and the other way round.
 const readAuth = () => { try { return JSON.parse(fs.readFileSync(authFile, 'utf8')); } catch { return {}; } };
 let writing = Promise.resolve();
 const credentials = {
@@ -50,11 +45,9 @@ const credentials = {
 };
 
 const models = builtinModels({ credentials });
-// echo/echo is pi-ai's faux provider as a model: no login, answers at once, for testing the loop.
 const echo = fauxProvider({ provider: 'echo', models: [{ id: 'echo' }] });
 models.setProvider(echo.provider);
 
-// pi's default model, which the server uses when an entry names none.
 function defaultModel() {
   try {
     const settings = JSON.parse(fs.readFileSync(path.join(piDir, 'settings.json'), 'utf8'));
@@ -62,7 +55,6 @@ function defaultModel() {
   } catch { return ''; }
 }
 
-// Optional behaviour: terminal status (status.js). See modules.js.
 const modules = await load('runner', { status: true }, { name, server });
 
 function connect() {

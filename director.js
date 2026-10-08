@@ -1,7 +1,5 @@
-// The director, for multiplayer threads: an entry is answered only by an agent it @mentions, so humans can talk among
-// themselves and call in whoever they need. Off by default; DIRECTOR=1 turns it on.
-// Its one hook, route, gets the entry and the thread's past inputs and returns who answers: the first agent mentioned,
-// as @gpt-6.1-sol@laptop, @gpt-6.1-sol or @laptop, among those the thread has asked; else the entry's own `to`, or nobody.
+// Who answers: the first agent @mentioned (as @gpt-6.1-sol@laptop, @gpt-6.1-sol or @laptop) among those the thread
+// has asked; else the entry's own `to`, or nobody.
 export const server = () => ({ route });
 
 function route({ body, to }, asked) {

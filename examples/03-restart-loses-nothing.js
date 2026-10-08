@@ -1,6 +1,5 @@
-// A restart loses nothing. Ben posts while the runner is offline, then the server restarts.
-// His input is still queued, still his, and answered once the runner is back.
-// bun examples/03-restart-loses-nothing.js
+// A restart loses nothing. Ben posts while the runner is offline, the server restarts, and his input is
+// still queued, still his, and answered once the runner is back.
 import { answered, api, check, done, runner, server, sleep, until, view } from './lib.js';
 
 let srv = await server();

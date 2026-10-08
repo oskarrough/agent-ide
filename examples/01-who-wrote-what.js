@@ -1,7 +1,5 @@
-// Who wrote what. An input keeps its author and its `to` in Pi's own request id, so stock Pi Durable stores them:
-// no table of our own, no data on the entry. The answer says which agent wrote it and which input it answers.
-// A second person who names no agent gets the thread's agent.
-// bun examples/01-who-wrote-what.js
+// Who wrote what. An input keeps its author and `to` in Pi's own request id: no table of ours, no data on the entry.
+// The answer says which agent wrote it and which input it answers. Someone who names no agent gets the thread's.
 import { answered, api, check, done, runner, server } from './lib.js';
 
 await server();

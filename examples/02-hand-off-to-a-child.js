@@ -1,5 +1,4 @@
-// Handing work off. A thread can have child threads; whatever is answered in a child is reported to its parent as a note.
-// bun examples/02-hand-off-to-a-child.js
+// Handing work off: what a child thread answers is reported to its parent as a note.
 import { api, check, done, runner, server, until, view } from './lib.js';
 
 await server();

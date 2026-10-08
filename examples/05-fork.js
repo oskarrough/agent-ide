@@ -1,7 +1,5 @@
-// Forking a thread at any entry: a new thread with everything up to there and the agent it had then, to try
-// another way from the same point. Authors survive the fork, and a fork of a fork. A fork of a busy thread
-// starts idle, and after a restart the director still knows which agents a fork inherited.
-// bun examples/05-fork.js
+// Forking at any entry: a new thread with everything up to there and the agent it had then. Authors survive a fork
+// and a fork of a fork. A fork of a busy thread starts idle; after a restart the director knows a fork's agents.
 import { answered, answers, api, brief, check, done, runner, server, sleep, until, view } from './lib.js';
 
 let srv = await server();
@@ -16,7 +14,6 @@ const source = await answered(a, 2);
 const hello = source.entries.find((e) => e.entry.kind === 'pi.user');
 const firstAnswer = answers(source)[0];
 
-// Fork at the first answer.
 const forked = await api('POST', `/api/threads/${a}/fork`, { at: firstAnswer.entry.id });
 check(forked.status === 201, 'fork created', JSON.stringify(forked.json));
 const f = forked.json.id;
@@ -38,7 +35,6 @@ const ben = fv?.entries.find((e) => e.author === 'ben');
 check(Boolean(ben) && answers(fv).at(-1).re?.includes(ben.entry.id), 'fork answers its own input', brief(fv));
 check((await view(a)).entries.length === source.entries.length, 'source unchanged, no report from the fork', brief(await view(a)));
 
-// A fork of a fork inherits authors through the chain.
 const f2 = (await api('POST', `/api/threads/${f}/fork`, { at: answers(fv).at(-1).entry.id, title: 'deeper' })).json.id;
 const f2v = await view(f2);
 check(f2v.title === 'deeper' && ['oskar', 'ben'].every((who) => f2v.entries.some((e) => e.author === who && e.entry.kind === 'pi.user')), 'fork of a fork keeps every author', brief(f2v));
@@ -53,8 +49,7 @@ const f3 = (await api('POST', `/api/threads/${a}/fork`, { at: busy.entries.at(-1
 const f3v = await view(f3);
 check(!f3v.docs['pi.live']?.run && !(f3v.docs['pi.inbox']?.items ?? []).length && f3v.status !== 'working' && f3v.status !== 'blocked', 'fork of a busy thread inherits no run or queue', JSON.stringify({ status: f3v.status, live: f3v.docs['pi.live'], inbox: f3v.docs['pi.inbox'] }));
 
-// Restart with the director: the source's queued input is followed in the source, not the fork;
-// the director knows the agents a fork inherited.
+// Restart with the director: the queued input is followed in the source, not the fork.
 srv.kill();
 await sleep(500);
 srv = await server({ DIRECTOR: '1' });

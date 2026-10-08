@@ -1,6 +1,5 @@
-// The same talk with a real model: an agent starts a child thread, which has to ask it for the topic before it
-// can write the poem; the poem comes back and the agent shows it. Uses this machine's pi login, and costs a few tokens.
-// Skipped when there's no login for the model's provider: run `pi`, then `/login`.
+// Talk with a real model: a child thread has to ask its parent for the topic before writing the poem.
+// Uses this machine's pi login and a few tokens; skipped without one.
 // bun examples/11-real-model.js [provider/model]
 import { readFileSync } from 'node:fs';
 import os from 'node:os';
@@ -29,7 +28,6 @@ const heard = await until(async () => {
   return v.entries.filter((e) => e.entry.kind === 'pi.user' && e.re).length >= 2 && v.status !== 'working' ? v : null;
 }, 240000, 500);
 
-// The whole conversation, parent then child.
 const show = (v) => v.entries.filter((e) => e.entry.kind !== 'pi.system').map((e) => {
   const c = e.entry.model?.[0]?.content;
   const text = typeof c === 'string' ? c : (c ?? []).map((p) => p.text ?? (p.type === 'toolCall' ? `[${p.name} ${JSON.stringify(p.arguments)}]` : '')).join('');
