@@ -1,7 +1,9 @@
 // Who wrote what. A thread is plain messages, each with its author and the agents it asks. An agent answers from its
 // own Pi conversation, where the thread's messages are stock user input with their authors' names. Someone who names
 // no agent asks whom the thread last asked. A model is whatever `pi --model` makes of it on the runner.
-import { answered, answers, api, check, conversationOf, done, runner, server, text } from './lib.js';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { answered, answers, api, check, conversationOf, dir, done, runner, server, text } from './lib.js';
 
 await server();
 await runner('laptop');
@@ -39,5 +41,17 @@ const v3 = await answered(id, 3);
 const cy = v3?.entries.find((e) => e.data.author === 'cy');
 check(cy?.data.to?.[0].model === 'echo/echo' && cy.data.to[0].effort === 'high', 'pi resolves a pattern and its thinking level', JSON.stringify(cy?.data.to));
 check(v3?.agents.length === 1, 'the same model is the same agent', JSON.stringify(v3?.agents));
+
+// Dee names no model: the desk runner's default, pi's own, whose settings name it with its provider as pi takes it too.
+const pi = path.join(dir, '..', 'pi');
+mkdirSync(pi);
+writeFileSync(path.join(pi, 'settings.json'), JSON.stringify({ defaultProvider: 'echo', defaultModel: 'echo/echo' }));
+await runner('desk', { env: { PI_CODING_AGENT_DIR: pi } });
+const desk = (await api('GET', '/api/runners')).json.find((r) => r.name === 'desk');
+check(desk?.model === 'echo/echo', 'a runner\'s default model is pi\'s, named once', JSON.stringify(desk?.model));
+const { json: { id: id2 } } = await api('POST', '/api/threads', { title: 'default' });
+await api('POST', `/api/threads/${id2}/entries`, { body: 'hi', to: { runner: 'desk' } }, 'dee');
+const v4 = await answered(id2);
+check(answers(v4 ?? { entries: [] })[0]?.data.author === 'echo/echo@desk', 'no model asks the runner\'s default', JSON.stringify(v4?.entries.at(-1)));
 
 done();

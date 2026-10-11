@@ -22,17 +22,16 @@ const models = await ModelRuntime.create();
 const echo = fauxProvider({ provider: 'echo', models: [{ id: 'echo' }] });
 models.registerNativeProvider(echo.provider);
 
-// pi's settings as pi would read them in the runner's folder: its default model and thinking level.
-const defaultModel = (settings = SettingsManager.create(dir)) =>
-  settings.getDefaultProvider() && settings.getDefaultModel() ? `${settings.getDefaultProvider()}/${settings.getDefaultModel()}` : '';
-
-// What `pi --model PATTERN` runs, by pi's own resolver; no pattern is pi's default model and thinking level.
+// What `pi --model PATTERN` runs, by pi's own resolver; no pattern is pi's default model and thinking level, from pi's
+// settings in the runner's folder, as `pi --provider P --model M`, which also takes an M that names its provider.
 function resolve(pattern) {
   const settings = SettingsManager.create(dir);
-  const found = resolveCliModel({ cliModel: pattern || defaultModel(settings), modelRuntime: models });
+  const asked = pattern ? { cliModel: pattern } : { cliProvider: settings.getDefaultProvider(), cliModel: settings.getDefaultModel() };
+  const found = resolveCliModel({ ...asked, modelRuntime: models });
   if (!found.model) throw new Error(found.error ?? `${name} has no default model in pi; name one`);
   return { model: found.model, thinkingLevel: found.thinkingLevel ?? (pattern ? undefined : settings.getDefaultThinkingLevel()) };
 }
+const defaultModel = () => { try { const { model } = resolve(''); return `${model.provider}/${model.id}`; } catch { return ''; } };
 
 const modules = await load('runner', { status: true }, { name, server });
 
