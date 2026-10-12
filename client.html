@@ -278,7 +278,7 @@
         if (shown) zoomed.delete(at);
         else zoomed.set(at, await api(selected.url, `/api/threads/${view.id}/memory?zoom=${at}`));
         renderMemory();
-      })()) }, [`${id}+${n}|${text}`,
+      })()) }, [build('u', { textContent: `${id}+${n}` }), `|${text}`,
         shown?.lines ? build('ul', {}, shown.lines.map(lineView)) : '',
         shown?.message ? build('pre', { textContent: shown.message }) : '']);
     };
