@@ -2,3 +2,4 @@ threads*.db*
 *.sqlite*
 node_modules/
 .mull/
+.env*
