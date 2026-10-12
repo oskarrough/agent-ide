@@ -87,8 +87,8 @@ client.html ──▶ server.js   one Pi Durable harness: threads, and each agen
 52. Each line is an `agent-ide.line` entry `{l, i, text, size}` in the thread, written once by a background Line task that the post's commit creates, so stopping a thread never cuts its memory short.
 53. A fork reads its source's lines through for ranges that end before the fork point.
 54. When Pi compacts an agent's conversation, memory writes Pi's summary instead of the agent's model: the thread's lines up to the last message the agent was given before the cut.
-55. That memory merges the most due pair first, `(T - last) / 2^l`, where their line is built, until it fits in 64 KB, and writes each line `id+n|text`, `id` being the position of its first message and `n` how many it covers.
-56. A message not yet given a line shows there as `(not summarized yet: zoom it)`.
+55. That memory merges the most due pair first, `(T - last) / 2^l`, into their line, pairs whose line is built before those whose line is not, until it fits in 64 KB, and writes each line `id+n|text`, `id` being the position of its first message and `n` how many it covers.
+56. A message or pair whose line is not built yet shows there as `(not summarized yet: zoom it)`.
 57. With memory, a Deliver task's input holds its newest messages whole up to 64 KB, at least the last, and the older ones as the thread's memory over their range, also within 64 KB.
 58. With memory, an agent has `zoom {id, n}`, which opens a line into the two it was made from, or into the message whole when `n` is 1.
 59. A prompt section tells it the lines are its memory, and to zoom before it guesses.

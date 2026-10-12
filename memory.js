@@ -201,22 +201,23 @@ export function server(core) {
 }
 
 // The memory: lines covering messages from..T-1, merging the most due pair first, (T - last) / 2^l, oldest first on ties,
-// only where the parent line is built, until it fits the budget as rendered.
+// where the parent line is built, else as not summarized yet, until it fits the budget as rendered.
 export function memory(lines, T, budget, from = 0) {
   const list = [...Array(T - from).keys()].map((k) => from + k).map((p) => lines.get(key(0, p)) ?? { l: 0, i: p, text: NOT_YET, size: bytes(NOT_YET) });
   const cost = (x) => bytes(rendered(x)) + 1;
   let size = list.reduce((s, x) => s + cost(x), 0);
   while (size > budget) {
-    let best;
+    let best, unbuilt;
     for (let k = 0; k + 1 < list.length; k++) {
       const [a, b] = [list[k], list[k + 1]];
       if (a.l !== b.l || a.i % 2 || b.i !== a.i + 1) continue;
-      const parent = lines.get(key(a.l + 1, a.i >> 1));
       const last = (b.i + 1) * 2 ** b.l - 1;
-      if (!parent || last >= T) continue;
-      const due = (T - last) / 2 ** a.l;
-      if (!best || due > best.due) best = { k, parent, due };
+      if (last >= T) continue;
+      const parent = lines.get(key(a.l + 1, a.i >> 1)), due = (T - last) / 2 ** a.l;
+      if (parent && (!best || due > best.due)) best = { k, parent, due };
+      if (!parent && (!unbuilt || due > unbuilt.due)) unbuilt = { k, parent: { l: a.l + 1, i: a.i >> 1, text: NOT_YET }, due };
     }
+    best ??= unbuilt;
     if (!best) break;
     size += cost(best.parent) - cost(list[best.k]) - cost(list[best.k + 1]);
     list.splice(best.k, 2, best.parent);
