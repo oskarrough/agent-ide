@@ -40,6 +40,7 @@
   #memory ul { font: 12px monospace; padding-left: 1rem; }
   #memory li { cursor: pointer; white-space: pre-wrap; }
   #composer { flex-direction: column; border-top: 1px solid #ddd; padding-top: .5rem; }
+  .connect code { display: block; margin-top: .2rem; user-select: all; }
   #composer .row { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; }
   #composer .row input:not(#body) { flex: 0 1 9rem; }
   @media (max-width: 760px) { #layout { grid-template-columns: 1fr; } }
@@ -206,7 +207,7 @@
       raw(info),
       build('h3', { textContent: 'Runners' }),
       build('ul', {}, server.runners.length ? server.runners.map((runner) => runnerView(server, runner))
-        : [build('li', { className: 'mute', textContent: 'none: start runner.js' })]),
+        : [build('li', { className: 'mute connect' }, ['None yet. From agent-ide on any machine:', build('code', { textContent: `bun runner.js --server ${server.url} --dir ~/code` })])]),
       build('h3', {}, ['Threads', build('button', { className: 'link', textContent: '+ new', onclick: () => select({ url: server.url, id: null }) })]),
       build('ul', {}, nested(server.threads).map(({ thread, depth }) => build('li', { className: 'thread-row', style: `margin-left: ${depth}rem` }, [build('button', {
         className: `thread ${selected?.url === server.url && selected.id === thread.id ? 'active' : ''}`,
