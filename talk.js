@@ -33,7 +33,7 @@ export function server(core) {
         return sent[api.taskId] = id;
       }, context);
       const who = to.map(agentName).join(', ') || 'nobody';
-      return { content: [{ type: 'text', text: `Posted to thread ${id} for ${who}.${to.length ? ' The answer will come to you here on its own; carry on, or end your turn.' : ''}` }], details: { thread: id } };
+      return { output: [{ type: 'text', text: `Posted to thread ${id} for ${who}.${to.length ? ' The answer will come to you here on its own; carry on, or end your turn.' : ''}` }], details: { thread: id } };
     },
   });
 
@@ -59,7 +59,7 @@ export function server(core) {
           lines.push(`#${id} ${m.author}${m.from ? ` from thread ${m.from}` : ''}${m.to ? ` to ${m.to.map(agentName).join(', ')}` : ''}: ${m.body.slice(0, 2000)}`);
         }
       }
-      return { content: [{ type: 'text', text: lines.join('\n') || 'Nothing yet.' }] };
+      return { output: [{ type: 'text', text: lines.join('\n') || 'Nothing yet.' }] };
     },
   });
 

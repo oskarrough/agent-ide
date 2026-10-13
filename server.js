@@ -141,6 +141,8 @@ const harness = await Harness.open(storage, {
   },
   onReport: (error) => console.error('pi-durable:', error),
 }, context);
+// A storage error closes the harness for good; exit so whoever runs the server can reopen it.
+harness.closed.then((end) => end.reason === 'failed' && (console.error('pi-durable: storage failed, exiting:', end.error), process.exit(1)));
 
 const known = async () => (await harness.snapshot(Runners, context)) ?? {};
 const thread = (id) => harness.snapshot(Thread, id, context);

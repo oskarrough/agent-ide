@@ -174,7 +174,7 @@ export function server(core) {
     replay: 'safe',
     execute: async ({ id, n }, api) => {
       const opened = await open((await core.home(api.conversationId)).thread, id, n);
-      return { content: [{ type: 'text', text: typeof opened === 'string' ? opened : opened.map(rendered).join('\n') }] };
+      return { output: [{ type: 'text', text: typeof opened === 'string' ? opened : opened.map(rendered).join('\n') }] };
     },
   });
 
