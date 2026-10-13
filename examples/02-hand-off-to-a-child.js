@@ -15,7 +15,7 @@ check(report?.data.body.startsWith('echo@laptop heard: oskar: do it') && !report
 const slow = await scriptedRunner('slow', () => say(`thinking ${'slowly '.repeat(300)}`));
 const { json: stopped } = await api('POST', '/api/threads', { title: 'stopped', parent });
 await api('POST', `/api/threads/${stopped.id}/entries`, { body: 'take your time', to: { runner: 'slow', model: 'echo/echo' } });
-const placed = await until(async () => (await conversationOf(await view(stopped.id), 'echo/echo@slow')).entries?.some((e) => e.kind === 'pi.user'), 8000, 20);
+const placed = await until(async () => (await conversationOf(await view(stopped.id), 'echo/echo@slow')).entries?.some((e) => e.kind === 'agent-ide.delivery'), 8000, 20);
 await api('POST', `/api/threads/${stopped.id}/stop`, {});
 await sleep(1000);
 const after = await view(stopped.id);

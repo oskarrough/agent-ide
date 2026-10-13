@@ -50,7 +50,7 @@ client.html ──▶ server.js   one Pi Durable harness: threads, and each agen
 15. A new agent hasn't seen anything.
 16. Posting a message is one Pi commit that appends it and creates a Deliver task for each agent its `to` asks, holding all that agent's unseen messages.
 17. No `to` asks whom the thread last asked; `to: null` asks nobody.
-18. A Deliver task waits for its runner, then submits its messages as one input to the agent's conversation, each written as `author: body`, or `author, writing from thread N: body` (`answering` for a message with `re`) when it came from another thread.
+18. A Deliver task waits for its runner, then submits its messages as one input to the agent's conversation, an `agent-ide.delivery` entry whose `held` names them, each written as `author: body`, or `author, writing from thread N: body` (`answering` for a message with `re`) when it came from another thread.
 19. The request id is made from the Deliver task's id, so a rerun finds the input it made.
 20. When the input settles, the commit that ends the task copies the agent's final answer into the thread with `re`, the messages it held that asked the agent, and `answer`, the entry it came from.
 21. Several inputs can share one answer, and the first speaks for all.

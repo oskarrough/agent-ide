@@ -13,7 +13,7 @@ const fork = await view((await api('POST', `/api/threads/${id}/fork`, { at: ask 
 check(fork.agents.length === 1 && fork.agents[0].name === source.agents[0]?.name, 'the fork keeps the agent asked before its answer', JSON.stringify(fork.agents));
 check(fork.agents[0]?.conversation !== source.agents[0]?.conversation, 'in a conversation of its own');
 const home = (await api('GET', `/api/conversations/${fork.agents[0]?.conversation}`)).json;
-check(!home.entries?.some((e) => e.kind === 'pi.user'), 'which has seen nothing yet', JSON.stringify(home.entries));
+check(!home.entries?.some((e) => e.kind === 'agent-ide.delivery'), 'which has seen nothing yet', JSON.stringify(home.entries));
 await api('POST', `/api/threads/${id}/stop`, {});
 const exited = new Promise((resolve) => srv.once('exit', resolve));
 srv.kill('SIGKILL');
@@ -25,7 +25,7 @@ check(routed.json.to?.[0]?.runner === 'bot', 'the director can address the inher
 const settled = await answered(fork.id);
 check(Boolean(settled), 'the fork answers after restart');
 const inputs = (await conversationOf(settled ?? await view(fork.id), 'echo/echo@bot')).entries
-  .filter((e) => e.kind === 'pi.user').map((e) => text(e.model[0]));
+  .filter((e) => e.kind === 'agent-ide.delivery').map((e) => text(e.model[0]));
 check(JSON.stringify(inputs) === JSON.stringify(['oskar: try this\n\noskar: @bot try another way']), 'its first input carries the inherited question exactly once', JSON.stringify(inputs));
 bot.close();
 done();

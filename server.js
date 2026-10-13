@@ -33,6 +33,8 @@ import { createRunners, messageText, remoteEnv, runnerProvider } from './remote.
 const port = Number(process.env.PORT || 3000);
 const file = process.env.DB_PATH || `agent-ide-${port}.sqlite`;
 const KIND = 'agent-ide.message';
+// An agent's input as placed in its conversation: `held` names the thread messages it gave the agent.
+const DELIVERY = 'agent-ide.delivery';
 // Every runner that ever connected, and each model pi resolved on it, so they're known after a restart and offline.
 const Runners = defineDoc({ kind: 'agent-ide.runners', version: 1, scope: 'session', initial: () => ({}) });
 // `agents` maps each agent's name to its Pi conversation. `sent` maps an agent's `post` call to the thread it posted
@@ -55,7 +57,7 @@ const Anchor = defineTask({
 });
 
 // Asks an agent once: it waits for the runner, submits one input under a request id made from its own id, so a rerun
-// finds it, and posts what came of it in the commit that ends it.
+// finds it, placed as a delivery entry naming the messages it holds, and posts what came of it in the commit that ends it.
 const Deliver = defineTask({
   name: 'agent-ide.deliver', version: 1, initial: () => ({ phase: 'ask' }),
   phases: {
@@ -66,9 +68,10 @@ const Deliver = defineTask({
       const mine = all.filter((e) => held.includes(e.id));
       const content = catchUp ? await catchUp(threadId, mine, all) : mine.map(said).join('\n\n');
       const handle = await rt.conversation(agent, ctx);
-      const submission = await handle.submit({ type: 'input', content, requestId: requestOf(id, held), whenBusy: steer ? 'steer' : 'followUp' }, ctx);
+      const entry = { kind: DELIVERY, data: { held } };
+      const submission = await handle.submit({ type: 'input', content, entry, requestId: String(id), whenBusy: steer ? 'steer' : 'followUp' }, ctx);
       const settled = await submission.wait(ctx);
-      const told = await outcome(threadId, agent, settled);
+      const told = await outcome(threadId, agent, settled, held);
       await rt.commit(async (tx) => {
         for (const { thread, data, steer } of told) await post(tx, thread, data, { steer });
         if (settled.entry === undefined) await restore(tx, agent, held);
@@ -78,7 +81,7 @@ const Deliver = defineTask({
   },
   // Withdraws its input if still queued. An input never placed gave the agent nothing.
   async abort({ id, input: { agent, held } }, rt, ctx) {
-    let record = await storage.submissionByRequest(agent, requestOf(id, held), ctx);
+    let record = await storage.submissionByRequest(agent, String(id), ctx);
     if (record?.status === 'queued') {
       await harness.abortSubmission(record.id, ctx, agent);
       record = await storage.submission(record.id, ctx);
@@ -238,10 +241,6 @@ async function messages(id) {
 }
 const lastAsked = async (id) => (await messages(id)).findLast((e) => e.data.to)?.data.to ?? [];
 
-// An input's request id names its delivery and the thread messages it holds.
-const requestOf = (task, held) => new URLSearchParams({ task, held }).toString();
-const heldOf = (requestId) => new URLSearchParams(requestId).get('held')?.split(',').filter(Boolean).map(Number) ?? [];
-
 function said({ data: m }) {
   const who = m.from ? `${m.author}, ${m.re ? 'answering' : 'writing'} from thread ${m.from}` : m.author;
   const output = m.shell ? `\n${[`exit ${m.shell.code ?? m.shell.error}`, m.shell.stdout, m.shell.stderr].filter(Boolean).join('\n')}` : '';
@@ -301,13 +300,13 @@ async function restore(tx, agent, held) {
 // What a settled input posts, and where: its answer, with `re`, the messages it held that asked the agent, or an error.
 // Inputs that share one answer post it once, by the first. Posts it answers get it back, else a child thread reports
 // it to its parent. A stopped input posts nothing at all. It reads the thread after settling, for steers that joined.
-async function outcome(threadId, agent, settled) {
+async function outcome(threadId, agent, settled, mine) {
   const done = settled.status === 'done';
   if (!done && settled.reason === 'aborted') return [];
   const group = done ? (await collect((cursor) => storage.scanSubmissions({ conversationId: agent }, 500, cursor, context))).filter((r) => r.answer === settled.answer) : [settled];
   if (group[0].id !== settled.id) return [];
   const { name } = await home(agent);
-  const ids = new Set(group.flatMap((r) => heldOf(r.requestId)));
+  const ids = new Set(done ? (await commit((tx) => Promise.all(group.map((r) => tx.entry(r.entry))))).flatMap((e) => e.data.held) : mine);
   const held = (await messages(threadId)).filter((e) => ids.has(e.id));
   const re = held.filter((e) => e.data.to?.some((t) => agentName(t) === name)).map((e) => e.id);
   const body = done ? messageText((await commit((tx) => tx.entry(settled.answer)))?.model?.[0]) || '(empty answer)'
@@ -321,7 +320,7 @@ async function outcome(threadId, agent, settled) {
   return told;
 }
 
-// With no reader, as for a runner nobody owns, anyone's read counts.
+// With no reader, as for a runner nobody owns, anyone's read counts. A stopped `$ cmd` is no result, like a stopped agent.
 async function status(id, reads, agents, shell, reader) {
   if (shell || agents.some((a) => a.status === 'working')) return 'working';
   if (agents.some((a) => a.status === 'blocked')) return 'blocked';
@@ -332,7 +331,8 @@ async function status(id, reads, agents, shell, reader) {
     const page = await handle.entries({}, 50, cursor, context);
     for (const entry of page.items) {
       if (seen.has(entry.id)) return 'idle';
-      if (entry.data?.answer || entry.data?.error || entry.data?.shell) return entry.data.error ? 'error' : 'done';
+      if (entry.data?.shell?.error === 'stopped') continue;
+      if (entry.data?.answer || entry.data?.error || entry.data?.shell) return entry.data.error || entry.data.shell?.error ? 'error' : 'done';
     }
     cursor = page.next;
   } while (cursor);
@@ -386,12 +386,12 @@ async function createThread(author, { title, parent = null }) {
   return { id: await commit((tx) => startThread(tx, author, title, parent)) };
 }
 
-// The thread messages an agent's conversation had seen by its entry `cut`: those held by every input placed by then.
+// The thread messages an agent's conversation had seen by its entry `cut`: those its deliveries up to there held, a
+// fork's included, since Pi's history of a fork holds its parent's up to the fork.
 async function seenBy(id, cut) {
-  const records = await collect((cursor) => storage.scanSubmissions({ conversationId: id }, 500, cursor, context));
-  const held = records.filter((r) => r.type === 'input' && r.entry !== undefined && r.entry <= cut).flatMap((r) => heldOf(r.requestId));
-  const { parent } = await commit((tx) => tx.conversation(id));
-  return parent ? [...held, ...await seenBy(parent.conversationId, Math.min(cut, parent.at))] : held;
+  const handle = await harness.conversation(id, context);
+  const entries = await collect((cursor) => handle.entries({ maxEntryId: cut, order: 'ascending' }, 500, cursor, context));
+  return entries.filter((e) => e.kind === DELIVERY).flatMap((e) => e.data.held);
 }
 
 // One commit forks the thread at an entry and each agent's conversation at its last answer up to there; an agent's

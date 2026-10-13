@@ -28,10 +28,10 @@ check(answerTo(q1)?.data.author === 'echo/echo@ann' && answerTo(q2.json)?.data.a
 const q3 = (await api('POST', `/api/threads/${id}/entries`, { body: 'ann, what did bob say?', to: toAnn }, 'ana')).json;
 const v3 = await answered(id, 3);
 const own = (await conversationOf(v3, 'echo/echo@ann')).entries;
-const caughtUp = text(own.filter((e) => e.kind === 'pi.user').at(-1)?.model[0]);
+const caughtUp = text(own.filter((e) => e.kind === 'agent-ide.delivery').at(-1)?.model[0]);
 check(caughtUp.startsWith('oskar: bob, what is 3+3?\n\necho/echo@bob: bob thinks') && caughtUp.endsWith('ana: ann, what did bob say?'), 'bob\'s answer reaches ann as user text with its name', caughtUp.slice(0, 120));
 check(!own.some((e) => e.kind === 'pi.assistant' && JSON.stringify(e.model).includes('bob thinks')), 'nothing bob said is in ann\'s conversation as ann\'s own');
-check(!own.some((e) => e.kind === 'pi.user' && text(e.model[0]).includes('ann thinks')), 'ann never reads its own answers back');
+check(!own.some((e) => e.kind === 'agent-ide.delivery' && text(e.model[0]).includes('ann thinks')), 'ann never reads its own answers back');
 check(JSON.stringify(answers(v3).at(-1).data.re) === JSON.stringify([q3.entry]), 'ann\'s answer answers only what asked ann', JSON.stringify(answers(v3).at(-1).data));
 
 // Stop stops both.
@@ -52,7 +52,7 @@ const cy = await scriptedRunner('cy', (request) => {
 });
 const toCy = { runner: 'cy', model: 'echo/echo' };
 const { json: { id: gap } } = await api('POST', '/api/threads', { title: 'gap' });
-const cyInputs = async () => (await conversationOf(await view(gap), 'echo/echo@cy')).entries?.filter((e) => e.kind === 'pi.user').map((e) => text(e.model[0])) ?? [];
+const cyInputs = async () => (await conversationOf(await view(gap), 'echo/echo@cy')).entries?.filter((e) => e.kind === 'agent-ide.delivery').map((e) => text(e.model[0])) ?? [];
 await api('POST', `/api/threads/${gap}/entries`, { body: 'work', to: toCy });
 await until(async () => (await conversationOf(await view(gap), 'echo/echo@cy')).entries?.some((e) => e.kind === 'pi.assistant'), 8000, 20);
 await api('POST', `/api/threads/${gap}/entries`, { body: 'and a follow-up', to: toCy });

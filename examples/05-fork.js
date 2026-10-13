@@ -35,7 +35,7 @@ await api('POST', `/api/threads/${f}/entries`, { body: 'other way' }, 'ben');
 fv = await answered(f, 2);
 const ben = fv?.entries.find((e) => e.data.author === 'ben');
 check(Boolean(ben) && answers(fv).at(-1).data.re?.includes(ben.id), 'fork answers its own message', brief(fv));
-const inputs = (await conversationOf(fv, 'echo/echo@laptop')).entries.filter((e) => e.kind === 'pi.user').map((e) => text(e.model[0]));
+const inputs = (await conversationOf(fv, 'echo/echo@laptop')).entries.filter((e) => e.kind === 'agent-ide.delivery').map((e) => text(e.model[0]));
 check(JSON.stringify(inputs) === JSON.stringify(['oskar: hello', 'ben: other way']), 'the forked agent read hello once, then only ben', JSON.stringify(inputs));
 check(brief(await view(a)) === brief(source), 'source unchanged, no report from the fork', brief(await view(a)));
 

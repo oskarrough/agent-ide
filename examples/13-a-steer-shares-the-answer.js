@@ -11,7 +11,7 @@ const first = (await api('POST', `/api/threads/${id}/entries`, { body: 'first', 
 check(Boolean(await until(async () => (await api('GET', '/api/runners')).json.some((r) => r.calls.some((c) => c.what === 'exec')), 8000, 10)), 'the first input is inside its tool call');
 const second = (await api('POST', `/api/threads/${id}/entries`, { body: 'second', to, steer: true })).json.entry;
 const v = (await answered(id)) ?? await view(id);
-const inputs = (await conversationOf(v, 'echo/echo@bot')).entries.filter((e) => e.kind === 'pi.user').map((e) => text(e.model[0]));
+const inputs = (await conversationOf(v, 'echo/echo@bot')).entries.filter((e) => e.kind === 'agent-ide.delivery').map((e) => text(e.model[0]));
 check(inputs.includes('oskar: second'), 'Pi placed the steer', JSON.stringify(inputs));
 check(answers(v).length === 1, 'both inputs share one answer');
 check(JSON.stringify(answers(v)[0]?.data.re) === JSON.stringify([first, second]), 'the answer says it answers both', JSON.stringify(answers(v)[0]?.data.re));

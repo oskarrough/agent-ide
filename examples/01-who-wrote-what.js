@@ -23,8 +23,8 @@ const agent = view?.agents[0];
 check(view?.agents.length === 1 && agent.name === 'echo/echo@laptop' && agent.to?.model === 'echo/echo', 'the thread records its agent', JSON.stringify(view?.agents));
 
 const own = await conversationOf(view, 'echo/echo@laptop');
-const user = own.entries?.find((e) => e.kind === 'pi.user');
-check(text(user?.model[0]) === 'oskar: hello' && user.data === undefined, 'in the agent\'s conversation the message is stock Pi user text, with its author', JSON.stringify(user));
+const user = own.entries?.find((e) => e.kind === 'agent-ide.delivery');
+check(text(user?.model[0]) === 'oskar: hello' && user.data.held.join() === String(input?.id), 'in the agent\'s conversation the message is a delivery: user text with its author, naming what it held', JSON.stringify(user));
 check(answer?.data.answer.conversation === agent?.conversation && own.entries.some((e) => e.id === answer.data.answer.entry && e.kind === 'pi.assistant'), 'the answer points at the entry it came from', JSON.stringify(answer?.data.answer));
 check(!(await api('GET', '/api/threads')).json.some((t) => t.id === agent?.conversation), 'the agent\'s conversation is no thread');
 

@@ -55,8 +55,8 @@ export function server(core) {
   const at = name.lastIndexOf('@');
   const writer = { runner: name.slice(at + 1), model: name.slice(0, at) };
 
-  // A thread's lines: its own, then its source's whose range ends before the fork point, following Pi's parent link
-  // as `seenBy` does. Reads only, so a commit calls it before it writes; outside one, `core.commit((tx) => lines(tx, id))`.
+  // A thread's lines: its own, then its source's whose range ends before the fork point, following Pi's parent link.
+  // Reads only, so a commit calls it before it writes; outside one, `core.commit((tx) => lines(tx, id))`.
   async function lines(tx, threadId) {
     const map = new Map();
     const own = await core.collect((cursor) => tx.scanEntries({ conversationId: threadId, order: 'ascending' }, 500, cursor));

@@ -21,7 +21,7 @@ check(Boolean(await until(async () => (await linesOf(id)).length === 300, 60000,
 await api('POST', `/api/threads/${id}/entries`, { body: 'catch up, please', to: { runner: 'bot', model: 'echo/echo' } });
 const v = await until(async () => { const v = await view(id); return v.entries.some((e) => e.data.answer) && v; }, 30000);
 const conversation = await conversationOf(v, 'echo/echo@bot');
-const inputs = conversation.entries.filter((e) => e.kind === 'pi.user').map((e) => text(e.model[0]));
+const inputs = conversation.entries.filter((e) => e.kind === 'agent-ide.delivery').map((e) => text(e.model[0]));
 const input = inputs[0] ?? '';
 check(inputs.length === 1, 'the agent gets one input', inputs.length);
 check(Buffer.byteLength(input) <= 128 * 1024, 'it stays within 64 KB whole and 64 KB of memory', Buffer.byteLength(input));
