@@ -1,10 +1,16 @@
-// agent-ide with its Matrix bridge, set up so that each Matrix thread where the bot is mentioned is one GitHub issue. Reads .env beside it.
+// agent-ide with its Matrix bridge, set up so that each Matrix thread where the bot is mentioned is one GitHub issue. Reads .env beside it,
+// from wherever it is run.
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '../..');
+const dotenv = path.join(import.meta.dirname, '.env');
+if (existsSync(dotenv)) process.loadEnvFile(dotenv);
 const { REPO, MODEL = 'openai-codex/gpt-6-luna', PORT = '3009' } = process.env;
-if (!REPO) throw new Error('Set REPO in .env: a GitHub checkout where `gh` is logged in');
+const repo = REPO && path.resolve(REPO.replace(/^~(?=\/|$)/, os.homedir()));
+if (!repo || !existsSync(repo)) throw new Error(`Set REPO in ${dotenv} to a local GitHub checkout where \`gh\` is logged in`);
 
 const env = {
   ...process.env,
@@ -19,4 +25,4 @@ const env = {
 };
 const run = (file, args = []) => spawn(process.execPath, [path.join(root, file), ...args], { env, stdio: 'inherit' });
 run('server.js');
-run('runner.js', ['--server', `http://127.0.0.1:${PORT}`, '--name', 'issues', '--dir', path.resolve(REPO)]);
+run('runner.js', ['--server', `http://127.0.0.1:${PORT}`, '--name', 'issues', '--dir', repo]);
