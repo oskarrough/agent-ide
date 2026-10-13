@@ -469,7 +469,7 @@ const handleRequest = async (req, res) => {
       return send(res, 200, { port, file, modules: modules.map((m) => m.name), threads: (await threadIds()).length, runners: Object.keys(await known()).length, work: await harness.inspect(context) });
     }
     if (req.method === 'GET' && route === '/api/runners') {
-      return send(res, 200, Object.entries(await known()).map(([name, { models, ...runner }]) => ({ name, ...runner, models: Object.keys(models ?? {}), online: runners.isOnline(name), calls: runners.working(name) })));
+      return send(res, 200, Object.entries(await known()).map(([name, { models, offers, ...runner }]) => ({ name, ...runner, offers: offers ?? [], models: Object.keys(models ?? {}), online: runners.isOnline(name), calls: runners.working(name) })));
     }
     if (req.method === 'GET' && route === '/api/threads') return send(res, 200, await threadList(user(req)));
     if (req.method === 'POST' && route === '/api/threads') {
@@ -619,7 +619,7 @@ async function upgrade(req, socket) {
   sockets.set(name, socket);
   const q = (param) => url.searchParams.get(param) || '';
   const resolved = (await known())[name]?.models ?? {};
-  const runner = { alias: q('alias'), owner: q('owner'), host: q('host'), dir: q('dir') || '/', model: q('model'), lastSeen: new Date().toISOString(), models: resolved };
+  const runner = { alias: q('alias'), owner: q('owner'), host: q('host'), dir: q('dir') || '/', model: q('model'), offers: url.searchParams.getAll('offer'), lastSeen: new Date().toISOString(), models: resolved };
   await commit(async (tx) => { (await tx.doc(Runners))[name] = runner; });
   if (!models.getProvider(`runner:${name}`)) models.setProvider(runnerProvider(runners, name, resolved));
   readFrames(socket, (text) => runners.receive(text));

@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux';
-import { ModelRuntime, resolveCliModel, SettingsManager } from '@earendil-works/pi-coding-agent';
+import { ModelRuntime, resolveCliModel, resolveModelScopeWithDiagnostics, SettingsManager } from '@earendil-works/pi-coding-agent';
 import { load } from './modules.js';
 import { serveRunner } from './remote.js';
 
@@ -33,10 +33,18 @@ function resolve(pattern) {
 }
 const defaultModel = () => { try { const { model } = resolve(''); return `${model.provider}/${model.id}`; } catch { return ''; } };
 
+// The models pi has enabled here, as `pi --models` expands them; patterns that match nothing on this runner are skipped.
+async function offers() {
+  const patterns = SettingsManager.create(dir).getEnabledModels() ?? [];
+  const { scopedModels } = await resolveModelScopeWithDiagnostics(patterns, models);
+  return [...new Set(scopedModels.map(({ model }) => `${model.provider}/${model.id}`))];
+}
+
 const modules = await load('runner', { status: true }, { name, server });
 
-function connect() {
+async function connect() {
   const query = new URLSearchParams({ runner: name, alias: args.alias, owner: args.owner, host: os.hostname(), dir, model: defaultModel() });
+  for (const ref of await offers().catch(() => [])) query.append('offer', ref);
   const socket = new WebSocket(`${server.replace(/^http/, 'ws')}/ws?${query}`);
   const runner = serveRunner({ name, dir, models, resolve, echo, send: (text) => socket.readyState === WebSocket.OPEN && socket.send(text),
     onTell: (message) => { for (const m of modules) m.told?.(message); } });

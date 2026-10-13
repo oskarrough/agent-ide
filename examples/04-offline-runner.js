@@ -1,9 +1,16 @@
 // A runner that goes away. A thread waiting for it is blocked, not failed; stopping it leaves it idle, with no error.
 // Pi on the runner resolves models, so an offline runner takes only a model it has run before.
-import { answered, api, check, done, runner, server, sleep, until, view } from './lib.js';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { answered, api, check, dir, done, runner, server, sleep, until, view } from './lib.js';
 
 await server();
+// The models pi has enabled in the runner's folder are offered, and what it can't resolve is skipped.
+mkdirSync(path.join(dir, '.pi'));
+writeFileSync(path.join(dir, '.pi', 'settings.json'), JSON.stringify({ enabledModels: ['echo/e*', 'claude-bridge/claude-opus-5-5'] }));
 const away = await runner('away');
+const offered = (await api('GET', '/api/runners')).json.find((x) => x.name === 'away');
+check(JSON.stringify(offered?.offers) === '["echo/echo"]' && !offered.models.includes('echo/echo'), 'a runner offers the models enabled in pi, unresolved', JSON.stringify(offered));
 const { json: { id } } = await api('POST', '/api/threads', { title: 'away' });
 await api('POST', `/api/threads/${id}/entries`, { body: 'hi', to: { runner: 'away', model: 'echo/echo' } });
 await answered(id);

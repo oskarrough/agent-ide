@@ -40,69 +40,70 @@ client.html ──▶ server.js   one Pi Durable harness: threads, and each agen
 5. An agent is a model on a runner, named `provider/id@runner`.
 6. The runner resolves the model the way `pi --model` does, with pi's own resolver, settings and logins: a pattern, a `:thinking` suffix, or nothing for pi's default.
 7. The server keeps each model a runner resolved, without credentials, and an offline runner takes only those.
-8. `echo/echo` is pi-ai's faux provider, for testing: it answers `echo@RUNNER heard: ` and the last user text.
-9. A thread never runs: every entry in it is a passive message with its `author` and `body`, and `to`, `from`, `re`, `answer`, `error` or `shell` when it has them, or, with memory, a line.
-10. Each agent in a thread answers from its own Pi conversation, made the first time it is asked there and owned by an Anchor task in the thread.
-11. The thread's doc maps the agent's name to that conversation, and a doc on the conversation names its thread, the agent's name there, and the messages it hasn't been given.
-12. Having no thread doc, an agent's conversation never shows up as a thread.
-13. Every message in a thread is unseen by each of its agents but its own: those with its name and no `from`.
-14. A new agent hasn't seen anything.
-15. Posting a message is one Pi commit that appends it and creates a Deliver task for each agent its `to` asks, holding all that agent's unseen messages.
-16. No `to` asks whom the thread last asked; `to: null` asks nobody.
-17. A Deliver task waits for its runner, then submits its messages as one input to the agent's conversation, each written as `author: body`, or `author, writing from thread N: body` (`answering` for a message with `re`) when it came from another thread.
-18. The request id is made from the Deliver task's id, so a rerun finds the input it made.
-19. When the input settles, the commit that ends the task copies the agent's final answer into the thread with `re`, the messages it held that asked the agent, and `answer`, the entry it came from.
-20. Several inputs can share one answer, and the first speaks for all.
-21. An input with no answer posts an `error` message instead.
-22. A child thread reports each answer or error to its parent as a message with `from`.
-23. Other agents never see an agent's tool calls.
-24. A stopped input posts and reports nothing.
-25. If a stopped input was withdrawn before Pi placed it, its messages are unseen again, for the next delivery.
-26. `$ cmd` creates a Shell task for the first agent's runner.
-27. A Shell task commits that it began, runs in the runner's folder, then posts what it printed.
-28. A stopped Shell task posts what it printed by then.
-29. A Shell task a restart cut short posts that it was interrupted.
-30. Pi resumes unfinished tasks after a restart, and every write a task makes lands in the commit that ends it or moves it on, so nothing repeats.
-31. Several agents can work in one thread at once.
-32. An agent is working while a delivery to it is live.
-33. Stopping a thread is Pi's abort of its conversation, which reaches its tasks and, through each Anchor, its agents' runs and queued inputs.
-34. A fork is Pi's own fork of the thread at an entry, plus a fork of each agent's conversation at its last answer up to there, all in one commit.
-35. The forked agent's unseen messages are those up to there that none of its inputs placed by that answer held.
-36. An agent asked up to there with no answer yet gets a new conversation in the fork, in the same commit, having seen nothing.
-37. A fork reports nowhere.
-38. A thread's status for a reader is one of the [Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status)'s five words: working, or blocked when its working agents' runners are offline, from its live tasks; done or error for a result newer than the reader's read marker; otherwise idle.
-39. Optional behaviour lives in modules, one file each, switched by an env var of its name.
-40. [talk.js](talk.js) (on, `TALK=0`) gives agents `post` and `threads` tools.
-41. [status.js](status.js) (on, `STATUS=0`) has runners report to their terminal with OSC 7501, a record for the runner and one per thread by its id.
-42. [director.js](director.js) (`DIRECTOR=1`) has a message ask the agents it @mentions.
-43. [memory.js](memory.js) (`MEMORY=1`, with `MEMORY_MODEL=model@runner`) gives each thread a memory.
-44. [matrix.js](matrix.js) (`MATRIX=1`, with `MATRIX_TOKEN` and `MATRIX_ROOMS`, and optionally `MATRIX_USERS`, `MATRIX_AGENT=model@runner`, `MATRIX_JOB` and `MATRIX_HOMESERVER`, matrix.org's by default) mirrors Matrix rooms into threads, where without `MATRIX_USERS` nothing from Matrix asks anyone; its top says how to set it up.
-45. With talk, an agent's `post` is one commit, keyed by its tool call so a replay finds it.
-46. When an agent answers posts from another thread, the answer goes back to that thread instead of a report, as a message with `from` and `re`.
-47. That answer asks every agent who posted, and steers into their work if they're busy.
-48. A reply to that answer sends nothing back, so the exchange ends there, like email.
-49. With memory, each message in a thread gets a line of at most 512 bytes: itself when it fits, or else written by `MEMORY_MODEL` from its text and the thread's memory before it, asked again up to five times while too long.
-50. A line request that fails for a rate limit or a dropped connection waits and tries again, by pi-ai's `retryAssistantCall`.
-51. Neighbouring lines merge in pairs up a binary tree, a pair that fits being its own line.
-52. Each line is an `agent-ide.line` entry `{l, i, text, size}` in the thread, written once by a background Line task that the post's commit creates, so stopping a thread never cuts its memory short.
-53. A fork reads its source's lines through for ranges that end before the fork point.
-54. When Pi compacts an agent's conversation, memory writes Pi's summary instead of the agent's model: the thread's lines up to the last message the agent was given before the cut.
-55. That memory merges the most due pair first, `(T - last) / 2^l`, into their line, pairs whose line is built before those whose line is not, until it fits in 64 KB, and writes each line `id+n|text`, `id` being the position of its first message and `n` how many it covers.
-56. A message or pair whose line is not built yet shows there as `(not summarized yet: zoom it)`.
-57. With memory, a Deliver task's input holds its newest messages whole up to 64 KB, at least the last, and the older ones as the thread's memory over their range, also within 64 KB.
-58. With memory, an agent has `zoom {id, n}`, which opens a line into the two it was made from, or into the message whole when `n` is 1.
-59. A prompt section tells it the lines are its memory, and to zoom before it guesses.
-60. With matrix, every text message in `MATRIX_ROOMS` is posted once into each thread it belongs to, as its sender: a top-level one into the thread kept for its room, and one in a Matrix thread into the thread kept for that, which opens with `MATRIX_JOB`, the room's thread id and the Matrix thread's first message.
-61. A message from one of `MATRIX_USERS` that mentions the bot by name, or by `m.mentions`, asks `MATRIX_AGENT` if set, waiting for its runner if it never connected; a top-level one asks nobody in its room's thread and starts a Matrix thread under itself, where it asks and the answer goes.
-62. Their other messages ask whom their thread last asked, and anyone else's ask nobody; everything from Matrix posts as a steer, and nothing unfollows a thread.
-63. What the bridge itself sent and edits are skipped, and what comes in loses its terminal escapes and bidi overrides.
-64. Each message is posted in a commit that notes its event, after a commit of its own that opens its thread, and the sync's position lands last, so a restart neither drops nor repeats one.
-65. The first sync only takes its position, so nothing said before the bridge asks anyone.
-66. A sync that Matrix cut short is paged back to the last position first, and one silent for 40 seconds is asked again.
-67. An agent's answer or error in a thread kept for a room or a Matrix thread goes back there by a background MatrixSend task the post's commit creates, under a transaction id made from its entry and a salt the store keeps, so the homeserver drops a resend; a fork belongs to no room, so it sends nothing.
-68. A MatrixSend waits, by Pi's task wait, until the room's send before it is done, and as long as a rate limit asks, so a room's answers land in the order they were written, even across a restart.
-69. Nothing from Matrix asks in a room's thread until someone asks there from the client; then that agent hears the whole room (rule 14) and follows it (62), so do that with memory on.
-70. [examples/](examples) defines the rest and checks all of it: the HTTP API, the runner end's interface (`serveRunner` in [remote.js](remote.js)), and each sentence above.
+8. A runner also tells the server, each time it connects, the models pi has enabled there, expanded as `pi --models` does, which the client suggests and which are not resolved until asked.
+9. `echo/echo` is pi-ai's faux provider, for testing: it answers `echo@RUNNER heard: ` and the last user text.
+10. A thread never runs: every entry in it is a passive message with its `author` and `body`, and `to`, `from`, `re`, `answer`, `error` or `shell` when it has them, or, with memory, a line.
+11. Each agent in a thread answers from its own Pi conversation, made the first time it is asked there and owned by an Anchor task in the thread.
+12. The thread's doc maps the agent's name to that conversation, and a doc on the conversation names its thread, the agent's name there, and the messages it hasn't been given.
+13. Having no thread doc, an agent's conversation never shows up as a thread.
+14. Every message in a thread is unseen by each of its agents but its own: those with its name and no `from`.
+15. A new agent hasn't seen anything.
+16. Posting a message is one Pi commit that appends it and creates a Deliver task for each agent its `to` asks, holding all that agent's unseen messages.
+17. No `to` asks whom the thread last asked; `to: null` asks nobody.
+18. A Deliver task waits for its runner, then submits its messages as one input to the agent's conversation, each written as `author: body`, or `author, writing from thread N: body` (`answering` for a message with `re`) when it came from another thread.
+19. The request id is made from the Deliver task's id, so a rerun finds the input it made.
+20. When the input settles, the commit that ends the task copies the agent's final answer into the thread with `re`, the messages it held that asked the agent, and `answer`, the entry it came from.
+21. Several inputs can share one answer, and the first speaks for all.
+22. An input with no answer posts an `error` message instead.
+23. A child thread reports each answer or error to its parent as a message with `from`.
+24. Other agents never see an agent's tool calls.
+25. A stopped input posts and reports nothing.
+26. If a stopped input was withdrawn before Pi placed it, its messages are unseen again, for the next delivery.
+27. `$ cmd` creates a Shell task for the first agent's runner.
+28. A Shell task commits that it began, runs in the runner's folder, then posts what it printed.
+29. A stopped Shell task posts what it printed by then.
+30. A Shell task a restart cut short posts that it was interrupted.
+31. Pi resumes unfinished tasks after a restart, and every write a task makes lands in the commit that ends it or moves it on, so nothing repeats.
+32. Several agents can work in one thread at once.
+33. An agent is working while a delivery to it is live.
+34. Stopping a thread is Pi's abort of its conversation, which reaches its tasks and, through each Anchor, its agents' runs and queued inputs.
+35. A fork is Pi's own fork of the thread at an entry, plus a fork of each agent's conversation at its last answer up to there, all in one commit.
+36. The forked agent's unseen messages are those up to there that none of its inputs placed by that answer held.
+37. An agent asked up to there with no answer yet gets a new conversation in the fork, in the same commit, having seen nothing.
+38. A fork reports nowhere.
+39. A thread's status for a reader is one of the [Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status)'s five words: working, or blocked when its working agents' runners are offline, from its live tasks; done or error for a result newer than the reader's read marker; otherwise idle.
+40. Optional behaviour lives in modules, one file each, switched by an env var of its name.
+41. [talk.js](talk.js) (on, `TALK=0`) gives agents `post` and `threads` tools.
+42. [status.js](status.js) (on, `STATUS=0`) has runners report to their terminal with OSC 7501, a record for the runner and one per thread by its id.
+43. [director.js](director.js) (`DIRECTOR=1`) has a message ask the agents it @mentions.
+44. [memory.js](memory.js) (`MEMORY=1`, with `MEMORY_MODEL=model@runner`) gives each thread a memory.
+45. [matrix.js](matrix.js) (`MATRIX=1`, with `MATRIX_TOKEN` and `MATRIX_ROOMS`, and optionally `MATRIX_USERS`, `MATRIX_AGENT=model@runner`, `MATRIX_JOB` and `MATRIX_HOMESERVER`, matrix.org's by default) mirrors Matrix rooms into threads, where without `MATRIX_USERS` nothing from Matrix asks anyone; its top says how to set it up.
+46. With talk, an agent's `post` is one commit, keyed by its tool call so a replay finds it.
+47. When an agent answers posts from another thread, the answer goes back to that thread instead of a report, as a message with `from` and `re`.
+48. That answer asks every agent who posted, and steers into their work if they're busy.
+49. A reply to that answer sends nothing back, so the exchange ends there, like email.
+50. With memory, each message in a thread gets a line of at most 512 bytes: itself when it fits, or else written by `MEMORY_MODEL` from its text and the thread's memory before it, asked again up to five times while too long.
+51. A line request that fails for a rate limit or a dropped connection waits and tries again, by pi-ai's `retryAssistantCall`.
+52. Neighbouring lines merge in pairs up a binary tree, a pair that fits being its own line.
+53. Each line is an `agent-ide.line` entry `{l, i, text, size}` in the thread, written once by a background Line task that the post's commit creates, so stopping a thread never cuts its memory short.
+54. A fork reads its source's lines through for ranges that end before the fork point.
+55. When Pi compacts an agent's conversation, memory writes Pi's summary instead of the agent's model: the thread's lines up to the last message the agent was given before the cut.
+56. That memory merges the most due pair first, `(T - last) / 2^l`, into their line, pairs whose line is built before those whose line is not, until it fits in 64 KB, and writes each line `id+n|text`, `id` being the position of its first message and `n` how many it covers.
+57. A message or pair whose line is not built yet shows there as `(not summarized yet: zoom it)`.
+58. With memory, a Deliver task's input holds its newest messages whole up to 64 KB, at least the last, and the older ones as the thread's memory over their range, also within 64 KB.
+59. With memory, an agent has `zoom {id, n}`, which opens a line into the two it was made from, or into the message whole when `n` is 1.
+60. A prompt section tells it the lines are its memory, and to zoom before it guesses.
+61. With matrix, every text message in `MATRIX_ROOMS` is posted once into each thread it belongs to, as its sender: a top-level one into the thread kept for its room, and one in a Matrix thread into the thread kept for that, which opens with `MATRIX_JOB`, the room's thread id and the Matrix thread's first message.
+62. A message from one of `MATRIX_USERS` that mentions the bot by name, or by `m.mentions`, asks `MATRIX_AGENT` if set, waiting for its runner if it never connected; a top-level one asks nobody in its room's thread and starts a Matrix thread under itself, where it asks and the answer goes.
+63. Their other messages ask whom their thread last asked, and anyone else's ask nobody; everything from Matrix posts as a steer, and nothing unfollows a thread.
+64. What the bridge itself sent and edits are skipped, and what comes in loses its terminal escapes and bidi overrides.
+65. Each message is posted in a commit that notes its event, after a commit of its own that opens its thread, and the sync's position lands last, so a restart neither drops nor repeats one.
+66. The first sync only takes its position, so nothing said before the bridge asks anyone.
+67. A sync that Matrix cut short is paged back to the last position first, and one silent for 40 seconds is asked again.
+68. An agent's answer or error in a thread kept for a room or a Matrix thread goes back there by a background MatrixSend task the post's commit creates, under a transaction id made from its entry and a salt the store keeps, so the homeserver drops a resend; a fork belongs to no room, so it sends nothing.
+69. A MatrixSend waits, by Pi's task wait, until the room's send before it is done, and as long as a rate limit asks, so a room's answers land in the order they were written, even across a restart.
+70. Nothing from Matrix asks in a room's thread until someone asks there from the client; then that agent hears the whole room (rule 15) and follows it (63), so do that with memory on.
+71. [examples/](examples) defines the rest and checks all of it: the HTTP API, the runner end's interface (`serveRunner` in [remote.js](remote.js)), and each sentence above.
 
 ## What it promises
 
@@ -149,6 +150,6 @@ Send `x-user: name` to say who you are. A thread entry is Pi's own, `{id, kind: 
 - `DELETE /api/threads/:id`: hides it; Pi Durable keeps everything.
 - `GET /api/threads/:id/memory?zoom=id,n`: with memory, the thread's memory as `{lines: [{id, n, text}]}`, or with `zoom` the two lines that line was made from, or `{message}` whole when `n` is 1; the client shows it as a panel.
 - `GET /api/conversations/:id`: any Pi conversation's view as Pi gives it, such as an agent's: its entries and docs.
-- `GET /api/runners`: each runner, its default model, the models it has resolved, and the calls it's answering.
+- `GET /api/runners`: each runner, its default model, the models it `offers` from pi's enabled models, the models it has resolved, and the calls it's answering.
 - Agents' tools, with talk: `post {"thread"?, "title"?, "body", "to"?}`, where no thread starts a child and `to` is `model@runner`, a runner, or `nobody`; and `threads {"thread"?, "last"?}`; with memory, `zoom {"id","n"}`.
 - `/ws`: pushes `{threadId}` whenever a thread changes. Runners connect here too and speak the protocol in [remote.js](remote.js).
