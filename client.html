@@ -45,6 +45,19 @@
   .connect code { display: block; margin-top: var(--s); user-select: all; }
   #composer .row { display: flex; gap: var(--m); flex-wrap: wrap; align-items: center; }
   #composer .row input:not(#body) { flex: 0 1 9rem; }
+  /* Usage: one colour per kind of token, in the bar and its legend. */
+  .input { --c: #3b78d8; } .output { --c: #d4602f; } .cacheWrite { --c: #2f9e62; } .cacheRead { --c: #c98f00; }
+  .bar { display: flex; height: var(--m); border-radius: var(--s); overflow: hidden; background: var(--tint); margin: var(--l) 0 var(--m); }
+  .bar span { background: var(--c, var(--mute)); }
+  .key { display: inline-block; width: var(--m); height: var(--m); border-radius: 2px; background: var(--c); margin-right: var(--m); }
+  #usage table { width: 100%; border-collapse: collapse; margin-bottom: var(--l); }
+  #usage th { font-weight: normal; color: var(--mute); font-size: var(--small); text-align: left; }
+  #usage td, #usage th { padding: var(--s) var(--m) var(--s) 0; border-bottom: 1px solid var(--line); }
+  #usage .n { text-align: right; font-variant-numeric: tabular-nums; }
+  #usage .share { width: 6rem; }
+  #usage .share .bar { margin: 0; height: var(--s); }
+  #usage .share .bar span { background: var(--c, #3b78d8); }
+  #usage .stats { display: flex; flex-wrap: wrap; gap: var(--s) var(--l); }
   @media (max-width: 760px) { #layout { grid-template-columns: 1fr; } }
 </style>
 <div class="mute">You are <b id="me"></b>. Set <code>?user=name</code> in the URL to be someone else. <label><input type="checkbox" id="structure"> Show structure</label></div>
@@ -55,6 +68,7 @@
     <h2 id="heading">Pick a thread, or start one</h2>
     <div id="meta" class="mute"></div>
     <pre id="raw-thread" class="raw" hidden></pre>
+    <section id="usage" hidden></section>
     <details id="memory" open hidden><summary>Memory</summary><ul></ul></details>
     <ul id="entries"></ul>
     <form id="composer" hidden>
@@ -142,6 +156,7 @@
     const server = servers.get(url);
     try {
       [server.info, server.threads, server.runners] = await Promise.all([api(url, '/api/server'), api(url, '/api/threads'), api(url, '/api/runners')]);
+      if (selected?.url === url && selected.usage) usage = await api(url, '/api/usage');
       if (selected?.url === url && selected.id && !server.threads.some((t) => t.id === selected.id)) select(null);
     } catch (error) { server.status = error.message; }
     render();
@@ -150,7 +165,9 @@
   function select(next) {
     selected = next;
     view = null;
+    usage = null;
     render();
+    if (next?.usage) refresh(next.url);
     loadThread();
   }
 
@@ -169,6 +186,7 @@
       }
       if (first) opened.clear(), zoomed.clear();
       memory = current()?.info?.modules.includes('memory') ? await api(url, `/api/threads/${id}/memory`) : null;
+      usage = current()?.info?.modules.includes('usage') ? await api(url, `/api/threads/${id}/usage`) : null;
       for (const [at, value] of zoomed) zoomed.set(at, await api(url, `/api/threads/${id}/memory?zoom=${at}`).catch(() => value));
       for (const conversation of opened.keys()) opened.set(conversation, await api(url, `/api/conversations/${conversation}`));
       renderThread();
@@ -206,6 +224,7 @@
       ]),
       server.status === 'online' ? '' : build('div', { className: 'error', textContent: server.status }),
       info ? build('small', { textContent: `${info.file} · modules: ${info.modules.join(', ') || 'none'} · ${info.threads} threads · Pi ${info.work.scheduling}, ${info.work.tasks.length} live tasks, ${info.work.submissions.length} open submissions` }) : '',
+      info?.modules.includes('usage') ? build('button', { className: 'link', textContent: 'usage', onclick: () => select({ url: server.url, usage: true }) }) : '',
       raw(info),
       build('h3', { textContent: 'Runners' }),
       build('ul', {}, server.runners.length ? server.runners.map((runner) => runnerView(server, runner))
@@ -248,9 +267,9 @@
 
   function renderThread() {
     const server = current();
-    const draft = selected && !selected.id;
+    const draft = selected && !selected.id && !selected.usage;
     const fork = view?.conversation?.parent;
-    $('heading').textContent = draft ? 'New thread' : view?.title || 'Pick a thread, or start one';
+    $('heading').textContent = selected?.usage ? 'Usage' : draft ? 'New thread' : view?.title || 'Pick a thread, or start one';
     $('meta').replaceChildren(...(view ? [
       build('span', { className: 'id', textContent: `#${view.id} ` }), view.status,
       view.parent ? build('span', {}, [' · child of ', threadLink(server, view.parent)]) : '',
@@ -264,7 +283,47 @@
     $('composer').hidden = !(draft || view);
     renderEntries();
     renderMemory();
+    renderUsage();
     renderPicker();
+  }
+
+  // What agents spent, from Pi's ledger: the server's total and each thread's share of it.
+  let usage = null;
+  const KINDS = { input: 'Input', output: 'Output', cacheWrite: 'Cache write', cacheRead: 'Cache read' };
+  const tokens = (u) => u.input + u.output + u.cacheRead + u.cacheWrite;
+  const count = (n) => n ? new Intl.NumberFormat('en', { notation: 'compact', maximumSignificantDigits: 3 }).format(n) : '—';
+  const percent = (part, whole) => whole ? `${Math.round(100 * part / whole)}%` : '—';
+  const hit = (u) => percent(u.cacheRead, u.input + u.cacheRead + u.cacheWrite);
+  const cost = (u) => u.cost ? `$${u.cost.toFixed(2)}` : '';
+  const bar = (parts) => build('div', { className: 'bar' }, parts.map(([kind, part, whole]) => build('span', { className: kind, style: `width: ${whole ? 100 * part / whole : 0}%` })));
+  // A row's cells: each value a child, or a cell's own props.
+  const cells = (tag, values) => build('tr', {}, values.map((v) => v?.constructor === Object ? build(tag, v) : build(tag, {}, [v])));
+  function renderUsage() {
+    const server = current();
+    const shown = selected?.usage && usage?.threads;
+    $('usage').hidden = !shown;
+    if (!shown) return;
+    const { total, threads } = usage;
+    const all = tokens(total);
+    const stat = (label, value) => build('span', {}, [build('span', { className: 'mute', textContent: `${label} ` }), build('b', { textContent: value })]);
+    const models = {};
+    for (const { models: m } of threads.flatMap((t) => t.agents)) for (const [name, u] of Object.entries(m)) models[name] = (models[name] ?? 0) + tokens(u);
+    const rows = threads.toSorted((a, b) => tokens(b.total) - tokens(a.total));
+    $('usage').replaceChildren(
+      build('div', { className: 'stats' }, [stat('Threads', threads.length), stat('Tokens', count(all)), stat('Cache hit', hit(total)), cost(total) ? stat('Cost', cost(total)) : '']),
+      bar(Object.keys(KINDS).map((kind) => [kind, total[kind], all])),
+      build('table', {}, [
+        cells('th', ['Breakdown', { className: 'n', textContent: Object.keys(models).join(', ') }]),
+        ...Object.entries(KINDS).map(([kind, label]) => cells('td', [build('span', {}, [build('span', { className: `key ${kind}` }), label]), { className: 'n', textContent: count(total[kind]) }])),
+      ]),
+      build('table', {}, [
+        cells('th', ['Thread', 'Agents', { className: 'share' }, { className: 'n', textContent: 'Tokens' }, { className: 'n', textContent: 'Cache hit' }, { className: 'n', textContent: 'Share' }]),
+        ...rows.map((t) => cells('td', [threadLink(server, t.id), build('small', { className: 'mute', textContent: t.agents.map((a) => a.name).join(', ') || '—' }),
+          build('div', { className: 'share' }, [bar([['', tokens(t.total), all]])]),
+          { className: 'n', textContent: count(tokens(t.total)) }, { className: 'n mute', textContent: hit(t.total) }, { className: 'n mute', textContent: percent(tokens(t.total), all) }])),
+      ]),
+      raw(usage),
+    );
   }
 
   // The thread's memory, `id+n|text`: a click zooms a line into the two it was made from, or its message whole.
@@ -288,12 +347,18 @@
     $('memory').querySelector('ul').replaceChildren(...memory.lines.map(lineView));
   }
 
+  function spentBy(agent) {
+    const u = usage?.agents?.find((a) => a.name === agent.name)?.total;
+    return u && tokens(u) ? build('small', { className: 'mute', textContent: [`${count(tokens(u))} tokens`, `${hit(u)} cache hit`, cost(u)].filter(Boolean).join(' · ') + ' ' }) : '';
+  }
+
   // Each agent's own Pi conversation, shown raw in the structure view.
   const opened = new Map();
   function agentView(agent) {
     const shown = opened.get(agent.conversation);
     return build('li', {}, [
       build('b', { textContent: agent.name }), ` ${agent.status} `,
+      spentBy(agent),
       structure ? build('button', { className: 'link', textContent: `${shown ? 'hide' : 'show'} conversation #${agent.conversation}`, onclick: () => attempt((async () => {
         if (shown) opened.delete(agent.conversation);
         else opened.set(agent.conversation, await api(selected.url, `/api/conversations/${agent.conversation}`));

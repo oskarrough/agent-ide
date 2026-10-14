@@ -103,7 +103,10 @@ client.html ──▶ server.js   one Pi Durable harness: threads, and each agen
 68. An agent's answer or error in a thread kept for a room or a Matrix thread goes back there by a background MatrixSend task the post's commit creates, under a transaction id made from its entry and a salt the store keeps, so the homeserver drops a resend; a fork belongs to no room, so it sends nothing.
 69. A MatrixSend waits, by Pi's task wait, until the room's send before it is done, and as long as a rate limit asks, so a room's answers land in the order they were written, even across a restart.
 70. Nothing from Matrix asks in a room's thread until someone asks there from the client; then that agent hears the whole room (rule 15) and follows it (63), so do that with memory on.
-71. [examples/](examples) defines the rest and checks all of it: the HTTP API, the runner end's interface (`serveRunner` in [remote.js](remote.js)), and each sentence above.
+71. [usage.js](usage.js) (`USAGE=1`) shows what agents spent: the server's tokens by kind and each thread's share, and in a thread each agent's.
+72. With usage, an agent's spend is Pi's own `pi.usage` ledger on its conversation, which a fork starts empty, so a fork's agents count only what they spent since.
+73. A thread's spend is its agents', and the server's its shown threads'; memory's line requests have no conversation, so they count nowhere.
+74. [examples/](examples) defines the rest and checks all of it: the HTTP API, the runner end's interface (`serveRunner` in [remote.js](remote.js)), and each sentence above.
 
 ## What it promises
 
@@ -123,6 +126,7 @@ DIRECTOR=1 bun server.js               # multiplayer
 TALK=0 STATUS=0 bun server.js          # the core alone
 MEMORY=1 MEMORY_MODEL=haiku@laptop bun server.js   # threads that never end
 MATRIX=1 MATRIX_TOKEN=… MATRIX_ROOMS=… bun server.js   # Matrix rooms as threads; see matrix.js and apps/matrix-sync
+USAGE=1 bun server.js                  # what agents spent
 bun scripts/replay-pi.js ~/.pi/agent/sessions/FOLDER   # pi sessions, or one .jsonl, as one long thread
 DB_PATH=other.sqlite bun server.js     # another store; only one server may use a file
 
@@ -149,6 +153,7 @@ Send `x-user: name` to say who you are. A thread entry is Pi's own, `{id, kind: 
 - `POST /api/threads/:id/stop`: stops its agents, deliveries and commands, and withdraws their queued inputs.
 - `DELETE /api/threads/:id`: hides it; Pi Durable keeps everything.
 - `GET /api/threads/:id/memory?zoom=id,n`: with memory, the thread's memory as `{lines: [{id, n, text}]}`, or with `zoom` the two lines that line was made from, or `{message}` whole when `n` is 1; the client shows it as a panel.
+- `GET /api/usage`, `GET /api/threads/:id/usage`: with usage, `{threads: [{id, title, parent, agents, total}], total}`, or one thread, each agent as `{name, conversation, models, total}` and every spend as `{input, output, cacheRead, cacheWrite, cost}`; the client shows it as a page.
 - `GET /api/conversations/:id`: any Pi conversation's view as Pi gives it, such as an agent's: its entries and docs.
 - `GET /api/runners`: each runner, its default model, the models it `offers` from pi's enabled models, the models it has resolved, and the calls it's answering.
 - Agents' tools, with talk: `post {"thread"?, "title"?, "body", "to"?}`, where no thread starts a child and `to` is `model@runner`, a runner, or `nobody`; and `threads {"thread"?, "last"?}`; with memory, `zoom {"id","n"}`.
