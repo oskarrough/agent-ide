@@ -66,7 +66,7 @@ const Deliver = defineTask({
       await runners.online(to.runner, rt.signal);
       const all = await messages(threadId);
       const mine = all.filter((e) => held.includes(e.id));
-      const content = catchUp ? await catchUp(threadId, mine, all) : mine.map(said).join('\n\n');
+      const content = catchUp ? await catchUp(threadId, mine, all, agent) : mine.map(said).join('\n\n');
       const handle = await rt.conversation(agent, ctx);
       const entry = { kind: DELIVERY, data: { held } };
       const submission = await handle.submit({ type: 'input', content, entry, requestId: String(id), whenBusy: steer ? 'steer' : 'followUp' }, ctx);

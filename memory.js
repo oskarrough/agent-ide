@@ -7,7 +7,7 @@ import { messageText } from './remote.js';
 
 const KIND = 'agent-ide.line';
 const RETRY = { enabled: true, maxRetries: 10, baseDelayMs: 2000 };
-const LINE = 512, BUDGET = 64 * 1024, WHOLE = 64 * 1024, CONTEXT = 16 * 1024, RETRIES = 5;
+const LINE = 512, PANEL = 64 * 1024, CONTEXT = 16 * 1024, RETRIES = 5;
 const bytes = (text) => Buffer.byteLength(text);
 const key = (l, i) => `${l}:${i}`;
 const RULER = '-'.repeat(LINE);
@@ -137,23 +137,30 @@ export function server(core) {
     return (await core.messages(threadId)).findIndex((e) => e.id === newest);
   }
 
+  // An agent's budget: as many bytes as its model has tokens of context, about a quarter of its window.
+  async function budget(agent) {
+    const to = await core.agentOf(agent);
+    return (to && core.models.getModel(`runner:${to.runner}`, to.model)?.contextWindow) || PANEL;
+  }
+
   // Pi's summary of an agent's conversation becomes its thread's memory up to the cut, and no model writes one.
   const beforeCompact = async ({ firstKept }, api) => {
     const home = await core.home(api.conversationId);
     if (!home?.thread) return undefined;
     const T = (await cutPosition(api.conversationId, firstKept, home.thread)) + 1;
-    return T > 0 ? { summary: render(memory(await core.commit((tx) => lines(tx, home.thread)), T, BUDGET)) } : undefined;
+    return T > 0 ? { summary: render(memory(await core.commit((tx) => lines(tx, home.thread)), T, await budget(api.conversationId))) } : undefined;
   };
 
-  // An input holds its newest messages whole up to WHOLE, at least the last, and the older ones as the memory over
-  // their range.
-  async function catchUp(threadId, held, all) {
+  // An input holds its newest messages whole up to the agent's budget, at least the last, and the older ones as the
+  // memory over their range, within the budget too.
+  async function catchUp(threadId, held, all, agent) {
+    const most = await budget(agent);
     let k = held.length - 1, size = bytes(core.said(held[k]));
-    while (k > 0 && size + bytes(core.said(held[k - 1])) + 2 <= WHOLE) size += bytes(core.said(held[--k])) + 2;
+    while (k > 0 && size + bytes(core.said(held[k - 1])) + 2 <= most) size += bytes(core.said(held[--k])) + 2;
     const whole = held.slice(k).map(core.said).join('\n\n');
     if (!k) return whole;
     const at = (e) => all.findIndex((x) => x.id === e.id);
-    const older = memory(await core.commit((tx) => lines(tx, threadId)), at(held[k - 1]) + 1, BUDGET, at(held[0]));
+    const older = memory(await core.commit((tx) => lines(tx, threadId)), at(held[k - 1]) + 1, most, at(held[0]));
     return `${render(older)}\n\n${whole}`;
   }
 
@@ -188,7 +195,7 @@ export function server(core) {
       return typeof opened === 'string' ? { message: opened } : { lines: opened.map(asLine) };
     }
     const T = (await core.messages(thread)).length;
-    return { lines: memory(await core.commit((tx) => lines(tx, thread)), T, BUDGET).map(asLine) };
+    return { lines: memory(await core.commit((tx) => lines(tx, thread)), T, PANEL).map(asLine) };
   }
 
   return {

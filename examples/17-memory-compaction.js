@@ -1,5 +1,6 @@
 // With memory, when Pi compacts an agent's conversation, its summary is the thread's memory up to the cut: lines
-// covering every message the agent had been given, coarse when old, within 64 KB. No model writes a prose summary.
+// covering every message the agent had been given, coarse when old, within the agent's budget: as many bytes as its
+// model has tokens of context, 40000 here. No model writes a prose summary.
 import { answered, api, check, conversationOf, done, linesOf, say, scriptedRunner, server, text, until } from './lib.js';
 
 const requests = [];
@@ -39,7 +40,7 @@ const heads = chat.split('\n').map((l) => l.match(/^(\d+)\+(\d+)\|/)).filter(Boo
 const contiguous = heads.every(([at, n], j) => at === (j ? heads[j - 1][0] + heads[j - 1][1] : 0));
 check(contiguous && heads.reduce((s, [, n]) => s + n, 0) === 141, 'its lines cover positions 0 to 140 exactly', JSON.stringify(heads.slice(0, 5)) + '…' + JSON.stringify(heads.slice(-3)));
 check(heads.length > 0 && heads[0][1] > heads.at(-1)[1], 'old lines are coarser than recent ones', JSON.stringify([heads[0], heads.at(-1)]));
-check(Buffer.byteLength(chat) <= 65536, 'the memory fits in 64 KB', Buffer.byteLength(chat));
+check(Buffer.byteLength(chat) <= 40000, 'the memory fits the budget its 40000-token window gives', Buffer.byteLength(chat));
 check(!requests.some((r) => r.includes('context summarization assistant')), 'Pi\'s summariser never ran');
 
 srv.kill();

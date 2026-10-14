@@ -1,5 +1,6 @@
-// With memory, an agent asked late in a long thread gets one input that stays bounded: its newest messages whole, up
-// to 64 KB, and everything older as the thread's memory lines, within 64 KB even while their pairs are not built yet.
+// With memory, an agent asked late in a long thread gets one input that stays bounded by its budget, as many bytes as
+// its model has tokens of context (64 Ki here): its newest messages whole within it, and everything older as the
+// thread's memory lines, within it too even while their pairs are not built yet.
 // It can still zoom down to the first message.
 import { api, check, conversationOf, done, linesOf, say, call, scriptedRunner, server, text, until, view } from './lib.js';
 
@@ -13,7 +14,7 @@ const route = (request) => {
 const long = (k) => `message ${k} ${'y'.repeat(1000 - `message ${k} `.length)}`;
 
 const srv = await server({ MEMORY: '1', MEMORY_MODEL: 'echo/echo@bot' });
-await scriptedRunner('bot', route);
+await scriptedRunner('bot', route, { model: { contextWindow: 65536 } });
 const { json: { id } } = await api('POST', '/api/threads', { title: 'late' });
 for (let k = 0; k < 300; k++) await api('POST', `/api/threads/${id}/entries`, { body: long(k), to: null });
 // Every message has its line, and no pair does: those lines alone are past 64 KB.
@@ -24,7 +25,7 @@ const conversation = await conversationOf(v, 'echo/echo@bot');
 const inputs = conversation.entries.filter((e) => e.kind === 'agent-ide.delivery').map((e) => text(e.model[0]));
 const input = inputs[0] ?? '';
 check(inputs.length === 1, 'the agent gets one input', inputs.length);
-check(Buffer.byteLength(input) <= 128 * 1024, 'it stays within 64 KB whole and 64 KB of memory', Buffer.byteLength(input));
+check(Buffer.byteLength(input) <= 128 * 1024, 'it stays within the budget whole and the budget of memory', Buffer.byteLength(input));
 check(/\n\d+\+2\|\(not summarized yet: zoom it\)\n/.test(input), 'with pairs not built yet shown as not summarized', input.slice(0, 200));
 check(input.startsWith('<chat>\n0+') && input.includes('</chat>'), 'it opens with the memory, from message 0', input.slice(0, 40));
 check(input.endsWith(`oskar: ${long(299)}\n\noskar: catch up, please`), 'and ends with the newest messages whole');
