@@ -10,7 +10,7 @@ import { fauxProvider } from '@earendil-works/pi-ai/providers/faux';
 import { ModelRuntime, resolveCliModel } from '@earendil-works/pi-coding-agent';
 import { answered, answers, api, check, conversationOf, done, linesOf, localRunner, server, until } from './lib.js';
 
-const model = process.argv[2] || 'openai-codex/gpt-6.1-sol';
+const model = process.argv[2] || 'openai-codex/gpt-6-luna';
 const writer = process.argv[3] || model;
 let logins = {};
 try { logins = JSON.parse(readFileSync(path.join(os.homedir(), '.pi', 'agent', 'auth.json'), 'utf8')); } catch {}
