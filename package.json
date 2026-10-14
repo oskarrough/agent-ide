@@ -1,5 +1,5 @@
 {
-  "name": "realtime-threads-poc",
+  "name": "agent-ide",
   "private": true,
   "type": "module",
   "scripts": {
