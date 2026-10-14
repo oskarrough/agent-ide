@@ -14,9 +14,9 @@ const model = process.argv[2] || 'openai-codex/gpt-6-luna';
 const writer = process.argv[3] || model;
 let logins = {};
 try { logins = JSON.parse(readFileSync(path.join(os.homedir(), '.pi', 'agent', 'auth.json'), 'utf8')); } catch {}
-const missing = [model, writer].map((m) => m.split('/')[0]).find((p) => !logins[p]);
+const missing = [model, writer].map((m) => m.split('/')[0]).find((p) => !logins[p] && !process.env[`${p.toUpperCase().replace(/-/g, '_')}_API_KEY`]);
 if (missing) {
-  console.log(`skip: no pi login for ${missing} on this machine (run pi, then /login)`);
+  console.log(`skip: no pi login for ${missing} on this machine (run pi, then /login, or set its API key)`);
   process.exit(0);
 }
 
