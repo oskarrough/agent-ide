@@ -7,10 +7,12 @@ import { messageText } from './remote.js';
 
 const KIND = 'agent-ide.line';
 const RETRY = { enabled: true, maxRetries: 10, baseDelayMs: 2000 };
-const LINE = 512, BUDGET = 64 * 1024, WHOLE = 64 * 1024, CONTEXT = 16 * 1024, RETRIES = 5;
+const LINE = 512, PANEL = 64 * 1024, CONTEXT = 16 * 1024, RETRIES = 5;
 const bytes = (text) => Buffer.byteLength(text);
 const key = (l, i) => `${l}:${i}`;
 const RULER = '-'.repeat(LINE);
+// The text's first LINE bytes, never splitting a character.
+const cut = (text) => { let s = Buffer.from(text).subarray(0, LINE).toString(); while (bytes(s) > LINE) s = s.slice(0, -1); return s; };
 const NOT_YET = '(not summarized yet: zoom it)';
 const finished = (status = 'completed') => ({ status: 'terminal', outcome: { status, result: null } });
 const background = (threadId) => ({ ownership: { kind: 'conversation' }, conversationId: threadId, background: true });
@@ -47,7 +49,7 @@ Tools:
 - zoom(id, n) opens line id+n into the two lines it was made from;
 - zoom(id, 1) gives message id whole.
 
-The memory is yours, and its latest word on a thing is the truth. Whenever you need any information, first find its latest mention in the memory and zoom until you have it whole, before any other source, and before you act, guess or ask. Never search for it with other tools; zoom is your only way into the tree. Lines keep little of tool output, so say in your answer what you learned that will matter later.`;
+The memory is yours, and its latest word on a thing is the truth. Whenever you need any information, first find its latest mention in the memory and zoom until you have it whole, before any other source, and before you act, guess or ask. Zoom is your way into the tree; when you know words it used, a tool that searches this thread's messages, if you have one, finds them faster. Lines keep little of tool output, so say in your answer what you learned that will matter later.`;
 
 export function server(core) {
   const name = process.env.MEMORY_MODEL;
@@ -69,7 +71,8 @@ export function server(core) {
     return map;
   }
 
-  // A message or pair that fits is its own line. Otherwise the writer gets a few tries, and the shortest line wins.
+  // A message or pair that fits is its own line. Otherwise the writer gets a few tries, and the shortest line wins, even
+  // over the limit: a cut would drop whatever came last, not what matters least.
   async function lineOf(source, task, signal) {
     if (bytes(source) <= LINE) return source;
     await core.runners.online(writer.runner, signal);
@@ -84,8 +87,7 @@ export function server(core) {
       const text = messageText(reply).trim();
       if (best === undefined || bytes(text) < bytes(best)) best = text;
       if (bytes(text) <= LINE) break;
-      const cut = Buffer.from(text).subarray(0, LINE).toString();
-      messages.push(reply, { role: 'user', timestamp: Date.now(), content: `Too long: your line is ${bytes(text)} bytes, over the ${LINE}-byte limit. Write the whole line again for the same <input>, cutting just enough of the least valuable items to fit before this cut:\n${cut}| ← LIMIT` });
+      messages.push(reply, { role: 'user', timestamp: Date.now(), content: `Too long: your line is ${bytes(text)} bytes, over the ${LINE}-byte limit. Write the whole line again for the same <input>, cutting just enough of the least valuable items to fit before this cut:\n${cut(text)}| ← LIMIT` });
     }
     return best;
   }
@@ -135,23 +137,30 @@ export function server(core) {
     return (await core.messages(threadId)).findIndex((e) => e.id === newest);
   }
 
+  // An agent's budget: as many bytes as its model has tokens of context, about a quarter of its window.
+  async function budget(agent) {
+    const to = await core.agentOf(agent);
+    return (to && core.models.getModel(`runner:${to.runner}`, to.model)?.contextWindow) || PANEL;
+  }
+
   // Pi's summary of an agent's conversation becomes its thread's memory up to the cut, and no model writes one.
   const beforeCompact = async ({ firstKept }, api) => {
     const home = await core.home(api.conversationId);
     if (!home?.thread) return undefined;
     const T = (await cutPosition(api.conversationId, firstKept, home.thread)) + 1;
-    return T > 0 ? { summary: render(memory(await core.commit((tx) => lines(tx, home.thread)), T, BUDGET)) } : undefined;
+    return T > 0 ? { summary: render(memory(await core.commit((tx) => lines(tx, home.thread)), T, await budget(api.conversationId))) } : undefined;
   };
 
-  // An input holds its newest messages whole up to WHOLE, at least the last, and the older ones as the memory over
-  // their range.
-  async function catchUp(threadId, held, all) {
+  // An input holds its newest messages whole up to the agent's budget, at least the last, and the older ones as the
+  // memory over their range, within the budget too.
+  async function catchUp(threadId, held, all, agent) {
+    const most = await budget(agent);
     let k = held.length - 1, size = bytes(core.said(held[k]));
-    while (k > 0 && size + bytes(core.said(held[k - 1])) + 2 <= WHOLE) size += bytes(core.said(held[--k])) + 2;
+    while (k > 0 && size + bytes(core.said(held[k - 1])) + 2 <= most) size += bytes(core.said(held[--k])) + 2;
     const whole = held.slice(k).map(core.said).join('\n\n');
     if (!k) return whole;
     const at = (e) => all.findIndex((x) => x.id === e.id);
-    const older = memory(await core.commit((tx) => lines(tx, threadId)), at(held[k - 1]) + 1, BUDGET, at(held[0]));
+    const older = memory(await core.commit((tx) => lines(tx, threadId)), at(held[k - 1]) + 1, most, at(held[0]));
     return `${render(older)}\n\n${whole}`;
   }
 
@@ -186,7 +195,7 @@ export function server(core) {
       return typeof opened === 'string' ? { message: opened } : { lines: opened.map(asLine) };
     }
     const T = (await core.messages(thread)).length;
-    return { lines: memory(await core.commit((tx) => lines(tx, thread)), T, BUDGET).map(asLine) };
+    return { lines: memory(await core.commit((tx) => lines(tx, thread)), T, PANEL).map(asLine) };
   }
 
   return {

@@ -40,26 +40,29 @@ export function server(core) {
   // Not `read`: a tool of that name would replace Pi's own.
   const threads = defineTool({
     name: 'threads',
-    description: 'Read a thread\'s latest entries, or list every thread by leaving out `thread`. Answers to your own posts come to you; no need to read for them.',
+    description: 'Read a thread\'s latest entries, or those that contain `query`, or list every thread by leaving out both. Answers to your own posts come to you; no need to read for them.',
     parameters: Type.Object({
-      thread: Type.Optional(Type.Number()),
+      thread: Type.Optional(Type.Number({ description: 'With `query`, your own thread by default' })),
       last: Type.Optional(Type.Number({ description: 'How many entries, 20 by default' })),
+      query: Type.Optional(Type.String({ description: 'Only entries containing this text, ignoring case' })),
     }),
     replay: 'safe',
     execute: async (args, api) => {
       const { thread: mine, name } = await home(api.conversationId);
       const lines = [];
-      if (args.thread === undefined) {
+      if (args.thread === undefined && args.query === undefined) {
         for (const row of await core.threadList(name)) {
           const parts = [`#${row.id} ${row.title}`, row.parent && `child of #${row.parent}`, row.agents.map((a) => a.name).join(' '), row.status, row.id === mine && '(yours)'];
           lines.push(parts.filter(Boolean).join(', '));
         }
       } else {
-        for (const { id, data: m } of (await core.messages(args.thread)).slice(-(args.last ?? 20))) {
+        const query = args.query?.toLowerCase();
+        const found = (await core.messages(args.thread ?? mine)).filter((e) => !query || core.said(e).toLowerCase().includes(query));
+        for (const { id, data: m } of found.slice(-(args.last ?? 20))) {
           lines.push(`#${id} ${m.author}${m.from ? ` from thread ${m.from}` : ''}${m.to ? ` to ${m.to.map(agentName).join(', ')}` : ''}: ${m.body.slice(0, 2000)}`);
         }
       }
-      return { output: [{ type: 'text', text: lines.join('\n') || 'Nothing yet.' }] };
+      return { output: [{ type: 'text', text: lines.join('\n') || (args.query ? 'No entry contains it.' : 'Nothing yet.') }] };
     },
   });
 

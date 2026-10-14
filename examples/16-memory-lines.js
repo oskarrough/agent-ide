@@ -1,5 +1,5 @@
 // With memory, every message gets a line and neighbouring lines merge in pairs, once each, through a SIGKILL. A short
-// message is its own line; a long one is written by MEMORY_MODEL, retried when too long. A fork reads its source's
+// message is its own line; a long one is written by MEMORY_MODEL, retried when too long, keeping the shortest. A fork reads its source's
 // lines through and builds only its own. A rate limit is tried again.
 import { fauxAssistantMessage } from '@earendil-works/pi-ai/providers/faux';
 import { api, check, done, linesOf, say, scriptedRunner, server, sleep, text, until, view } from './lib.js';
@@ -15,7 +15,7 @@ const route = (request) => {
   const input = first.slice(first.lastIndexOf('<input>'));
   requests.push({ first, all, input });
   if (input.includes('RATELIMIT') && requests.filter((r) => r.input.includes('RATELIMIT')).length === 1) return fauxAssistantMessage([], { stopReason: 'error', errorMessage: 'Rate limit exceeded' });
-  return say(line(input.includes('TOOLONG') && request.messages.length <= 3 ? 700 : 300));
+  return say(line(input.includes('NEVERFITS') || (input.includes('TOOLONG') && request.messages.length <= 3) ? 700 : 300));
 };
 const long = (tag) => `${tag} ${'y'.repeat(2000 - tag.length - 1)}`;
 const has = (lines, l, i) => lines.some((x) => x.l === l && x.i === i);
@@ -46,6 +46,11 @@ check(tooLong.length === 2 && tooLong[1].all.includes('Too long: your line is 70
 check(bl.find((x) => x.l === 0 && x.i === 2)?.size === 300, 'and the line that fits is kept');
 const second = requests.find((r) => r.input.includes('second'));
 check(second?.first.includes(`0+1|${bl.find((x) => x.l === 0 && x.i === 0).text}`), 'the second message\'s request holds the first\'s line in <chat>');
+
+const d = await thread('never fits');
+await post(d, long('NEVERFITS'));
+const kept = await until(async () => (await linesOf(d)).find((x) => x.l === 0 && x.i === 0), 20000);
+check(requests.filter((r) => r.input.includes('NEVERFITS')).length === 5 && kept?.size === 700 && kept.text.endsWith('x'), 'a line still too long after five tries is kept whole, not cut', JSON.stringify(kept?.size));
 
 await post(b, long('RATELIMIT'));
 await until(async () => has(await linesOf(b), 0, 3), 20000);

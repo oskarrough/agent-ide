@@ -7,12 +7,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { answers, api, check, done, runner, server, until, view } from './lib.js';
 
-const model = process.argv[2] || 'openai-codex/gpt-6.1-sol';
+const model = process.argv[2] || 'openai-codex/gpt-6-luna';
 const provider = model.split('/')[0];
 let logins = {};
 try { logins = JSON.parse(readFileSync(path.join(os.homedir(), '.pi', 'agent', 'auth.json'), 'utf8')); } catch {}
-if (!logins[provider]) {
-  console.log(`skip: no pi login for ${provider} on this machine (run pi, then /login)`);
+if (!logins[provider] && !process.env[`${provider.toUpperCase().replace(/-/g, '_')}_API_KEY`]) {
+  console.log(`skip: no pi login for ${provider} on this machine (run pi, then /login, or set its API key)`);
   process.exit(0);
 }
 
