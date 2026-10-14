@@ -1,7 +1,6 @@
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context';
 import { createModels } from '@earendil-works/pi-ai/models';
@@ -9,6 +8,7 @@ import { AgentDoc, configure, createRegistry, defineDoc, defineExtension, define
 import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node';
 import { CodingTools } from '@earendil-works/pi-durable/tools';
 import { load } from './modules.js';
+import { WebSocketServer } from 'ws';
 import { createRunners, messageText, remoteEnv, runnerProvider } from './remote.js';
 
 /**
@@ -521,51 +521,6 @@ const handleRequest = async (req, res) => {
   }
 };
 
-function frame(text) {
-  const payload = Buffer.from(text);
-  let header;
-  if (payload.length < 126) header = Buffer.from([0x81, payload.length]);
-  else if (payload.length < 65536) header = Buffer.from([0x81, 126, payload.length >> 8, payload.length & 255]);
-  else {
-    header = Buffer.alloc(10);
-    header[0] = 0x81;
-    header[1] = 127;
-    header.writeBigUInt64BE(BigInt(payload.length), 2);
-  }
-  return Buffer.concat([header, payload]);
-}
-
-function readFrames(socket, onText) {
-  let buffer = Buffer.alloc(0);
-  let parts = [];
-  socket.on('data', (chunk) => {
-    buffer = Buffer.concat([buffer, chunk]);
-    while (buffer.length >= 2) {
-      const fin = buffer[0] & 0x80;
-      const opcode = buffer[0] & 0x0f;
-      let length = buffer[1] & 0x7f;
-      let offset = 2;
-      if (length === 126) { if (buffer.length < 4) return; length = buffer.readUInt16BE(2); offset = 4; }
-      else if (length === 127) { if (buffer.length < 10) return; length = Number(buffer.readBigUInt64BE(2)); offset = 10; }
-      const masked = buffer[1] & 0x80;
-      const mask = masked && buffer.subarray(offset, offset + 4);
-      if (masked) offset += 4;
-      if (buffer.length < offset + length) return;
-      const payload = Buffer.from(buffer.subarray(offset, offset + length));
-      buffer = buffer.subarray(offset + length);
-      if (mask) for (let i = 0; i < payload.length; i++) payload[i] ^= mask[i & 3];
-      if (opcode === 8) return socket.end();
-      if (opcode === 9) { socket.write(Buffer.concat([Buffer.from([0x8a, payload.length]), payload])); continue; }
-      if (opcode === 10) continue;
-      parts.push(payload);
-      if (fin) {
-        onText(Buffer.concat(parts).toString());
-        parts = [];
-      }
-    }
-  });
-}
-
 // Browsers hear which thread changed, at most every 100 ms; `null` means the lists did.
 const dirty = new Set();
 let flushing;
@@ -574,8 +529,8 @@ function notify(threadId) {
   flushing ??= setTimeout(() => {
     flushing = undefined;
     for (const id of dirty) {
-      const data = frame(JSON.stringify({ threadId: id }));
-      for (const socket of clients) socket.write(data);
+      const data = JSON.stringify({ threadId: id });
+      for (const socket of clients) socket.send(data);
     }
     dirty.clear();
     for (const m of modules) m.changed?.();
@@ -590,12 +545,11 @@ harness.subscribeCommits(({ changes }) => {
 });
 
 const sockets = new Map();
-async function upgrade(req, socket) {
+const wss = new WebSocketServer({ noServer: true });
+async function upgrade(req, raw, head) {
   const url = new URL(req.url, 'http://localhost');
-  const key = req.headers['sec-websocket-key'];
-  if (url.pathname !== '/ws' || !key) return socket.destroy();
-  const accept = createHash('sha1').update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
-  socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
+  if (url.pathname !== '/ws') return raw.destroy();
+  const socket = await new Promise((resolve) => wss.handleUpgrade(req, raw, head, resolve));
   const name = url.searchParams.get('runner');
   const close = () => {
     clients.delete(socket);
@@ -606,16 +560,12 @@ async function upgrade(req, socket) {
     commit(async (tx) => { (await tx.doc(Runners))[name].lastSeen = new Date().toISOString(); }).catch(() => {});
     notify(null);
   };
-  socket.on('end', () => socket.end());
   socket.on('close', close);
   socket.on('error', close);
-  if (!name) {
-    clients.add(socket);
-    return readFrames(socket, () => {});
-  }
+  if (!name) return clients.add(socket);
   // A runner reconnecting under its name replaces its old socket; the old one's calls fail.
   if (sockets.has(name)) {
-    sockets.get(name).destroy();
+    sockets.get(name).terminate();
     runners.disconnect(name);
   }
   sockets.set(name, socket);
@@ -624,15 +574,15 @@ async function upgrade(req, socket) {
   const runner = { alias: q('alias'), owner: q('owner'), host: q('host'), dir: q('dir') || '/', model: q('model'), offers: url.searchParams.getAll('offer'), lastSeen: new Date().toISOString(), models: resolved };
   await commit(async (tx) => { (await tx.doc(Runners))[name] = runner; });
   if (!models.getProvider(`runner:${name}`)) models.setProvider(runnerProvider(runners, name, resolved));
-  readFrames(socket, (text) => runners.receive(text));
-  runners.connect(name, (text) => socket.write(frame(text)));
+  socket.on('message', (data) => runners.receive(data.toString()));
+  runners.connect(name, (text) => socket.send(text));
   console.log(`runner ${name} online: ${runner.dir}, default model ${runner.model || 'none'}`);
   notify(null);
 }
 
 for (const host of process.env.HOST ? [process.env.HOST] : ['127.0.0.1', '::1']) {
   const server = http.createServer(handleRequest);
-  server.on('upgrade', (req, socket) => upgrade(req, socket).catch((error) => { console.error(error); socket.destroy(); }));
+  server.on('upgrade', (req, socket, head) => upgrade(req, socket, head).catch((error) => { console.error(error); socket.destroy(); }));
   server.on('error', (error) => {
     if (host === '::1' && ['EAFNOSUPPORT', 'EADDRNOTAVAIL'].includes(error.code)) return;
     console.error(error);
