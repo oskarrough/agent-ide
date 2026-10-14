@@ -45,6 +45,7 @@
   .connect code { display: block; margin-top: var(--s); user-select: all; }
   #composer .row { display: flex; gap: var(--m); flex-wrap: wrap; align-items: center; }
   #composer .row input:not(#body) { flex: 0 1 9rem; }
+  #composer .row input#to { flex: 1 1 20rem; }
   @media (max-width: 760px) { #layout { grid-template-columns: 1fr; } }
 </style>
 <div class="mute">You are <b id="me"></b>. Set <code>?user=name</code> in the URL to be someone else. <label><input type="checkbox" id="structure"> Show structure</label></div>
@@ -60,14 +61,11 @@
     <form id="composer" hidden>
       <div class="row">
         <small>To</small>
-        <select id="runner" title="Runner"></select>
-        <input id="model" list="models" placeholder="model (runner's default)">
-        <datalist id="models"></datalist>
-        <select id="effort" title="Effort"></select>
+        <input id="to" list="agents" title="model@runner, a runner for its default, nobody, or several split by commas">
+        <datalist id="agents"></datalist>
         <input id="dir" placeholder="folder (.)">
-        <label id="child-label"><input type="checkbox" id="child"> in a child thread</label>
       </div>
-      <div class="row"><input id="body" required maxlength="10000"><button>Send</button></div>
+      <div class="row"><input id="body" required maxlength="10000"><button>Send</button><button id="child" value="child">Send in a child thread</button></div>
     </form>
   </main>
 </div>
@@ -78,7 +76,6 @@
   const STORE = 'agent-ide-servers';
   const ALIASES = 'agent-ide-aliases';
   const aliases = JSON.parse(localStorage.getItem(ALIASES) || '{}');
-  const EFFORTS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
   const servers = new Map();
   let selected = null; // { url, id }; a null id is a draft thread, made by its first entry
   let view = null;
@@ -164,7 +161,7 @@
       view = loaded;
       post(url, `/api/threads/${id}/read`, {}).catch(() => {});
       if (first) {
-        $('runner').value = $('model').value = $('dir').value = '';
+        $('to').value = $('dir').value = '';
         renderPicker();
       }
       if (first) opened.clear(), zoomed.clear();
@@ -252,9 +249,9 @@
     const fork = view?.conversation?.parent;
     $('heading').textContent = draft ? 'New thread' : view?.title || 'Pick a thread, or start one';
     $('meta').replaceChildren(...(view ? [
-      build('span', { className: 'id', textContent: `#${view.id} ` }), view.status,
+      structure ? build('span', { className: 'id', textContent: `thread ${view.id} ` }) : '', view.status,
       view.parent ? build('span', {}, [' · child of ', threadLink(server, view.parent)]) : '',
-      fork ? build('span', {}, [' · forked from ', threadLink(server, fork.conversationId), ` at #${fork.at}`]) : '',
+      fork ? build('span', {}, [' · forked from ', threadLink(server, fork.conversationId), ` at message ${position(fork.at)}`]) : '',
       ['working', 'blocked'].includes(view.status) ? build('button', { className: 'link', textContent: 'stop', onclick: () => attempt(post(server.url, `/api/threads/${view.id}/stop`, {})) }) : '',
       build('ul', {}, view.agents.map(agentView)),
     ] : draft ? ['Your first entry starts it.'] : []));
@@ -267,7 +264,7 @@
     renderPicker();
   }
 
-  // The thread's memory, `id+n|text`: a click zooms a line into the two it was made from, or its message whole.
+  // The thread's memory, each line over the messages it covers: a click zooms a line into the two it was made from, or its message whole.
   let memory = null;
   const zoomed = new Map();
   function renderMemory() {
@@ -281,12 +278,15 @@
         if (shown) zoomed.delete(at);
         else zoomed.set(at, await api(selected.url, `/api/threads/${view.id}/memory?zoom=${at}`));
         renderMemory();
-      })()) }, [build('u', { textContent: `${id}+${n}` }), `|${text}`,
+      })()) }, [build('u', { textContent: n === 1 ? `${id + 1}` : `${id + 1}–${id + n}` }), ` ${text}`,
         shown?.lines ? build('ul', {}, shown.lines.map(lineView)) : '',
         shown?.message ? build('pre', { textContent: shown.message }) : '']);
     };
     $('memory').querySelector('ul').replaceChildren(...memory.lines.map(lineView));
   }
+
+  // A message's number for people: its place in the thread, from 1, which memory's lines count in too.
+  const position = (entryId) => view.entries.findIndex((e) => e.id === entryId) + 1 || '?';
 
   // Each agent's own Pi conversation, shown raw in the structure view.
   const opened = new Map();
@@ -310,11 +310,11 @@
     $('entries').replaceChildren(...view.entries.map((entry) => {
       const m = entry.data;
       return build('li', { id: `e-${entry.id}`, className: m.error ? 'error' : m.answer ? 'agent' : '' }, [
-        build('b', { textContent: m.author }), ' ', build('span', { className: 'id', textContent: `#${entry.id}` }),
-        m.from ? build('span', { className: 'chip' }, [m.re ? `↩ answers ${m.re.map((n) => `#${n}`).join(', ')} in ` : 'from ', threadLink(server, m.from)]) : '',
+        build('b', { textContent: m.author }), ' ', build('span', { className: 'id', textContent: `${position(entry.id)}` }),
+        m.from ? build('span', { className: 'chip' }, [m.re ? '↩ answers in ' : 'from ', threadLink(server, m.from)]) : '',
         m.to ? build('span', { className: 'chip to', textContent: `→ ${m.to.map(toLabel).join(', ')}` }) : '',
-        ...(m.from ? [] : m.re ?? []).map((n) => build('a', { href: '#', className: 'chip', textContent: `↩ #${n}`, title: 'A message this answers', onclick: (event) => { event.preventDefault(); flash(n); } })),
-        m.answer ? build('span', { className: 'chip', textContent: `conversation #${m.answer.conversation} at #${m.answer.entry}` }) : '',
+        ...(m.from ? [] : m.re ?? []).map((n) => build('a', { href: '#', className: 'chip', textContent: `↩ ${position(n)}`, title: 'A message this answers', onclick: (event) => { event.preventDefault(); flash(n); } })),
+        m.answer && structure ? build('span', { className: 'chip', textContent: `conversation ${m.answer.conversation} at entry ${m.answer.entry}` }) : '',
         build('button', { className: 'link', textContent: 'fork', title: 'A new thread with everything up to here', onclick: () => attempt(forkAt(server.url, entry.id)) }),
         build('div', {}, linked(server, m.body)),
         m.shell ? build('pre', { textContent: `exit ${m.shell.code ?? m.shell.error} on ${m.shell.runner}\n${[m.shell.stdout, m.shell.stderr].filter(Boolean).join('\n')}` }) : '',
@@ -342,28 +342,31 @@
     setTimeout(() => node.classList.remove('flash'), 1200);
   }
 
+  // The To field names agents the way the server does, `model@runner`; a runner alone is its default model.
   function renderPicker() {
     const server = current();
     if (!server) return;
     const last = view?.entries.findLast((e) => e.data.to)?.data.to.map(agentName).join(', ');
     const fallback = server.info?.modules.includes('director') ? 'the director decides' : last || 'nobody yet';
-    keep($('runner'), [['', `default (${fallback})`], ['-', 'nobody'], ...server.runners.map((r) => [r.name, `${r.name}${r.online ? '' : ' (offline)'}`])]);
-    const runner = server.runners.find((r) => r.name === $('runner').value);
-    keep($('effort'), [['', 'effort (default)'], ...EFFORTS.map((e) => [e, e])]);
-    $('models').replaceChildren(...[...new Set([runner?.model, ...runner?.offers ?? [], ...runner?.models ?? [], 'echo/echo'])].filter(Boolean).map((value) => build('option', { value })));
-    $('model').placeholder = runner?.model || 'model';
-    for (const id of ['model', 'effort', 'dir']) $(id).disabled = !runner;
-    $('child-label').hidden = !selected?.id;
-    const model = $('model').value || runner?.model || '';
-    $('body').placeholder = !runner ? ($('runner').value === '-' ? 'A message for nobody in particular' : `A message for ${fallback}; $ command runs on its runner`)
-      : `A message for ${model}@${runner.name}; $ command runs in its folder`;
+    const known = [...view?.agents.map((a) => a.name) ?? [], 'nobody', ...server.runners.flatMap((r) =>
+      [r.name, ...[r.model, ...r.offers, ...r.models, 'echo/echo'].filter(Boolean).map((m) => `${m}@${r.name}`)])];
+    $('agents').replaceChildren(...[...new Set(known)].map((value) => build('option', { value })));
+    $('to').placeholder = `same as last time (${fallback})`;
+    $('body').placeholder = `A message for ${$('to').value.trim() || fallback}; $ command runs on its runner`;
+    $('child').hidden = !selected?.id;
   }
-  $('runner').onchange = $('model').oninput = renderPicker;
+  $('to').oninput = renderPicker;
 
-  function keep(select, options, wanted = select.value) {
-    if (document.activeElement === select) return;
-    select.replaceChildren(...options.map(([v, text]) => build('option', { value: v, textContent: text })));
-    if (options.some(([v]) => v === wanted)) select.value = wanted;
+  // `model@runner`, `runner`, `nobody`, or several split by commas, into the API's `to`.
+  function parseTo(text, runners) {
+    if (!text.trim()) return undefined;
+    if (text.trim() === 'nobody') return null;
+    return text.split(',').map((s) => s.trim()).filter(Boolean).map((name) => {
+      const at = name.lastIndexOf('@');
+      const to = at < 0 ? { runner: name, model: '' } : { runner: name.slice(at + 1), model: name.slice(0, at) };
+      if (!runners.some((r) => r.name === to.runner)) throw new Error(`No runner ${to.runner}: name an agent as model@runner`);
+      return { ...to, dir: $('dir').value };
+    });
   }
 
   // A child whose parent is hidden sits at the top.
@@ -379,11 +382,11 @@
   $('composer').onsubmit = (event) => {
     event.preventDefault();
     const body = $('body').value;
-    const runner = $('runner').value;
-    const entry = runner === '' ? { body } : runner === '-' ? { body, to: null }
-      : { body, to: { runner, model: $('model').value, effort: $('effort').value, dir: $('dir').value } };
     const { url, id } = selected;
-    const child = Boolean(id) && $('child').checked;
+    const child = Boolean(id) && event.submitter?.value === 'child';
+    let to;
+    try { to = parseTo($('to').value, current().runners); } catch (error) { return alert(error.message); }
+    const entry = to === undefined ? { body } : { body, to };
     $('body').value = '';
     attempt((async () => {
       const threadId = id && !child ? id : (await post(url, '/api/threads', { title: body.slice(0, 60), parent: id })).id;

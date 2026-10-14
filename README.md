@@ -18,8 +18,8 @@ bun runner.js --name laptop --dir ~/code
 Open http://127.0.0.1:3000 and:
 
 1. Under Threads, click **+ new**.
-2. In the To row, pick `laptop` and the model `echo/echo`. Send `hello`. Echo answers at once, which proves the loop works.
-3. Clear the model to get the runner's default, pi's own, and ask something real. Run `pi` and `/login` on the runner once if you haven't.
+2. In To, write `echo/echo@laptop`. Send `hello`. Echo answers at once, which proves the loop works.
+3. Write just `laptop` to get the runner's default, pi's own, and ask something real. Run `pi` and `/login` on the runner once if you haven't. Left empty, To asks whom the thread last asked.
 4. Send `$ ls` to run a command in the runner's folder.
 5. Tick **Show structure** to see the JSON behind it all.
 
