@@ -73,7 +73,7 @@ client.html ──▶ server.js   one Pi Durable harness: threads, and each agen
 38. A fork reports nowhere.
 39. A thread's status for a reader is one of the [Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status)'s five words: working, or blocked when its working agents' runners are offline, from its live tasks; done or error for a result newer than the reader's read marker; otherwise idle.
 40. Optional behaviour lives in modules, one file each, switched by an env var of its name.
-41. [talk.js](talk.js) (on, `TALK=0`) gives agents `post` and `threads` tools.
+41. [talk.js](talk.js) (on, `TALK=0`) gives agents `post` and `threads` tools, and `threads` with a `query` finds the messages of a thread, their own by default, that contain it.
 42. [status.js](status.js) (on, `STATUS=0`) has runners report to their terminal with OSC 7501, a record for the runner and one per thread by its id.
 43. [director.js](director.js) (`DIRECTOR=1`) has a message ask the agents it @mentions.
 44. [memory.js](memory.js) (`MEMORY=1`, with `MEMORY_MODEL=model@runner`) gives each thread a memory.
@@ -82,7 +82,7 @@ client.html ──▶ server.js   one Pi Durable harness: threads, and each agen
 47. When an agent answers posts from another thread, the answer goes back to that thread instead of a report, as a message with `from` and `re`.
 48. That answer asks every agent who posted, and steers into their work if they're busy.
 49. A reply to that answer sends nothing back, so the exchange ends there, like email.
-50. With memory, each message in a thread gets a line of at most 512 bytes: itself when it fits, or else written by `MEMORY_MODEL` from its text and the thread's memory before it, asked again up to five times while too long, then cut.
+50. With memory, each message in a thread gets a line: itself when it fits in 512 bytes, or else written by `MEMORY_MODEL` from its text and the thread's memory before it, asked again up to five times while over 512 bytes, the shortest it wrote kept.
 51. A line request that fails for a rate limit or a dropped connection waits and tries again, by pi-ai's `retryAssistantCall`.
 52. Neighbouring lines merge in pairs up a binary tree, a pair that fits being its own line.
 53. Each line is an `agent-ide.line` entry `{l, i, text, size}` in the thread, written once by a background Line task that the post's commit creates, so stopping a thread never cuts its memory short.
@@ -151,5 +151,5 @@ Send `x-user: name` to say who you are. A thread entry is Pi's own, `{id, kind: 
 - `GET /api/threads/:id/memory?zoom=id,n`: with memory, the thread's memory as `{lines: [{id, n, text}]}`, or with `zoom` the two lines that line was made from, or `{message}` whole when `n` is 1; the client shows it as a panel.
 - `GET /api/conversations/:id`: any Pi conversation's view as Pi gives it, such as an agent's: its entries and docs.
 - `GET /api/runners`: each runner, its default model, the models it `offers` from pi's enabled models, the models it has resolved, and the calls it's answering.
-- Agents' tools, with talk: `post {"thread"?, "title"?, "body", "to"?}`, where no thread starts a child and `to` is `model@runner`, a runner, or `nobody`; and `threads {"thread"?, "last"?}`; with memory, `zoom {"id","n"}`.
+- Agents' tools, with talk: `post {"thread"?, "title"?, "body", "to"?}`, where no thread starts a child and `to` is `model@runner`, a runner, or `nobody`; and `threads {"thread"?, "last"?, "query"?}`; with memory, `zoom {"id","n"}`.
 - `/ws`: pushes `{threadId}` whenever a thread changes. Runners connect here too and speak the protocol in [remote.js](remote.js).

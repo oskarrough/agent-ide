@@ -1,5 +1,5 @@
 // With memory, every message gets a line and neighbouring lines merge in pairs, once each, through a SIGKILL. A short
-// message is its own line; a long one is written by MEMORY_MODEL, retried when too long, then cut. A fork reads its source's
+// message is its own line; a long one is written by MEMORY_MODEL, retried when too long, keeping the shortest. A fork reads its source's
 // lines through and builds only its own. A rate limit is tried again.
 import { fauxAssistantMessage } from '@earendil-works/pi-ai/providers/faux';
 import { api, check, done, linesOf, say, scriptedRunner, server, sleep, text, until, view } from './lib.js';
@@ -49,8 +49,8 @@ check(second?.first.includes(`0+1|${bl.find((x) => x.l === 0 && x.i === 0).text}
 
 const d = await thread('never fits');
 await post(d, long('NEVERFITS'));
-const cutLine = await until(async () => (await linesOf(d)).find((x) => x.l === 0 && x.i === 0), 20000);
-check(requests.filter((r) => r.input.includes('NEVERFITS')).length === 5 && cutLine?.size === 512 && Buffer.byteLength(cutLine.text) === 512, 'a line still too long after five tries is cut to 512 bytes', JSON.stringify(cutLine?.size));
+const kept = await until(async () => (await linesOf(d)).find((x) => x.l === 0 && x.i === 0), 20000);
+check(requests.filter((r) => r.input.includes('NEVERFITS')).length === 5 && kept?.size === 700 && kept.text.endsWith('x'), 'a line still too long after five tries is kept whole, not cut', JSON.stringify(kept?.size));
 
 await post(b, long('RATELIMIT'));
 await until(async () => has(await linesOf(b), 0, 3), 20000);
