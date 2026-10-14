@@ -78,32 +78,35 @@ client.html ──▶ server.js   one Pi Durable harness: threads, and each agen
 43. [director.js](director.js) (`DIRECTOR=1`) has a message ask the agents it @mentions.
 44. [memory.js](memory.js) (`MEMORY=1`, with `MEMORY_MODEL=model@runner`) gives each thread a memory.
 45. [matrix.js](matrix.js) (`MATRIX=1`, with `MATRIX_TOKEN` and `MATRIX_ROOMS`, and optionally `MATRIX_USERS`, `MATRIX_AGENT=model@runner`, `MATRIX_JOB` and `MATRIX_HOMESERVER`, matrix.org's by default) mirrors Matrix rooms into threads, where without `MATRIX_USERS` nothing from Matrix asks anyone; its top says how to set it up.
-46. With talk, an agent's `post` is one commit, keyed by its tool call so a replay finds it.
-47. When an agent answers posts from another thread, the answer goes back to that thread instead of a report, as a message with `from` and `re`.
-48. That answer asks every agent who posted, and steers into their work if they're busy.
-49. A reply to that answer sends nothing back, so the exchange ends there, like email.
-50. With memory, each message in a thread gets a line of at most 512 bytes: itself when it fits, or else written by `MEMORY_MODEL` from its text and the thread's memory before it, asked again up to five times while too long.
-51. A line request that fails for a rate limit or a dropped connection waits and tries again, by pi-ai's `retryAssistantCall`.
-52. Neighbouring lines merge in pairs up a binary tree, a pair that fits being its own line.
-53. Each line is an `agent-ide.line` entry `{l, i, text, size}` in the thread, written once by a background Line task that the post's commit creates, so stopping a thread never cuts its memory short.
-54. A fork reads its source's lines through for ranges that end before the fork point.
-55. When Pi compacts an agent's conversation, memory writes Pi's summary instead of the agent's model: the thread's lines up to the last message the agent was given before the cut.
-56. That memory merges the most due pair first, `(T - last) / 2^l`, into their line, pairs whose line is built before those whose line is not, until it fits in 64 KB, and writes each line `id+n|text`, `id` being the position of its first message and `n` how many it covers.
-57. A message or pair whose line is not built yet shows there as `(not summarized yet: zoom it)`.
-58. With memory, a Deliver task's input holds its newest messages whole up to 64 KB, at least the last, and the older ones as the thread's memory over their range, also within 64 KB.
-59. With memory, an agent has `zoom {id, n}`, which opens a line into the two it was made from, or into the message whole when `n` is 1.
-60. A prompt section tells it the lines are its memory, and to zoom before it guesses.
-61. With matrix, every text message in `MATRIX_ROOMS` is posted once into each thread it belongs to, as its sender: a top-level one into the thread kept for its room, and one in a Matrix thread into the thread kept for that, which opens with `MATRIX_JOB`, the room's thread id and the Matrix thread's first message.
-62. A message from one of `MATRIX_USERS` that mentions the bot by name, or by `m.mentions`, asks `MATRIX_AGENT` if set, waiting for its runner if it never connected; a top-level one asks nobody in its room's thread and starts a Matrix thread under itself, where it asks and the answer goes.
-63. Their other messages ask whom their thread last asked, and anyone else's ask nobody; everything from Matrix posts as a steer, and nothing unfollows a thread.
-64. What the bridge itself sent and edits are skipped, and what comes in loses its terminal escapes and bidi overrides.
-65. Each message is posted in a commit that notes its event, after a commit of its own that opens its thread, and the sync's position lands last, so a restart neither drops nor repeats one.
-66. The first sync only takes its position, so nothing said before the bridge asks anyone.
-67. A sync that Matrix cut short is paged back to the last position first, and one silent for 40 seconds is asked again.
-68. An agent's answer or error in a thread kept for a room or a Matrix thread goes back there by a background MatrixSend task the post's commit creates, under a transaction id made from its entry and a salt the store keeps, so the homeserver drops a resend; a fork belongs to no room, so it sends nothing.
-69. A MatrixSend waits, by Pi's task wait, until the room's send before it is done, and as long as a rate limit asks, so a room's answers land in the order they were written, even across a restart.
-70. Nothing from Matrix asks in a room's thread until someone asks there from the client; then that agent hears the whole room (rule 15) and follows it (63), so do that with memory on.
-71. [examples/](examples) defines the rest and checks all of it: the HTTP API, the runner end's interface (`serveRunner` in [remote.js](remote.js)), and each sentence above.
+46. [usage.js](usage.js) (`USAGE=1`) shows what agents spent: the server's tokens by kind and each thread's share, and in a thread each agent's.
+47. With talk, an agent's `post` is one commit, keyed by its tool call so a replay finds it.
+48. When an agent answers posts from another thread, the answer goes back to that thread instead of a report, as a message with `from` and `re`.
+49. That answer asks every agent who posted, and steers into their work if they're busy.
+50. A reply to that answer sends nothing back, so the exchange ends there, like email.
+51. With memory, each message in a thread gets a line of at most 512 bytes: itself when it fits, or else written by `MEMORY_MODEL` from its text and the thread's memory before it, asked again up to five times while too long.
+52. A line request that fails for a rate limit or a dropped connection waits and tries again, by pi-ai's `retryAssistantCall`.
+53. Neighbouring lines merge in pairs up a binary tree, a pair that fits being its own line.
+54. Each line is an `agent-ide.line` entry `{l, i, text, size}` in the thread, written once by a background Line task that the post's commit creates, so stopping a thread never cuts its memory short.
+55. A fork reads its source's lines through for ranges that end before the fork point.
+56. When Pi compacts an agent's conversation, memory writes Pi's summary instead of the agent's model: the thread's lines up to the last message the agent was given before the cut.
+57. That memory merges the most due pair first, `(T - last) / 2^l`, into their line, pairs whose line is built before those whose line is not, until it fits in 64 KB, and writes each line `id+n|text`, `id` being the position of its first message and `n` how many it covers.
+58. A message or pair whose line is not built yet shows there as `(not summarized yet: zoom it)`.
+59. With memory, a Deliver task's input holds its newest messages whole up to 64 KB, at least the last, and the older ones as the thread's memory over their range, also within 64 KB.
+60. With memory, an agent has `zoom {id, n}`, which opens a line into the two it was made from, or into the message whole when `n` is 1.
+61. A prompt section tells it the lines are its memory, and to zoom before it guesses.
+62. With matrix, every text message in `MATRIX_ROOMS` is posted once into each thread it belongs to, as its sender: a top-level one into the thread kept for its room, and one in a Matrix thread into the thread kept for that, which opens with `MATRIX_JOB`, the room's thread id and the Matrix thread's first message.
+63. A message from one of `MATRIX_USERS` that mentions the bot by name, or by `m.mentions`, asks `MATRIX_AGENT` if set, waiting for its runner if it never connected; a top-level one asks nobody in its room's thread and starts a Matrix thread under itself, where it asks and the answer goes.
+64. Their other messages ask whom their thread last asked, and anyone else's ask nobody; everything from Matrix posts as a steer, and nothing unfollows a thread.
+65. What the bridge itself sent and edits are skipped, and what comes in loses its terminal escapes and bidi overrides.
+66. Each message is posted in a commit that notes its event, after a commit of its own that opens its thread, and the sync's position lands last, so a restart neither drops nor repeats one.
+67. The first sync only takes its position, so nothing said before the bridge asks anyone.
+68. A sync that Matrix cut short is paged back to the last position first, and one silent for 40 seconds is asked again.
+69. An agent's answer or error in a thread kept for a room or a Matrix thread goes back there by a background MatrixSend task the post's commit creates, under a transaction id made from its entry and a salt the store keeps, so the homeserver drops a resend; a fork belongs to no room, so it sends nothing.
+70. A MatrixSend waits, by Pi's task wait, until the room's send before it is done, and as long as a rate limit asks, so a room's answers land in the order they were written, even across a restart.
+71. Nothing from Matrix asks in a room's thread until someone asks there from the client; then that agent hears the whole room (rule 15) and follows it (64), so do that with memory on.
+72. With usage, an agent's spend is Pi's own `pi.usage` ledger on its conversation, which a fork starts empty, so a fork's agents count only what they spent since.
+73. A thread's spend is its agents', and the server's its shown threads'; memory's line requests have no conversation, so they count nowhere.
+74. [examples/](examples) defines the rest and checks all of it: the HTTP API, the runner end's interface (`serveRunner` in [remote.js](remote.js)), and each sentence above.
 
 ## What it promises
 
@@ -123,6 +126,7 @@ DIRECTOR=1 bun server.js               # multiplayer
 TALK=0 STATUS=0 bun server.js          # the core alone
 MEMORY=1 MEMORY_MODEL=haiku@laptop bun server.js   # threads that never end
 MATRIX=1 MATRIX_TOKEN=… MATRIX_ROOMS=… bun server.js   # Matrix rooms as threads; see matrix.js and apps/matrix-sync
+USAGE=1 bun server.js                  # what agents spent
 bun scripts/replay-pi.js ~/.pi/agent/sessions/FOLDER   # pi sessions, or one .jsonl, as one long thread
 DB_PATH=other.sqlite bun server.js     # another store; only one server may use a file
 
@@ -149,6 +153,7 @@ Send `x-user: name` to say who you are. A thread entry is Pi's own, `{id, kind: 
 - `POST /api/threads/:id/stop`: stops its agents, deliveries and commands, and withdraws their queued inputs.
 - `DELETE /api/threads/:id`: hides it; Pi Durable keeps everything.
 - `GET /api/threads/:id/memory?zoom=id,n`: with memory, the thread's memory as `{lines: [{id, n, text}]}`, or with `zoom` the two lines that line was made from, or `{message}` whole when `n` is 1; the client shows it as a panel.
+- `GET /api/usage`, `GET /api/threads/:id/usage`: with usage, `{threads: [{id, title, parent, agents, total}], total}`, or one thread, each agent as `{name, conversation, models, total}` and every spend as `{input, output, cacheRead, cacheWrite, cost}`; the client shows it as a page.
 - `GET /api/conversations/:id`: any Pi conversation's view as Pi gives it, such as an agent's: its entries and docs.
 - `GET /api/runners`: each runner, its default model, the models it `offers` from pi's enabled models, the models it has resolved, and the calls it's answering.
 - Agents' tools, with talk: `post {"thread"?, "title"?, "body", "to"?}`, where no thread starts a child and `to` is `model@runner`, a runner, or `nobody`; and `threads {"thread"?, "last"?}`; with memory, `zoom {"id","n"}`.
