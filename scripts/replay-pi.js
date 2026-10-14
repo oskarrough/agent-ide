@@ -5,17 +5,6 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 
-const { values: args, positionals: [source] } = parseArgs({ allowPositionals: true, options: {
-  server: { type: 'string', default: 'http://127.0.0.1:3000' },
-  title: { type: 'string' },
-  limit: { type: 'string' },
-} });
-if (!source) {
-  console.error('usage: bun scripts/replay-pi.js <session.jsonl | sessions folder> [--server URL] [--title T] [--limit N]');
-  process.exit(1);
-}
-
-const files = statSync(source).isDirectory() ? readdirSync(source).filter((f) => f.endsWith('.jsonl')).map((f) => path.join(source, f)) : [source];
 const textOf = (content) => (typeof content === 'string' ? content : (content ?? []).filter((c) => c.type === 'text').map((c) => c.text).join('\n')).trim();
 
 // A session's posts: each user text, then the last assistant text before the next user message or the end.
@@ -36,25 +25,45 @@ function posts(file) {
   return { start: lines.find((l) => l.type === 'session')?.timestamp ?? '', out };
 }
 
-const sessions = files.map(posts).sort((a, b) => a.start.localeCompare(b.start));
-let all = sessions.flatMap((s) => s.out);
-if (args.limit) all = all.slice(0, Number(args.limit));
-
-async function api(method, route, body, user = 'oskar') {
-  const res = await fetch(args.server + route, { method, headers: { 'content-type': 'application/json', 'x-user': user }, body: JSON.stringify(body) });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.error ?? res.status);
-  return json;
+// Every post of a session file, or of a folder's sessions in order of their start.
+export function sessionPosts(source) {
+  const files = statSync(source).isDirectory() ? readdirSync(source).filter((f) => f.endsWith('.jsonl')).map((f) => path.join(source, f)) : [source];
+  const sessions = files.map(posts).sort((a, b) => a.start.localeCompare(b.start));
+  return { sessions: sessions.length, posts: sessions.flatMap((s) => s.out) };
 }
 
-const { id } = await api('POST', '/api/threads', { title: args.title ?? `replay of ${path.basename(path.resolve(source))}` });
-const failed = [];
-const started = Date.now();
-for (const [k, { author, body }] of all.entries()) {
-  // The server takes 200 KB a request, and reads `$ ` as a command.
-  try { await api('POST', `/api/threads/${id}/entries`, { body: body.replace(/^\$(\s)/, '＄$1').slice(0, 150000), to: null }, author); }
-  catch (error) { failed.push(`${k}: ${error.message}`); }
+// The server takes 200 KB a request, and reads `$ ` as a command.
+export const postable = (body) => body.replace(/^\$(\s)/, '＄$1').slice(0, 150000);
+
+if (import.meta.main) {
+  const { values: args, positionals: [source] } = parseArgs({ allowPositionals: true, options: {
+    server: { type: 'string', default: 'http://127.0.0.1:3000' },
+    title: { type: 'string' },
+    limit: { type: 'string' },
+  } });
+  if (!source) {
+    console.error('usage: bun scripts/replay-pi.js <session.jsonl | sessions folder> [--server URL] [--title T] [--limit N]');
+    process.exit(1);
+  }
+
+  let { sessions, posts: all } = sessionPosts(source);
+  if (args.limit) all = all.slice(0, Number(args.limit));
+
+  async function api(method, route, body, user = 'oskar') {
+    const res = await fetch(args.server + route, { method, headers: { 'content-type': 'application/json', 'x-user': user }, body: JSON.stringify(body) });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error ?? res.status);
+    return json;
+  }
+
+  const { id } = await api('POST', '/api/threads', { title: args.title ?? `replay of ${path.basename(path.resolve(source))}` });
+  const failed = [];
+  const started = Date.now();
+  for (const [k, { author, body }] of all.entries()) {
+    try { await api('POST', `/api/threads/${id}/entries`, { body: postable(body), to: null }, author); }
+    catch (error) { failed.push(`${k}: ${error.message}`); }
+  }
+  const by = (who) => all.filter((p) => p.author === who).length;
+  console.log(`thread ${id}: ${all.length - failed.length} posts from ${sessions} sessions (${by('oskar')} oskar, ${by('pi')} pi) in ${Date.now() - started} ms`);
+  if (failed.length) console.log(`${failed.length} failed:\n${failed.join('\n')}`);
 }
-const by = (who) => all.filter((p) => p.author === who).length;
-console.log(`thread ${id}: ${all.length - failed.length} posts from ${sessions.length} sessions (${by('oskar')} oskar, ${by('pi')} pi) in ${Date.now() - started} ms`);
-if (failed.length) console.log(`${failed.length} failed:\n${failed.join('\n')}`);
