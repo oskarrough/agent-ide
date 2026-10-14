@@ -18,12 +18,15 @@
   small, code, .id, .chip, pre, #memory ul, .server h3 { font-size: var(--small); }
   code, .id, pre, #memory ul { font-family: ui-monospace, monospace; }
   #layout { display: grid; grid-template-columns: 320px 1fr; gap: var(--l); margin-top: var(--l); }
-  .server { border: 1px solid var(--line); border-radius: var(--m); padding: var(--m); margin-bottom: var(--l); }
+  .server { margin-bottom: var(--l); }
   .server header { display: flex; justify-content: space-between; align-items: center; gap: var(--m); }
   .server h3 { color: var(--mute); margin: var(--l) 0 var(--s); display: flex; justify-content: space-between; }
-  .thread-row { display: flex; gap: var(--s); margin-bottom: var(--s); }
-  .thread { flex: 1; min-width: 0; text-align: left; }
-  .thread.active { background: var(--accent); }
+  .thread-row { display: flex; align-items: center; }
+  .thread { flex: 1; min-width: 0; display: flex; gap: var(--m); text-align: left; background: none; border: 0; border-radius: var(--s); padding: var(--s) var(--m); }
+  .thread span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .thread:hover, .thread.active { background: var(--tint); }
+  .thread.active span { font-weight: 600; }
+  .thread-row:not(:hover) .link { visibility: hidden; }
   .dot { display: inline-block; width: var(--m); height: var(--m); border-radius: 50%; background: var(--line); margin-right: var(--s); }
   .dot.on { background: #2f9e62; }
   .status { color: #8a5a00; }
@@ -48,15 +51,17 @@
   #composer .row input#to { flex: 1 1 20rem; }
   @media (max-width: 760px) { #layout { grid-template-columns: 1fr; } }
 </style>
-<div class="mute">You are <b id="me"></b>. Set <code>?user=name</code> in the URL to be someone else. <label><input type="checkbox" id="structure"> Show structure</label></div>
-<form id="add-server"><input id="server-url" placeholder="Add a server, e.g. http://localhost:3000" required><button>Add</button></form>
+<div class="mute">You are <input id="me" size="10" title="Your name, as ?user= in the URL"> <label><input type="checkbox" id="structure"> Show structure</label></div>
 <div id="layout">
-  <aside id="servers"></aside>
+  <aside>
+    <div id="servers"></div>
+    <details id="add"><summary class="mute">+ server</summary><form id="add-server"><input id="server-url" placeholder="http://localhost:3000" required><button>Add</button></form></details>
+  </aside>
   <main>
     <h2 id="heading">Pick a thread, or start one</h2>
     <div id="meta" class="mute"></div>
     <pre id="raw-thread" class="raw" hidden></pre>
-    <details id="memory" open hidden><summary>Memory</summary><ul></ul></details>
+    <details id="memory" hidden><summary></summary><ul></ul></details>
     <ul id="entries"></ul>
     <form id="composer" hidden>
       <div class="row">
@@ -72,7 +77,7 @@
 <script type="module">
   const $ = (id) => document.getElementById(id);
   function build(tag, props, children = []) { const node = Object.assign(document.createElement(tag), props); node.append(...children); return node; }
-  const me = new URLSearchParams(location.search).get('user') || 'anon';
+  let me = new URLSearchParams(location.search).get('user') || 'anon';
   const STORE = 'agent-ide-servers';
   const ALIASES = 'agent-ide-aliases';
   const aliases = JSON.parse(localStorage.getItem(ALIASES) || '{}');
@@ -179,7 +184,7 @@
 
   function render() {
     $('servers').replaceChildren(...[...servers.values()].map(serverView));
-    if (!servers.size) $('servers').replaceChildren(build('p', { className: 'mute', textContent: 'No servers yet. Start one with `bun server.js` and add its URL above.' }));
+    if (!servers.size) $('servers').replaceChildren(build('p', { className: 'mute', textContent: 'No servers yet. Start one with `bun server.js` and add its URL below.' }));
     renderThread();
   }
 
@@ -211,8 +216,8 @@
       build('ul', {}, nested(server.threads).map(({ thread, depth }) => build('li', { className: 'thread-row', style: `margin-left: ${depth}rem` }, [build('button', {
         className: `thread ${selected?.url === server.url && selected.id === thread.id ? 'active' : ''}`,
         onclick: () => select({ url: server.url, id: thread.id }),
-      }, [(depth ? '↳ ' : '') + thread.title, statusView(thread)]), build('button', {
-        textContent: '×', title: `Hide thread: ${thread.title}`, ariaLabel: `Hide thread: ${thread.title}`,
+      }, [build('span', { textContent: (depth ? '↳ ' : '') + thread.title }), statusView(thread), build('small', { className: 'mute', textContent: when(thread.createdAt) })]), build('button', {
+        className: 'link', textContent: '×', title: `Hide thread: ${thread.title}`, ariaLabel: `Hide thread: ${thread.title}`,
         onclick: () => attempt(api(server.url, `/api/threads/${thread.id}`, { method: 'DELETE' }).then(() => refresh(server.url))),
       })]))),
     ]);
@@ -229,9 +234,12 @@
     ]);
   }
 
+  // A thread's start, as a time today or a date before, so two threads with one title can be told apart.
+  const when = (iso) => { const d = new Date(iso); return d.toDateString() === new Date().toDateString() ? d.toTimeString().slice(0, 5) : d.toISOString().slice(0, 10); };
+
   function statusView(thread) {
     const busy = thread.agents.filter((a) => a.status !== 'idle').map((a) => a.name).join(', ');
-    const text = { working: ` · ${busy || 'shell'} working`, blocked: ` · ${busy} waits for its runner`, done: ' · done', error: ' · failed' }[thread.status];
+    const text = { working: `${busy || 'shell'} working`, blocked: `${busy} waits for its runner`, done: 'done', error: 'failed' }[thread.status];
     return text ? build('small', { className: `status ${thread.status}` }, [text]) : '';
   }
 
@@ -282,6 +290,7 @@
         shown?.lines ? build('ul', {}, shown.lines.map(lineView)) : '',
         shown?.message ? build('pre', { textContent: shown.message }) : '']);
     };
+    $('memory').querySelector('summary').textContent = `Memory · ${memory.lines.length} lines over ${view.entries.length} messages`;
     $('memory').querySelector('ul').replaceChildren(...memory.lines.map(lineView));
   }
 
@@ -405,11 +414,18 @@
     render();
   };
 
-  $('me').textContent = me;
+  $('me').value = me;
+  $('me').onchange = () => {
+    me = $('me').value.trim() || 'anon';
+    const url = new URL(location.href);
+    url.searchParams.set('user', me);
+    history.replaceState(null, '', url);
+  };
   const saved = JSON.parse(localStorage.getItem(STORE) || '[]');
   for (const url of saved) addServer(url);
   render();
+  $('add').open = !saved.length;
   // Served by an agent-ide server rather than a dev server? Add it.
-  if (!saved.length) fetch('/api/server').then((r) => r.headers.get('content-type')?.includes('json') && addServer(location.origin)).catch(() => {});
+  if (!saved.length) fetch('/api/server').then((r) => r.headers.get('content-type')?.includes('json') && (addServer(location.origin), $('add').open = false)).catch(() => {});
 </script>
 </html>
