@@ -1,32 +1,33 @@
-// Does memory keep promise 6 on a real thread? One replayed pi session, the same agent asked along the way, then each
-// question asked once in a fork of its own, under four setups:
+// Does memory keep promise 6 on a long thread? A made-up team thread, the same every run, with facts planted at known
+// posts; the agent asked along the way, then each question asked once in a fork of its own, under four setups:
 //   full     everything in context (the ceiling)
 //   pi       Pi's own compaction, no memory (today's baseline)
 //   tree     memory's lines and zoom
 //   search   the same lines, and `threads` with a `query`
-// An answer counts when it contains the expected text, ignoring case: no model judges. Prints recall by kind and by age,
-// tool calls and tokens per question, how many lines the writer wrote, and how high in the tree each answer survives.
-// The questions are a JSON list of {q, a: text | [texts], kind: gist | detail | superseded, at: the index of the post
-// that holds the answer in the replayed session}.
-// Uses the provider's API key or pi login. With echo/echo as both models it costs nothing and only tests the plumbing.
-// bun examples/25-memory-eval-real-model.js <session.jsonl | folder> <questions.json> [agent model] [memory model] [--limit N] [--window T] [--every K]
+// Questions are of three kinds: a detail said once inside chatter, a fact said and later changed (the newest counts),
+// and the gist of a stretch where one subject came up again and again. An answer counts when it contains the expected
+// text, ignoring case: no model judges. Prints recall by kind and by age, tool calls, tokens and dollars per question,
+// how many lines the writer wrote, and how high in the tree each answer survives.
+// At the defaults it makes about 500 model calls, about 300 of them the writer's. With echo/echo as both models it
+// costs nothing and only tests the plumbing.
+// bun examples/25-memory-eval-real-model.js [agent model] [memory model] [--posts N] [--window T] [--every K] [--out F]
 import { readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux';
 import { ModelRuntime, resolveCliModel } from '@earendil-works/pi-coding-agent';
-import { postable, sessionPosts } from '../scripts/replay-pi.js';
 import { answered, answers, api, check, db, done, linesOf, localRunner, server, until, view } from './lib.js';
 
-const { values: opts, positionals: [source, questionsFile, model = 'openrouter/z-ai/glm-5.3-flash', writer = model] } = parseArgs({
+const { values: opts, positionals: [model = 'openrouter/z-ai/glm-5.3-flash', writer = model] } = parseArgs({
   allowPositionals: true,
-  options: { limit: { type: 'string', default: '300' }, window: { type: 'string', default: '100000' }, every: { type: 'string', default: '30' } },
+  options: {
+    posts: { type: 'string', default: '240' },
+    window: { type: 'string', default: '24000' },
+    every: { type: 'string', default: '15' },
+    out: { type: 'string', default: path.join(os.tmpdir(), 'memory-eval.json') },
+  },
 });
-if (!source || !questionsFile) {
-  console.log('skip: give a pi session and its questions (see the top of this file)');
-  process.exit(0);
-}
 let logins = {};
 try { logins = JSON.parse(readFileSync(path.join(os.homedir(), '.pi', 'agent', 'auth.json'), 'utf8')); } catch {}
 const missing = [model, writer].map((m) => m.split('/')[0]).find((p) => p !== 'echo' && !logins[p] && !process.env[`${p.toUpperCase().replace(/-/g, '_')}_API_KEY`]);
@@ -35,8 +36,76 @@ if (missing) {
   process.exit(0);
 }
 
-const posts = sessionPosts(source).posts.slice(0, Number(opts.limit));
-const questions = JSON.parse(readFileSync(questionsFile, 'utf8'));
+// [where, as a share of the thread; what is said; the question; its answer]
+const details = [
+  [0.04, 'The door code for the storage room is 4417, by the way.', 'What is the door code for the storage room?', '4417'],
+  [0.12, 'Staging now runs on the box called heron-7.', 'What is the staging server called?', 'heron-7'],
+  [0.21, 'The CSV export bug is filed as BUG-2291.', 'Which ticket is the CSV export bug filed as?', 'BUG-2291'],
+  [0.30, 'We went with Fraunces for the headings.', 'Which font did we pick for headings?', 'Fraunces'],
+  [0.38, 'Our accountant is called Halvorsen, if anyone needs to reach them.', "What is our accountant's name?", 'Halvorsen'],
+  [0.46, 'Backups go to the bucket cold-archive-31.', 'Which bucket do backups go to?', 'cold-archive-31'],
+  [0.55, 'The printer on the second floor is named Gutenberg.', 'What is the second-floor printer named?', 'Gutenberg'],
+  [0.63, 'Guests should use the network lighthouse-guest.', 'Which network should guests use?', 'lighthouse-guest'],
+  [0.72, 'The overdue one is invoice INV-0457.', 'Which invoice is overdue?', 'INV-0457'],
+  [0.81, 'The demo video runs 4:12 in the final cut.', 'How long is the final cut of the demo video?', '4:12'],
+  [0.89, 'The office cat has a name now: Pixel.', 'What is the office cat called?', 'Pixel'],
+  [0.96, 'The vendor quoted 3,850 euros for the hardware.', 'How much did the vendor quote for the hardware?', ['3,850', '3850', '3 850']],
+];
+// [where it was said; where it changed; what was said; what changed it; the question; the newest answer]
+const changes = [
+  [0.02, 0.12, 'Launch is set for March 3.', 'Launch moves to April 14, March 3 is off.', 'When is the launch?', 'April 14'],
+  [0.08, 0.20, 'The offsite will be in Porto.', 'Change of plan: the offsite is in Tallinn, not Porto.', 'Where is the offsite?', 'Tallinn'],
+  [0.15, 0.30, 'We store everything in Postgres for now.', 'We are moving storage from Postgres to SQLite.', 'Which database do we store everything in?', 'SQLite'],
+  [0.25, 0.45, 'A seat costs $12 a month.', 'New pricing: $9 a seat per month.', 'How much does a seat cost per month?', ['$9', '9 dollars', '9 usd']],
+  [0.35, 0.92, 'The project codename is Bramble.', 'We are renaming the codename from Bramble to Kestrel.', 'What is the project codename?', 'Kestrel'],
+  [0.42, 0.60, 'On-call handover happens on Tuesday.', 'On-call handover is Thursday from now on.', 'Which day is the on-call handover?', 'Thursday'],
+  [0.50, 0.97, 'The logo color is teal.', 'Final decision: the logo goes ochre instead of teal.', 'What color is the logo?', 'ochre'],
+  [0.58, 0.78, 'Uploads are capped at 25 MB.', 'We raised the upload cap from 25 MB to 40 MB.', 'What is the upload size cap?', ['40 MB', '40MB']],
+  [0.65, 0.86, 'Planning is in Room Ada.', 'Planning moves to Room Hopper; Ada is booked.', 'Which room is planning in?', 'Hopper'],
+];
+// [where the stretch starts; what is said in it, every other post; the question; its answer]
+const gists = [
+  [0.05, ['Should we support offline mode at all?', 'Offline mode means sync conflicts, which scares me.', 'Users on trains keep asking for offline use.', 'If we do offline, the cache has to be versioned.', 'I sketched how offline edits would merge.', 'Offline adds a week at least.', 'Okay, offline goes in, read-only first.', 'Offline read-only works in the prototype.'], 'Early on we debated supporting one mode for days. Which mode?', 'offline'],
+  [0.17, ['Norrland Freight emailed again about late tracking emails.', 'Norrland says the tracking links expire too soon.', 'I called Norrland Freight to apologise.', 'Norrland wants a refund for last month.', 'We gave Norrland a month free.', 'Norrland Freight confirmed the links work now.', 'Norrland asked for a CSV of their shipments.', 'Norrland is happy, closing it with them.'], 'Which customer had a long saga with us?', 'Norrland'],
+  [0.28, ['Webpack builds take four minutes, can we try esbuild?', 'esbuild builds the app in two seconds here.', 'esbuild does not handle our SVG imports yet.', 'Wrote an esbuild plugin for the SVGs.', 'Moving CI to esbuild too.', 'esbuild is in, Webpack config deleted.', 'esbuild sourcemaps look right.', 'Nobody misses Webpack since esbuild.'], 'Which build tool did we switch to?', 'esbuild'],
+  [0.40, ['The payments tests failed again on CI.', 'Payments tests pass locally, fail on CI.', 'I think the payments tests depend on the clock.', 'Pinned the time in the payments tests.', 'Payments tests flaked once more overnight.', 'Found it: the payments tests share a database row.', 'Payments tests isolated, green ten runs in a row.', 'Closing the payments flake hunt.'], 'Tests kept failing at random for days. Which module were they for?', 'payments'],
+  [0.53, ['We have an accessibility audit next week.', 'The accessibility audit found missing labels on forms.', 'Screen readers skip our modal, says the accessibility report.', 'Fixed the contrast issues from the accessibility audit.', 'Accessibility: focus order on the settings page is wrong.', 'Most accessibility findings are closed.', 'The accessibility auditor re-tested the forms.', 'We passed the accessibility re-test.'], 'We went through an audit. What kind?', 'accessibility'],
+  [0.64, ['We should hire a designer, the UI is drifting.', 'Posted the designer job ad.', 'Three designer candidates so far.', 'The second designer candidate has a great portfolio.', 'Designer interviews are on Wednesday.', 'Made an offer to the designer.', 'The designer accepted, starts next month.', 'Setting up accounts for the new designer.'], 'We hired for one role. Which role?', 'designer'],
+  [0.75, ['The site is down, browsers say the certificate expired.', 'The certificate renewal job had been failing silently.', 'Renewed the certificate by hand, site is back.', 'Adding an alert for certificate expiry.', 'Postmortem: certificate renewal had no monitoring.', 'Moved certificate renewal to the new scheduler.', 'Certificate alert tested, it fires 14 days early.', 'Closing the certificate outage postmortem.'], 'What took the site down in the outage?', 'certificate'],
+  [0.85, ['A distributor in Helsinki wants the app in Finnish.', 'Finnish strings are long, layouts will break.', 'Sent the Finnish strings to the translator.', 'Finnish translation is back, mostly done.', 'Fixed layouts that broke in Finnish.', 'Finnish dates format differently, fixed.', 'Finnish build shipped to the distributor.', 'The distributor likes the Finnish version.'], 'Which language did we translate the app into?', 'Finnish'],
+  [0.93, ['Ledgerly launched the same feature we planned.', 'Ledgerly charges more than us, though.', 'A prospect chose Ledgerly over us.', 'Drafted a comparison page against Ledgerly.', 'Ledgerly has no export either.', 'We win on price against Ledgerly.', 'Ledgerly cut their prices this week.', 'Stop watching Ledgerly, back to our roadmap.'], 'Which competitor did we keep comparing ourselves with?', 'Ledgerly'],
+];
+const who = ['I', 'We', 'Jun', 'Mira', 'Oskar'];
+const did = ['pushed a fix for', 'reviewed', 'started on', 'rewrote', 'tested', 'looked into', 'cleaned up', 'paired on', 'left comments on', 'timeboxed'];
+const what = ['the sidebar spacing', 'the settings screen', 'the login form', 'the export dialog', 'the onboarding emails', 'the search page', 'the release notes', 'the empty states', 'the table headers', 'the error messages', 'the import job', 'the mobile layout', 'the changelog', 'the analytics events', 'the deploy docs', 'the dashboard graphs'];
+const how = ['before lunch.', 'and it looks fine now.', 'but it needs another pass.', 'while waiting for CI.', 'and left notes in the ticket.', 'with mixed results.', 'and nothing surprising came up.', 'so the review can start tomorrow.'];
+const asides = ['The standup ran long again.', 'Coffee machine is fixed, by the way.', 'Retro moves to the end of the week.', 'Reminder to log your hours before Friday.', 'Lunch order goes in at noon.', 'The support inbox was quiet today.', 'Can we squash commits before merging?', 'The calendar invite for planning went out.', 'I am out tomorrow afternoon.', 'Lint complained about unused imports again.'];
+
+// The thread, the same every run: chatter by three authors, about 400 bytes a post, a tenth of them long enough to need
+// the writer, and every planted sentence inside chatter.
+function thread(N) {
+  let seed = 7;
+  const rand = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  const pick = (list) => list[Math.floor(rand() * list.length)];
+  const chatter = (n) => Array.from({ length: n }, () => rand() < 0.2 ? pick(asides) : `${pick(who)} ${pick(did)} ${pick(what)} ${pick(how)}`).join(' ');
+  const posts = Array.from({ length: N }, () => ({ author: pick(['oskar', 'mira', 'jun']), body: chatter(rand() < 0.1 ? 14 : 6 + Math.floor(rand() * 4)) }));
+  const taken = new Set();
+  const plant = (share, sentence) => {
+    let k = Math.min(N - 1, Math.round(share * N));
+    while (taken.has(k)) k = (k + 1) % N;
+    taken.add(k);
+    posts[k].body = `${chatter(2)} ${sentence} ${chatter(2)}`;
+    return k;
+  };
+  const questions = [
+    ...details.map(([at, said, q, a]) => ({ q, a, kind: 'detail', at: plant(at, said) })),
+    ...changes.map(([at, then, said, now, q, a]) => (plant(at, said), { q, a, kind: 'superseded', at: plant(then, now) })),
+    ...gists.map(([at, said, q, a]) => ({ q, a, kind: 'gist', at: said.map((s, j) => plant(at + 2 * j / N, s)).at(-1) })),
+  ];
+  return { posts, questions };
+}
+
+const { posts, questions } = thread(Number(opts.posts));
 const N = posts.length, WINDOW = Number(opts.window), EVERY = Number(opts.every);
 const agent = { runner: 'laptop', model };
 const agentName = `${model}@laptop`;
@@ -74,7 +143,7 @@ async function build(name) {
   const { json: { id } } = await api('POST', '/api/threads', { title: `eval ${name}` });
   let asked = 0;
   for (const [k, { author, body }] of posts.entries()) {
-    await api('POST', `/api/threads/${id}/entries`, { body: postable(body), to: null }, author);
+    await api('POST', `/api/threads/${id}/entries`, { body, to: null }, author);
     if ((k + 1) % EVERY && k + 1 < N) continue;
     await api('POST', `/api/threads/${id}/entries`, { body: 'Noted? Answer just: ok', to: agent });
     if (!await answered(id, ++asked, 600000)) throw new Error(`${name}: no answer to check-in ${asked}`);
@@ -143,9 +212,8 @@ for (const name of Object.keys(setups)) {
 }
 console.log('\nsurvival: how many levels above its message each answer is still in the lines (-1: lost in its own line)');
 for (const q of questions) console.log(`  ${String(survives(q)).padStart(2)}  ${q.kind}  @${q.at}  ${q.q.slice(0, 70)}`);
-const out = `${questionsFile.replace(/\.json$/, '')}.results.json`;
-writeFileSync(out, JSON.stringify({ model, writer, window: WINDOW, every: EVERY, posts: N, lines: lines.length, written, rows }, null, 2));
-console.log(`\nevery answer in ${out}`);
+writeFileSync(opts.out, JSON.stringify({ model, writer, window: WINDOW, every: EVERY, posts: N, lines: lines.length, written, rows }, null, 2));
+console.log(`\nevery answer in ${opts.out}`);
 
 const share = (name, f = () => true) => { const l = by[name].filter(f); return l.filter((r) => r.ok).length / (l.length || 1); };
 check(share('tree') > share('pi'), 'memory recalls more than Pi\'s own compaction', `${recall(by.tree)} vs ${recall(by.pi)}`);
