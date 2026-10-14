@@ -11,6 +11,8 @@ const LINE = 512, BUDGET = 64 * 1024, WHOLE = 64 * 1024, CONTEXT = 16 * 1024, RE
 const bytes = (text) => Buffer.byteLength(text);
 const key = (l, i) => `${l}:${i}`;
 const RULER = '-'.repeat(LINE);
+// The text's first LINE bytes, never splitting a character.
+const cut = (text) => { let s = Buffer.from(text).subarray(0, LINE).toString(); while (bytes(s) > LINE) s = s.slice(0, -1); return s; };
 const NOT_YET = '(not summarized yet: zoom it)';
 const finished = (status = 'completed') => ({ status: 'terminal', outcome: { status, result: null } });
 const background = (threadId) => ({ ownership: { kind: 'conversation' }, conversationId: threadId, background: true });
@@ -69,7 +71,8 @@ export function server(core) {
     return map;
   }
 
-  // A message or pair that fits is its own line. Otherwise the writer gets a few tries, and the shortest line wins.
+  // A message or pair that fits is its own line. Otherwise the writer gets a few tries, and the shortest line wins, cut
+  // to fit if it still doesn't.
   async function lineOf(source, task, signal) {
     if (bytes(source) <= LINE) return source;
     await core.runners.online(writer.runner, signal);
@@ -84,10 +87,9 @@ export function server(core) {
       const text = messageText(reply).trim();
       if (best === undefined || bytes(text) < bytes(best)) best = text;
       if (bytes(text) <= LINE) break;
-      const cut = Buffer.from(text).subarray(0, LINE).toString();
-      messages.push(reply, { role: 'user', timestamp: Date.now(), content: `Too long: your line is ${bytes(text)} bytes, over the ${LINE}-byte limit. Write the whole line again for the same <input>, cutting just enough of the least valuable items to fit before this cut:\n${cut}| ← LIMIT` });
+      messages.push(reply, { role: 'user', timestamp: Date.now(), content: `Too long: your line is ${bytes(text)} bytes, over the ${LINE}-byte limit. Write the whole line again for the same <input>, cutting just enough of the least valuable items to fit before this cut:\n${cut(text)}| ← LIMIT` });
     }
-    return best;
+    return cut(best);
   }
 
   const Line = defineTask({

@@ -82,7 +82,7 @@ client.html ──▶ server.js   one Pi Durable harness: threads, and each agen
 47. When an agent answers posts from another thread, the answer goes back to that thread instead of a report, as a message with `from` and `re`.
 48. That answer asks every agent who posted, and steers into their work if they're busy.
 49. A reply to that answer sends nothing back, so the exchange ends there, like email.
-50. With memory, each message in a thread gets a line of at most 512 bytes: itself when it fits, or else written by `MEMORY_MODEL` from its text and the thread's memory before it, asked again up to five times while too long.
+50. With memory, each message in a thread gets a line of at most 512 bytes: itself when it fits, or else written by `MEMORY_MODEL` from its text and the thread's memory before it, asked again up to five times while too long, then cut.
 51. A line request that fails for a rate limit or a dropped connection waits and tries again, by pi-ai's `retryAssistantCall`.
 52. Neighbouring lines merge in pairs up a binary tree, a pair that fits being its own line.
 53. Each line is an `agent-ide.line` entry `{l, i, text, size}` in the thread, written once by a background Line task that the post's commit creates, so stopping a thread never cuts its memory short.
