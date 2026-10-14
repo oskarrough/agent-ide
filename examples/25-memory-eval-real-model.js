@@ -8,7 +8,9 @@
 // and the gist of a stretch where one subject came up again and again. An answer counts when it contains the expected
 // text, ignoring case: no model judges. Prints recall by kind and by age, tool calls, tokens and dollars per question,
 // how many lines the writer wrote, and how high in the tree each answer survives.
-// At the defaults it makes about 500 model calls, about 300 of them the writer's. With echo/echo as both models it
+// The window is 64000 tokens because Pi keeps the last 20000 whole at a compaction and reserves 16384, and a request
+// leaves 4096 spare: much smaller, and a compacted context with the memory leaves no room, so the model answers empty.
+// At the defaults it makes about 600 model calls, about 400 of them the writer's. With echo/echo as both models it
 // costs nothing and only tests the plumbing.
 // bun examples/25-memory-eval-real-model.js [agent model] [memory model] [--posts N] [--window T] [--every K] [--out F]
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -22,8 +24,8 @@ import { answered, answers, api, check, db, done, linesOf, localRunner, server, 
 const { values: opts, positionals: [model = 'openrouter/z-ai/glm-5.3-flash', writer = model] } = parseArgs({
   allowPositionals: true,
   options: {
-    posts: { type: 'string', default: '240' },
-    window: { type: 'string', default: '24000' },
+    posts: { type: 'string', default: '180' },
+    window: { type: 'string', default: '64000' },
     every: { type: 'string', default: '15' },
     out: { type: 'string', default: path.join(os.tmpdir(), 'memory-eval.json') },
   },
@@ -81,20 +83,21 @@ const what = ['the sidebar spacing', 'the settings screen', 'the login form', 't
 const how = ['before lunch.', 'and it looks fine now.', 'but it needs another pass.', 'while waiting for CI.', 'and left notes in the ticket.', 'with mixed results.', 'and nothing surprising came up.', 'so the review can start tomorrow.'];
 const asides = ['The standup ran long again.', 'Coffee machine is fixed, by the way.', 'Retro moves to the end of the week.', 'Reminder to log your hours before Friday.', 'Lunch order goes in at noon.', 'The support inbox was quiet today.', 'Can we squash commits before merging?', 'The calendar invite for planning went out.', 'I am out tomorrow afternoon.', 'Lint complained about unused imports again.'];
 
-// The thread, the same every run: chatter by three authors, about 400 bytes a post, a tenth of them long enough to need
-// the writer, and every planted sentence inside chatter.
+// The thread, the same every run: chatter by three authors, about 1.4 KB a post, so every post needs the writer, and each
+// planted sentence somewhere inside one.
 function thread(N) {
   let seed = 7;
   const rand = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
   const pick = (list) => list[Math.floor(rand() * list.length)];
   const chatter = (n) => Array.from({ length: n }, () => rand() < 0.2 ? pick(asides) : `${pick(who)} ${pick(did)} ${pick(what)} ${pick(how)}`).join(' ');
-  const posts = Array.from({ length: N }, () => ({ author: pick(['oskar', 'mira', 'jun']), body: chatter(rand() < 0.1 ? 14 : 6 + Math.floor(rand() * 4)) }));
+  const posts = Array.from({ length: N }, () => ({ author: pick(['oskar', 'mira', 'jun']), body: chatter(20 + Math.floor(rand() * 12)) }));
   const taken = new Set();
   const plant = (share, sentence) => {
     let k = Math.min(N - 1, Math.round(share * N));
     while (taken.has(k)) k = (k + 1) % N;
     taken.add(k);
-    posts[k].body = `${chatter(2)} ${sentence} ${chatter(2)}`;
+    const n = 20 + Math.floor(rand() * 12), before = Math.floor(rand() * n);
+    posts[k].body = `${chatter(before)} ${sentence} ${chatter(n - before)}`.trim();
     return k;
   };
   const questions = [
@@ -200,7 +203,7 @@ const spent = (r) => Object.values(r.usage?.models ?? {});
 const tokens = (r) => spent(r).reduce((s, u) => s + u.input + u.output, 0);
 const dollars = (r) => spent(r).reduce((s, u) => s + (u.cost?.total ?? 0), 0);
 console.log(`\n${N} posts, ${questions.length} questions, agent ${model}, writer ${writer}, window ${WINDOW}, ${lines.length} lines, ${written} written by the writer`);
-console.log(['setup', 'all', 'gist', 'detail', 'superseded', 'old', 'middle', 'recent', 'tools/q', 'tokens/q', '$ all'].join('\t'));
+console.log(['setup', 'all', 'gist', 'detail', 'superseded', 'old', 'middle', 'recent', 'empty', 'tools/q', 'tokens/q', '$ all'].join('\t'));
 const by = {};
 for (const name of Object.keys(setups)) {
   const mine = rows.filter((r) => r.setup === name);
@@ -208,7 +211,7 @@ for (const name of Object.keys(setups)) {
   const kinds = ['gist', 'detail', 'superseded'].map((k) => recall(mine.filter((r) => r.kind === k)));
   const ages = ['old', 'middle', 'recent'].map((a) => recall(mine.filter((r) => age(r) === a)));
   const per = (f) => Math.round(mine.reduce((s, r) => s + f(r), 0) / mine.length);
-  console.log([name, recall(mine), ...kinds, ...ages, per((r) => r.tools), per(tokens), mine.reduce((s, r) => s + dollars(r), 0).toFixed(3)].join('\t'));
+  console.log([name, recall(mine), ...kinds, ...ages, mine.filter((r) => r.answer === '(empty answer)').length, per((r) => r.tools), per(tokens), mine.reduce((s, r) => s + dollars(r), 0).toFixed(3)].join('\t'));
 }
 console.log('\nsurvival: how many levels above its message each answer is still in the lines (-1: lost in its own line)');
 for (const q of questions) console.log(`  ${String(survives(q)).padStart(2)}  ${q.kind}  @${q.at}  ${q.q.slice(0, 70)}`);
