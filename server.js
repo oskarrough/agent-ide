@@ -430,9 +430,8 @@ async function forkThread(author, id, { at, title }) {
   return { id: fork.id };
 }
 
-const snapshot = (doc, id) => harness.snapshot(doc, id, context);
-const core = { Thread, models, snapshot, runners, known, address, agentName, agentOf, conversation, thread, home, threadList, messages, lastAsked, field, startThread, post, said, seenBy, commit, collect };
-const modules = await load('server', { director: false, talk: true, status: true, memory: false, matrix: false, usage: false }, core);
+const core = { Thread, models, runners, known, address, agentName, agentOf, conversation, thread, home, threadList, messages, lastAsked, field, startThread, post, said, seenBy, commit, collect };
+const modules = await load('server', { director: false, talk: true, status: true, memory: false, matrix: false }, core);
 for (const m of modules) if (m.extension) registry.install(m.extension);
 const posted = modules.flatMap((m) => m.posted ?? []);
 const route = modules.find((m) => m.route)?.route;
@@ -497,7 +496,7 @@ const handleRequest = async (req, res) => {
         send(res, 200, { id });
         return notify(null);
       }
-      // A module may serve GET /api/threads/:id/<its name>, and GET /api/<its name> as its thread null.
+      // A module may serve GET /api/threads/:id/<its name>.
       const served = modules.find((m) => m.name === action)?.serve;
       if (served && req.method === 'GET') return send(res, 200, await served(id, url.searchParams));
       if (action === 'entries' && req.method === 'POST') return send(res, 201, await postEntry(id, user(req), await input(req)));
@@ -516,8 +515,6 @@ const handleRequest = async (req, res) => {
         return send(res, 200, { stopped: id });
       }
     }
-    const top = req.method === 'GET' && modules.find((m) => route === `/api/${m.name}`)?.serve;
-    if (top) return send(res, 200, await top(null, url.searchParams));
     send(res, 404, { error: 'Not found' });
   } catch (error) {
     send(res, error.status ?? 400, { error: error.message });
