@@ -30,6 +30,21 @@ Read the README, the code and Pi Durable's spec as an adversary. Look for three 
 
 A finding counts only if an example reproduces it, and its fix lands with that example.
 
+## Checking the UI
+
+A change you can see in client.html gets seen. Run `bun server.js` and `bun runner.js --name laptop --dir .` in the background, then drive the page with [agent-browser](https://github.com/vercel-labs/agent-browser):
+
+```sh
+agent-browser open http://127.0.0.1:3000
+agent-browser snapshot -i            # the page as an accessibility tree, with @refs
+agent-browser click @e9              # act on a ref
+agent-browser fill @e11 hello
+agent-browser screenshot shot.png
+agent-browser close --all
+```
+
+`agent-browser skills get core` is its own guide. Locally, install it with `npm i -g agent-browser && agent-browser install`; in Claude Code on the web, `.claude/hooks/session-start.sh` does it. Examples still prove behaviour; the browser only shows it.
+
 ## Said no
 
 One line each, so nobody proposes them twice.
