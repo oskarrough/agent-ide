@@ -54,3 +54,4 @@ One line each, so nobody proposes them twice.
 - **UX polish.** Functional UI, not shiny.
 - **Our own durability.** Pi Durable has it.
 - **Rebuilding from the README.** It's a plan, not a spec. 
+- **Backwards compatibility.** No migrations, shims or old shapes; an old store can be thrown away.
