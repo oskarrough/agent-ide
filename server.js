@@ -527,26 +527,21 @@ function notify() {
 harness.subscribeCommits(() => notify());
 
 // A browser watches one thread: Pi's agent events of its conversation and of each agent's, each stream snapshot first.
-// An agent's snapshots leave out its entries, which the thread has no use for.
-const watching = new Map();
-const queues = new WeakMap();
-const watch = (socket, id) => queues.set(socket, (queues.get(socket) ?? Promise.resolve()).then(() => rewatch(socket, id)).catch(() => {}));
+// An agent's snapshots leave out its entries, which the thread has no use for. One socket's watches go in turn.
+const watch = (socket, id) => socket.watches = (socket.watches ?? Promise.resolve()).then(() => rewatch(socket, id)).catch(() => {});
 async function rewatch(socket, id) {
-  const old = watching.get(socket);
-  watching.delete(socket);
+  const old = socket.watching;
+  socket.watching = undefined;
   for (const stream of old?.streams.values() ?? []) (await stream).stop();
-  if (typeof id !== 'number' || !(await thread(id))) return;
-  const w = { thread: id, streams: new Map() };
-  watching.set(socket, w);
-  await follow(socket, w);
+  if (typeof id === 'number' && await thread(id)) await follow(socket, socket.watching = { thread: id, streams: new Map() });
 }
 // Starts a stream for the thread and for each agent not followed yet; the post that asks a new agent is a thread event,
 // which follows it from the commit that made it.
 async function follow(socket, w) {
   const agents = Object.entries((await thread(w.thread)).agents).map(([name, c]) => [c, name]);
   for (const [c, agent] of [[w.thread], ...agents]) {
-    if (w.streams.has(c) || watching.get(socket) !== w) continue;
-    const send = (events) => watching.get(socket) === w && socket.send(JSON.stringify({ thread: w.thread, ...(agent ? { agent } : {}),
+    if (w.streams.has(c) || socket.watching !== w) continue;
+    const send = (events) => socket.watching === w && socket.send(JSON.stringify({ thread: w.thread, ...(agent ? { agent } : {}),
       events: agent ? events.map((e) => e.type === 'snapshot' ? { ...e, entries: [] } : e) : events }));
     const stream = watchEvents(harness, c, context);
     w.streams.set(c, stream);
