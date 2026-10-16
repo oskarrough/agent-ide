@@ -4,7 +4,7 @@ import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context';
 import { createModels } from '@earendil-works/pi-ai/models';
-import { AgentDoc, configure, createRegistry, defineDoc, defineDocFamily, defineExtension, defineTask, Harness } from '@earendil-works/pi-durable';
+import { AgentDoc, configure, createRegistry, defineDoc, defineDocFamily, defineExtension, defineTask, Harness, watchEvents } from '@earendil-works/pi-durable';
 import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node';
 import { CodingTools } from '@earendil-works/pi-durable/tools';
 import { load } from './modules.js';
@@ -342,15 +342,14 @@ async function threadRow(id, reader, live) {
   const { reads, sent, ...row } = await thread(id);
   const agents = await agentsIn(row, live);
   const shell = live.some((t) => t.kind === Shell.definition.name && t.conversationId === id);
-  return { id, ...row, agents, status: await status(id, reads, agents, shell, reader) };
+  return { id, ...row, agents, shells: [...shells.values()].filter((run) => run.threadId === id), status: await status(id, reads, agents, shell, reader) };
 }
 const threadList = async (reader) => {
   const live = await liveTasks();
   return (await Promise.all((await threadIds()).map((id) => threadRow(id, reader, live)))).filter((row) => !row.hidden);
 };
 const threadView = async (id, reader) => ({
-  ...await threadRow(id, reader, await liveTasks()), conversation: await commit((tx) => tx.conversation(id)),
-  shells: [...shells.values()].filter((run) => run.threadId === id), entries: await messages(id),
+  ...await threadRow(id, reader, await liveTasks()), conversation: await commit((tx) => tx.conversation(id)), entries: await messages(id),
 });
 
 const home = (conversationId) => harness.snapshot(AgentHome, conversationId, context);
@@ -550,6 +549,36 @@ harness.subscribeCommits(({ changes }) => {
   }
 });
 
+// A browser watches one thread: Pi's agent events of its conversation and of each agent's, each stream snapshot first.
+// An agent's snapshots leave out its entries, which the thread has no use for.
+const watching = new Map();
+const queues = new WeakMap();
+const watch = (socket, id) => queues.set(socket, (queues.get(socket) ?? Promise.resolve()).then(() => rewatch(socket, id)).catch(() => {}));
+async function rewatch(socket, id) {
+  const old = watching.get(socket);
+  watching.delete(socket);
+  for (const stream of old?.streams.values() ?? []) (await stream).stop();
+  if (typeof id !== 'number' || !(await thread(id))) return;
+  const w = { thread: id, streams: new Map() };
+  watching.set(socket, w);
+  await follow(socket, w);
+}
+// Starts a stream for the thread and for each agent not followed yet; the post that asks a new agent is a thread event,
+// which follows it from the commit that made it.
+async function follow(socket, w) {
+  const agents = Object.entries((await thread(w.thread)).agents).map(([name, c]) => [c, name]);
+  for (const [c, agent] of [[w.thread], ...agents]) {
+    if (w.streams.has(c) || watching.get(socket) !== w) continue;
+    const send = (events) => watching.get(socket) === w && socket.send(JSON.stringify({ thread: w.thread, ...(agent ? { agent } : {}),
+      events: agent ? events.map((e) => e.type === 'snapshot' ? { ...e, entries: [] } : e) : events }));
+    const stream = watchEvents(harness, c, context);
+    w.streams.set(c, stream);
+    const { snapshot, start } = await stream;
+    send([snapshot]);
+    start(async (events) => (send(events), agent || follow(socket, w).catch(() => {})));
+  }
+}
+
 const sockets = new Map();
 const wss = new WebSocketServer({ noServer: true });
 async function upgrade(req, raw, head) {
@@ -559,6 +588,7 @@ async function upgrade(req, raw, head) {
   const name = url.searchParams.get('runner');
   const close = () => {
     clients.delete(socket);
+    watch(socket, null);
     if (!name || sockets.get(name) !== socket) return;
     sockets.delete(name);
     runners.disconnect(name);
@@ -568,7 +598,10 @@ async function upgrade(req, raw, head) {
   };
   socket.on('close', close);
   socket.on('error', close);
-  if (!name) return clients.add(socket);
+  if (!name) {
+    socket.on('message', (data) => watch(socket, JSON.parse(data).watch));
+    return clients.add(socket);
+  }
   // A reconnecting runner replaces its old socket, whose calls fail.
   if (sockets.has(name)) {
     sockets.get(name).terminate();

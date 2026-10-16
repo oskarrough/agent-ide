@@ -1,4 +1,4 @@
-// Matrix rooms as agent-ide threads, by README rules 63 to 71.
+// Matrix rooms as agent-ide threads, by README rules 65 to 73.
 //
 // Setting it up:
 //   1. Give the bot its own account on any homeserver, and get a token for it:

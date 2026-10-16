@@ -55,7 +55,8 @@
   #meta { margin-bottom: var(--l); }
   #entries li { border-bottom: 1px solid var(--line); padding: var(--m) 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   #entries li.agent { border-left: 2px solid var(--accent); padding-left: var(--m); }
-  #entries li.live { opacity: .75; }
+  #live li { border-bottom: 1px solid var(--line); padding: var(--m) 0; white-space: pre-wrap; overflow-wrap: anywhere; opacity: .75; }
+  #live li.agent { border-left: 2px solid var(--accent); padding-left: var(--m); }
   #entries li.flash { outline: 2px solid #f0b400; }
   #memory { margin-bottom: var(--l); }
   #memory ul { padding-left: var(--l); }
@@ -83,6 +84,7 @@
     <pre id="raw-thread" class="raw" hidden></pre>
     <details id="memory" hidden><summary></summary><ul></ul></details>
     <ul id="entries"></ul>
+    <ul id="live"></ul>
     <form id="composer" hidden>
       <select id="runner" aria-label="Runner"></select>
       <select id="model" aria-label="Model"></select>
@@ -104,7 +106,9 @@
   const aliases = JSON.parse(localStorage.getItem(ALIASES) || '{}');
   const servers = new Map();
   let selected = null; // { url, id }; a null id is a draft thread, made by its first entry
-  let view = null;
+  let view = null; // the thread's row, kept current by the list
+  let entries = null; // its messages, from the thread's events
+  const live = new Map(); // each agent's live work, from its conversation's events
   let retry = null; // the request ids of the send that failed last
   let structure = localStorage.getItem('agent-ide-structure') === '1';
 
@@ -147,10 +151,11 @@
     const server = servers.get(url);
     const socket = new WebSocket(url.replace(/^http/, 'ws') + '/ws');
     server.socket = socket;
-    socket.onopen = () => { server.status = 'online'; refresh(url); };
+    // Watching again after a reconnect or a restart starts from fresh snapshots.
+    socket.onopen = () => { server.status = 'online'; refresh(url); if (selected?.url === url) tell(url, selected.id); };
     socket.onmessage = ({ data }) => {
-      const { threadId } = JSON.parse(data);
-      if (selected?.url === url && selected.id === threadId) loadThread();
+      const message = JSON.parse(data);
+      if (message.events) return selected?.url === url && selected.id === message.thread && heard(message);
       server.refreshing ??= setTimeout(() => { server.refreshing = null; refresh(url); }, 300);
     };
     socket.onclose = () => {
@@ -166,42 +171,101 @@
     const server = servers.get(url);
     try {
       [server.info, server.threads, server.runners] = await Promise.all([api(url, '/api/server'), api(url, '/api/threads'), api(url, '/api/runners')]);
-      if (selected?.url === url && selected.id && !server.threads.some((t) => t.id === selected.id)) select(null);
+      const row = selected?.url === url && selected.id && server.threads.find((t) => t.id === selected.id);
+      if (row === undefined) select(null);
+      else if (row && view?.id === row.id) Object.assign(view, row);
     } catch (error) { server.status = error.message; }
     render();
   }
 
+  // The selected thread is watched: its server sends a snapshot, then events, for it and each of its agents.
+  const tell = (url, id) => servers.get(url)?.socket?.readyState === WebSocket.OPEN && servers.get(url).socket.send(JSON.stringify({ watch: id ?? null }));
   function select(next) {
+    if (selected && selected.url !== next?.url) tell(selected.url, null);
     selected = next;
-    view = null;
+    view = entries = memory = null;
+    live.clear();
+    opened.clear();
+    zoomed.clear();
+    $('runner').value = $('model').value = $('effort').value = $('dir').value = '';
+    extra.splice(0).forEach((row) => row.node.remove());
     render();
-    loadThread();
+    if (next) tell(next.url, next.id);
+    if (next?.id) attempt(loadThread());
   }
 
   async function loadThread() {
-    if (!selected?.id) return;
     const { url, id } = selected;
-    try {
-      const loaded = await api(url, `/api/threads/${id}`);
-      if (selected?.url !== url || selected.id !== id) return;
-      const first = !view;
-      view = loaded;
-      post(url, `/api/threads/${id}/read`, {}).catch(() => {});
-      if (first) {
-        $('runner').value = $('model').value = $('effort').value = $('dir').value = '';
-        extra.length = 0;
-        $('more').replaceChildren();
-        renderPicker();
+    const loaded = await api(url, `/api/threads/${id}`);
+    if (selected?.url !== url || selected.id !== id) return;
+    delete loaded.entries;
+    view = loaded;
+    renderThread();
+    await reread();
+  }
+
+  // What the thread's events change but don't carry: the read marker, the memory panel and opened conversations.
+  async function reread() {
+    const { url, id } = selected;
+    post(url, `/api/threads/${id}/read`, {}).catch(() => {});
+    memory = current()?.info?.modules.includes('memory') ? await api(url, `/api/threads/${id}/memory`) : null;
+    for (const [at, value] of zoomed) zoomed.set(at, await api(url, `/api/threads/${id}/memory?zoom=${at}`).catch(() => value));
+    for (const conversation of opened.keys()) opened.set(conversation, await api(url, `/api/conversations/${conversation}`));
+    if (selected?.url === url && selected.id === id) renderThread();
+  }
+
+  // Pi's agent events: the thread's give its messages, an agent's its reply being written and this run's tool calls.
+  function heard({ agent, events }) {
+    let appended = false;
+    for (const e of events) {
+      if (agent) live.set(agent, step(live.get(agent) ?? { run: false, message: null, tools: [] }, e));
+      else if (e.type === 'snapshot') entries = e.entries.filter((x) => x.kind === 'agent-ide.message'), appended = true;
+      else if (e.type === 'entry_appended' && !entries.some((x) => x.id === e.entry.id)) {
+        if (e.entry.kind === 'agent-ide.message') entries.push(e.entry);
+        appended = true;
       }
-      if (first) opened.clear(), zoomed.clear();
-      memory = current()?.info?.modules.includes('memory') ? await api(url, `/api/threads/${id}/memory`) : null;
-      for (const [at, value] of zoomed) zoomed.set(at, await api(url, `/api/threads/${id}/memory?zoom=${at}`).catch(() => value));
-      for (const conversation of opened.keys()) opened.set(conversation, await api(url, `/api/conversations/${conversation}`));
-      renderThread();
-    } catch (error) {
-      await refresh(url);
-      if (selected?.url === url && selected.id === id) alert(error.message);
     }
+    if (agent) return renderLive();
+    renderThread();
+    if (appended && view) reread().catch(() => {});
+  }
+
+  function step(state, e) {
+    const tool = (id, change) => {
+      const old = state.tools.find((t) => t.callId === id) ?? { callId: id, name: e.toolName, output: '' };
+      return { ...state, tools: [...state.tools.filter((t) => t !== old), { ...old, ...change }] };
+    };
+    switch (e.type) {
+      case 'snapshot': return { run: Boolean(e.run), message: e.generation?.message ?? null, tools: e.tools.map((t) => ({ ...t, output: t.output ?? '' })) };
+      case 'run_start': return { ...state, run: true };
+      case 'run_end': return { run: false, message: null, tools: [] };
+      case 'message_start': return e.message.role === 'assistant' ? { ...state, message: e.message } : state;
+      case 'message_update': return state.message ? { ...state, message: e.changes.reduce(changed, structuredClone(state.message)) } : state;
+      case 'message_end': return e.entry.model?.[0]?.role === 'assistant' ? { ...state, message: null } : state;
+      case 'tool_execution_start': return tool(e.toolCallId, { args: e.args, status: 'running' });
+      case 'tool_execution_update': {
+        const was = state.tools.find((t) => t.callId === e.toolCallId)?.output ?? '';
+        return e.output ? tool(e.toolCallId, { output: 'set' in e.output ? e.output.set : was.slice(e.output.trimStart ?? 0) + (e.output.append ?? '') }) : state;
+      }
+      case 'tool_execution_end': return tool(e.toolCallId, { status: 'done' });
+      default: return state;
+    }
+  }
+
+  // One change to the reply being written, as Pi's MessageChange.
+  function changed(message, c) {
+    const blocks = message.content;
+    if (c.type === 'message') return structuredClone(c.message);
+    if (c.type.endsWith('_start')) blocks.splice(c.contentIndex, 0, structuredClone(c.block));
+    else if (c.type === 'block') blocks[c.contentIndex] = structuredClone(c.block);
+    else if (c.type === 'text_delta') blocks[c.contentIndex].text += c.delta;
+    else if (c.type === 'thinking_delta') blocks[c.contentIndex].thinking += c.delta;
+    else if (c.type === 'toolcall_delta') {
+      let at = blocks[c.contentIndex].arguments;
+      for (const key of c.path.slice(0, -1)) at = at[key];
+      at[c.path.at(-1)] = (at[c.path.at(-1)] ?? '') + c.delta;
+    }
+    return message;
   }
 
   const current = () => selected && servers.get(selected.url);
@@ -288,11 +352,11 @@
       ['working', 'blocked'].includes(view.status) ? build('button', { className: 'link', textContent: 'stop', onclick: () => attempt(post(server.url, `/api/threads/${view.id}/stop`, {})) }) : '',
       build('ul', {}, view.agents.map(agentView)),
     ] : []));
-    const { entries, ...row } = view || {};
     $('raw-thread').hidden = !structure || !view;
-    $('raw-thread').textContent = view ? JSON.stringify(row, null, 2) : '';
+    $('raw-thread').textContent = view ? JSON.stringify(view, null, 2) : '';
     $('composer').hidden = !(draft || view);
     renderEntries();
+    renderLive();
     renderMemory();
     renderPicker();
   }
@@ -301,8 +365,8 @@
   let memory = null;
   const zoomed = new Map();
   function renderMemory() {
-    $('memory').hidden = !view || !memory;
-    if (!memory || !view) return;
+    $('memory').hidden = !view || !memory || !entries;
+    if ($('memory').hidden) return;
     const lineView = ({ id, n, text }) => {
       const at = `${id},${n}`;
       const shown = zoomed.get(at);
@@ -315,12 +379,12 @@
         shown?.lines ? build('ul', {}, shown.lines.map(lineView)) : '',
         shown?.message ? build('pre', { textContent: shown.message }) : '']);
     };
-    $('memory').querySelector('summary').textContent = `Memory · ${memory.lines.length} lines over ${view.entries.length} messages`;
+    $('memory').querySelector('summary').textContent = `Memory · ${memory.lines.length} lines over ${entries?.length ?? 0} messages`;
     $('memory').querySelector('ul').replaceChildren(...memory.lines.map(lineView));
   }
 
   // A message's number for people: its place in the thread, from 1, which memory's lines count in too.
-  const position = (entryId) => view.entries.findIndex((e) => e.id === entryId) + 1 || '?';
+  const position = (entryId) => (entries ?? []).findIndex((e) => e.id === entryId) + 1 || '?';
 
   // Each agent's own Pi conversation, shown raw in the structure view.
   const opened = new Map();
@@ -340,8 +404,8 @@
 
   function renderEntries() {
     const server = current();
-    if (!view) return $('entries').replaceChildren();
-    $('entries').replaceChildren(...view.entries.map((entry) => {
+    if (!view || !entries) return $('entries').replaceChildren();
+    $('entries').replaceChildren(...entries.map((entry) => {
       const m = entry.data;
       return build('li', { id: `e-${entry.id}`, className: m.error ? 'error' : m.answer ? 'agent' : '' }, [
         build('b', { textContent: m.author }), ' ', build('span', { className: 'id', textContent: `${position(entry.id)}` }),
@@ -354,9 +418,25 @@
         m.shell ? build('pre', { textContent: `exit ${m.shell.code ?? m.shell.error} on ${m.shell.runner}\n${[m.shell.stdout, m.shell.stderr].filter(Boolean).join('\n')}` }) : '',
         raw(entry),
       ]);
+    }));
+  }
+
+  // Each working agent's reply as it is written and its tool calls as they start and end, then running commands.
+  function renderLive() {
+    if (!view) return $('live').replaceChildren();
+    const working = view.agents.filter((a) => a.status !== 'idle' || live.get(a.name)?.run);
+    $('live').replaceChildren(...working.map((a) => {
+      const { message, tools = [] } = live.get(a.name) ?? {};
+      const blocks = message?.content ?? [];
+      return build('li', { className: 'agent' }, [
+        build('b', { textContent: a.name }), ' ', build('small', { className: 'status', textContent: a.status === 'blocked' ? `waits for ${a.to?.runner}, which is offline…` : 'working…' }),
+        ...tools.map((t) => build('div', {}, [build('small', { className: 'mute', textContent: `${t.status === 'done' ? '✓' : '…'} ${t.name} ${JSON.stringify(t.args ?? {})}` }),
+          t.output ? build('pre', { textContent: t.output.slice(-2000) }) : ''])),
+        ...blocks.map((b) => b.type === 'text' ? build('div', { textContent: b.text }) : b.type === 'thinking' ? build('div', { className: 'mute', textContent: b.thinking })
+          : b.type === 'toolCall' ? build('small', { className: 'mute', textContent: `→ ${b.name} ${JSON.stringify(b.arguments ?? {})}` }) : ''),
+      ]);
     }),
-    ...view.agents.filter((a) => a.status !== 'idle').map((a) => build('li', { className: 'agent live' }, [build('b', { textContent: a.name }), ' ', build('small', { className: 'status', textContent: a.status === 'blocked' ? `waits for ${a.to?.runner}, which is offline…` : 'working…' })])),
-    ...view.shells.map((run) => build('li', { className: 'live' }, [
+    ...view.shells.map((run) => build('li', {}, [
       build('b', { textContent: run.author }), ' ', build('small', { className: 'status', textContent: `running on ${run.to.runner}` }),
       build('pre', { textContent: `$ ${run.command}\n${run.stdout}${run.stderr}` }),
     ])));
@@ -397,7 +477,7 @@
   function renderPicker() {
     const server = current();
     if (!server) return;
-    const last = view?.entries.findLast((e) => e.data.to)?.data.to.map(agentName).join(', ');
+    const last = entries?.findLast((e) => e.data.to)?.data.to.map(agentName).join(', ');
     const fallback = server.info?.modules.includes('director') ? 'Director decides' : last && `Same as last: ${last}`;
     const runners = server.runners.map((r) => [r.name, r.online ? r.name : `${r.name} (offline)`]);
     const named = fillRow(first, server, [...(fallback ? [['', fallback]] : []), ...runners, ['nobody', 'Nobody']]);
