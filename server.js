@@ -78,18 +78,11 @@ const Deliver = defineTask({
       }, ctx);
     },
   },
-  // Withdraws its input if still queued.
-  async abort({ id, input: { agent, held } }, rt, ctx) {
-    let record = await storage.submissionByRequest(agent, String(id), ctx);
-    if (record?.status === 'queued') {
-      await harness.abortSubmission(record.id, ctx, agent);
-      record = await storage.submission(record.id, ctx);
-    }
-    await rt.commit(async (tx) => {
-      if (record?.entry === undefined) await restore(tx, agent, held);
-      return finished('aborted');
-    }, ctx);
-  },
+  // Pi's abort of the thread withdrew its input if still queued.
+  abort: ({ id, input: { agent, held } }, rt, ctx) => rt.commit(async (tx) => {
+    if ((await tx.submissionByRequest(agent, String(id)))?.entry === undefined) await restore(tx, agent, held);
+    return finished('aborted');
+  }, ctx),
 });
 
 // `$ cmd` as an effect sandwich: commit, run, post. Reopened mid-run, it says a restart interrupted it.
