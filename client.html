@@ -4,73 +4,94 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>agent-ide</title>
 <style>
-  /* Every size, space and grey comes from here. */
-  :root { --s: .25rem; --m: .5rem; --l: 1rem; --small: 13px; --ink: #20242a; --mute: #59636e; --line: #ddd; --tint: #f4f5f7; --accent: #d7e9ff; }
-  body { font: 15px system-ui, sans-serif; max-width: 1100px; margin: var(--l) auto; padding: 0 var(--l); color: var(--ink); }
-  h2 { font-size: 1rem; margin: 0; }
-  form { display: flex; gap: var(--m); margin: var(--m) 0; }
-  input, button, select { font: inherit; padding: var(--s) var(--m); }
-  input { flex: 1; min-width: 0; }
-  button { cursor: pointer; }
-  ul { list-style: none; padding: 0; margin: var(--s) 0; }
+  /* Every size, space and colour comes from here. */
+  :root { --s: .25rem; --m: .5rem; --l: 1rem; --xl: 1.5rem; --small: 13px; --ink: #1f2328; --mute: #6a737d; --line: #d8dce0; --tint: #f3f4f6; --accent: #d7e9ff; --ok: #2f9e62; --warn: #8a5a00; --bad: #ad1b1b; --radius: 4px; }
+  * { box-sizing: border-box; }
+  body { font: 14px/1.5 system-ui, sans-serif; max-width: 1100px; margin: 0 auto; padding: var(--l); color: var(--ink); background: #fff; }
+  h2 { font-size: 16px; margin: 0 0 var(--s); }
+  h3 { font-size: inherit; margin: var(--l) 0 var(--s); display: flex; justify-content: space-between; align-items: center; }
+  h3 button { font-weight: normal; }
+  ul { list-style: none; padding: 0; margin: 0; }
   [hidden] { display: none !important; }
-  small, .mute, .id { color: var(--mute); }
-  small, code, .id, .chip, pre, #memory ul, .server h3 { font-size: var(--small); }
-  code, .id, pre, #memory ul { font-family: ui-monospace, monospace; }
-  #layout { display: grid; grid-template-columns: 320px 1fr; gap: var(--l); margin-top: var(--l); }
-  .server { margin-bottom: var(--l); }
-  .server header { display: flex; justify-content: space-between; align-items: center; gap: var(--m); }
-  .server h3 { color: var(--mute); margin: var(--l) 0 var(--s); display: flex; justify-content: space-between; }
-  .thread-row { display: flex; align-items: center; }
-  .thread { flex: 1; min-width: 0; display: flex; gap: var(--m); text-align: left; background: none; border: 0; border-radius: var(--s); padding: var(--s) var(--m); }
+  form { display: flex; gap: var(--m); margin: var(--m) 0; }
+  input, button, select { min-width: 0; font: inherit; color: inherit; height: 2rem; padding: 0 var(--m); border: 1px solid var(--line); border-radius: var(--radius); background: #fff; }
+  input { flex: 1; min-width: 0; }
+  input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  input[type=checkbox] { flex: none; height: auto; margin: 0; }
+  button { cursor: pointer; background: var(--tint); white-space: nowrap; }
+  button:hover { border-color: var(--mute); }
+  .link, summary { font-weight: normal; height: auto; background: none; border: 0; padding: 0; color: var(--mute); font-size: var(--small); cursor: pointer; }
+  .link:hover, summary:hover { color: var(--ink); }
+  small, .mute, .id, .hint { color: var(--mute); }
+  small, code, pre, .id, .chip, .hint, #memory ul { font-size: var(--small); }
+  code, pre, .id, #memory ul { font-family: ui-monospace, monospace; }
+  .dot { display: inline-block; width: var(--m); height: var(--m); border-radius: 50%; background: var(--line); margin-right: var(--m); }
+  .dot.on { background: var(--ok); }
+  .status { color: var(--warn); }
+  .status.done { color: var(--ok); }
+  .error { color: var(--bad); }
+  .chip { background: var(--tint); color: var(--ink); border-radius: var(--radius); padding: 0 var(--s); margin-left: var(--s); text-decoration: none; }
+  .chip.to { background: var(--accent); }
+  pre { background: var(--ink); color: var(--tint); padding: var(--m); margin: var(--s) 0 0; border-radius: var(--radius); overflow-x: auto; white-space: pre-wrap; }
+  pre.raw, .hint code { background: var(--tint); color: var(--ink); }
+  .hint code { display: block; margin-top: var(--s); padding: var(--s) var(--m); border-radius: var(--radius); user-select: all; }
+
+  #top { display: flex; align-items: center; gap: var(--l); }
+  #top label { display: flex; align-items: center; gap: var(--m); }
+  #me { flex: 0 0 9rem; }
+  #layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: var(--xl); margin-top: var(--xl); }
+  .server { margin-bottom: var(--xl); }
+  .server header { display: flex; justify-content: space-between; align-items: baseline; }
+  .server li { padding: var(--s) 0; }
+  .server .thread-row { display: flex; padding: 0; }
+  .thread { flex: 1; min-width: 0; height: auto; display: flex; align-items: baseline; gap: var(--m); text-align: left; background: none; border: 0; padding: var(--s) var(--m); margin-left: calc(-1 * var(--m)); }
   .thread span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .thread:hover, .thread.active { background: var(--tint); }
   .thread.active span { font-weight: 600; }
   .thread-row:not(:hover) .link { visibility: hidden; }
-  .dot { display: inline-block; width: var(--m); height: var(--m); border-radius: 50%; background: var(--line); margin-right: var(--s); }
-  .dot.on { background: #2f9e62; }
-  .status { color: #8a5a00; }
-  .status.done { color: #2f9e62; }
-  .error { color: #ad1b1b; }
-  .link { background: none; border: 0; padding: 0 var(--s); color: var(--mute); }
-  .chip { background: var(--tint); color: var(--ink); border-radius: var(--s); padding: 0 var(--s); margin-left: var(--s); text-decoration: none; }
-  .chip.to { background: var(--accent); }
+  #add summary { list-style: none; }
+  #add summary::-webkit-details-marker { display: none; }
+
+  #meta { margin-bottom: var(--l); }
   #entries li { border-bottom: 1px solid var(--line); padding: var(--m) 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   #entries li.agent { border-left: 2px solid var(--accent); padding-left: var(--m); }
   #entries li.live { opacity: .75; }
   #entries li.flash { outline: 2px solid #f0b400; }
-  #entries b { font-weight: 600; }
-  pre { background: var(--ink); color: var(--tint); padding: var(--m); margin: var(--s) 0 0; overflow-x: auto; white-space: pre-wrap; }
-  pre.raw { background: var(--tint); color: var(--ink); }
+  #memory { margin-bottom: var(--l); }
   #memory ul { padding-left: var(--l); }
   #memory li { cursor: pointer; white-space: pre-wrap; }
-  #composer { flex-direction: column; border-top: 1px solid var(--line); padding-top: var(--m); }
-  .connect code { display: block; margin-top: var(--s); user-select: all; }
-  #composer .row { display: flex; gap: var(--m); flex-wrap: wrap; align-items: center; }
-  #composer .row input:not(#body) { flex: 0 1 9rem; }
-  #composer .row input#to { flex: 1 1 20rem; }
-  @media (max-width: 760px) { #layout { grid-template-columns: 1fr; } }
+  /* One grid, so the fields line up: who, where and how hard, then what and send. */
+  #composer { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, 1fr) minmax(9rem, auto); gap: var(--m); margin-top: var(--l); }
+  #body { grid-column: 1 / 4; }
+  #more, .more { display: contents; }
+  .more .link, #add-agent { justify-self: start; align-self: center; }
+  #add-agent { grid-column: 1 / -1; }
+  #composer .actions { display: flex; gap: var(--m); }
+  #composer .actions button { flex: 1; }
+  #composer .actions button:first-child { background: var(--ink); color: #fff; border-color: var(--ink); }
+  @media (max-width: 760px) { #layout, #composer { grid-template-columns: minmax(0, 1fr); } #body { grid-column: auto; } }
 </style>
-<div class="mute">You are <input id="me" size="10" title="Your name, as ?user= in the URL"> <label><input type="checkbox" id="structure"> Show structure</label></div>
+<div id="top"><label>You are <input autocomplete="off" data-1p-ignore id="me" title="Your name, as ?user= in the URL"></label><label><input type="checkbox" id="structure">Show structure</label></div>
 <div id="layout">
   <aside>
     <div id="servers"></div>
-    <details id="add"><summary class="mute">+ server</summary><form id="add-server"><input id="server-url" placeholder="http://localhost:3000" required><button>Add</button></form></details>
+    <details id="add"><summary>+ add server</summary><form id="add-server"><input autocomplete="off" data-1p-ignore id="server-url" placeholder="http://localhost:3000" required><button>Add</button></form></details>
   </aside>
   <main>
-    <h2 id="heading">Pick a thread, or start one</h2>
+    <h2 id="heading" hidden></h2>
     <div id="meta" class="mute"></div>
     <pre id="raw-thread" class="raw" hidden></pre>
     <details id="memory" hidden><summary></summary><ul></ul></details>
     <ul id="entries"></ul>
     <form id="composer" hidden>
-      <div class="row">
-        <small>To</small>
-        <input id="to" list="agents" title="model@runner, a runner for its default, nobody, or several split by commas">
-        <datalist id="agents"></datalist>
-        <input id="dir" placeholder="folder (.)">
-      </div>
-      <div class="row"><input id="body" required maxlength="10000"><button>Send</button><button id="child" value="child">Send in a child thread</button></div>
+      <select id="runner" aria-label="Runner"></select>
+      <select id="model" aria-label="Model"></select>
+      <select id="effort" aria-label="Thinking"></select>
+      <input autocomplete="off" data-1p-ignore id="dir" aria-label="Folder" placeholder="Folder (.)">
+      <div id="more"></div>
+      <button type="button" id="add-agent" class="link">+ agent</button>
+      <input autocomplete="off" data-1p-ignore id="body" aria-label="Message" required maxlength="10000">
+      <div class="actions"><button>Send</button><button id="child" value="child">Send in a child thread</button></div>
     </form>
   </main>
 </div>
@@ -166,7 +187,9 @@
       view = loaded;
       post(url, `/api/threads/${id}/read`, {}).catch(() => {});
       if (first) {
-        $('to').value = $('dir').value = '';
+        $('runner').value = $('model').value = $('effort').value = $('dir').value = '';
+        extra.length = 0;
+        $('more').replaceChildren();
         renderPicker();
       }
       if (first) opened.clear(), zoomed.clear();
@@ -197,29 +220,29 @@
       build('header', {}, [
         build('span', {}, [build('span', { className: `dot ${server.status === 'online' ? 'on' : ''}` }), build('b', { textContent: server.alias || host }),
           server.alias ? build('small', { textContent: ` ${host}` }) : '',
-          build('button', { className: 'link', textContent: 'alias…', onclick: () => {
+          ' ', build('button', { className: 'link', textContent: 'alias…', onclick: () => {
             const alias = prompt(`Alias for ${server.url} (empty to clear)`, server.alias);
             if (alias === null) return;
             server.alias = alias.trim();
             save();
             render();
           } })]),
-        build('button', { textContent: '×', title: 'Remove server', onclick: () => removeServer(server.url) }),
+        build('button', { className: 'link', textContent: '×', title: 'Remove server', onclick: () => removeServer(server.url) }),
       ]),
       server.status === 'online' ? '' : build('div', { className: 'error', textContent: server.status }),
-      info ? build('small', { textContent: `${info.file} · modules: ${info.modules.join(', ') || 'none'} · ${info.threads} threads · Pi ${info.work.scheduling}, ${info.work.tasks.length} live tasks, ${info.work.submissions.length} open submissions` }) : '',
+      info ? build('small', { textContent: `${info.file} · ${info.threads} threads` }) : '',
       raw(info),
       build('h3', { textContent: 'Runners' }),
       build('ul', {}, server.runners.length ? server.runners.map((runner) => runnerView(server, runner))
-        : [build('li', { className: 'mute connect' }, [`None yet. From agent-ide on ${/^https?:\/\/(localhost|127\.|\[::1\])/.test(server.url) ? 'this machine' : 'a machine that can reach this address'}:`, build('code', { textContent: `bun runner.js --server ${server.url} --dir ~/code` })])]),
-      build('h3', {}, ['Threads', build('button', { className: 'link', textContent: '+ new', onclick: () => select({ url: server.url, id: null }) })]),
-      build('ul', {}, nested(server.threads).map(({ thread, depth }) => build('li', { className: 'thread-row', style: `margin-left: ${depth}rem` }, [build('button', {
+        : [build('li', { className: 'hint' }, [`None yet. From agent-ide on ${/^https?:\/\/(localhost|127\.|\[::1\])/.test(server.url) ? 'this machine' : 'a machine that can reach this address'}:`, build('code', { textContent: `bun runner.js --server ${server.url} --dir ~/code` })])]),
+      build('h3', {}, ['Threads', build('button', { textContent: 'New thread', onclick: () => select({ url: server.url, id: null }) })]),
+      build('ul', {}, server.threads.length ? nested(server.threads).map(({ thread, depth }) => build('li', { className: 'thread-row', style: `margin-left: ${depth}rem` }, [build('button', {
         className: `thread ${selected?.url === server.url && selected.id === thread.id ? 'active' : ''}`,
         onclick: () => select({ url: server.url, id: thread.id }),
       }, [build('span', { textContent: (depth ? '↳ ' : '') + thread.title }), statusView(thread), build('small', { className: 'mute', textContent: when(thread.createdAt) })]), build('button', {
         className: 'link', textContent: '×', title: `Hide thread: ${thread.title}`, ariaLabel: `Hide thread: ${thread.title}`,
         onclick: () => attempt(api(server.url, `/api/threads/${thread.id}`, { method: 'DELETE' }).then(() => refresh(server.url))),
-      })]))),
+      })])) : [build('li', { className: 'hint', textContent: 'None yet.' })]),
     ]);
   }
 
@@ -255,14 +278,15 @@
     const server = current();
     const draft = selected && !selected.id;
     const fork = view?.conversation?.parent;
-    $('heading').textContent = draft ? 'New thread' : view?.title || 'Pick a thread, or start one';
+    $('heading').textContent = draft ? 'New thread' : view?.title || '';
+    $('heading').hidden = !$('heading').textContent;
     $('meta').replaceChildren(...(view ? [
       structure ? build('span', { className: 'id', textContent: `thread ${view.id} ` }) : '', view.status,
       view.parent ? build('span', {}, [' · child of ', threadLink(server, view.parent)]) : '',
       fork ? build('span', {}, [' · forked from ', threadLink(server, fork.conversationId), ` at message ${position(fork.at)}`]) : '',
       ['working', 'blocked'].includes(view.status) ? build('button', { className: 'link', textContent: 'stop', onclick: () => attempt(post(server.url, `/api/threads/${view.id}/stop`, {})) }) : '',
       build('ul', {}, view.agents.map(agentView)),
-    ] : draft ? ['Your first entry starts it.'] : []));
+    ] : []));
     const { entries, ...row } = view || {};
     $('raw-thread').hidden = !structure || !view;
     $('raw-thread').textContent = view ? JSON.stringify(row, null, 2) : '';
@@ -351,31 +375,55 @@
     setTimeout(() => node.classList.remove('flash'), 1200);
   }
 
-  // The To field names agents the way the server does, `model@runner`; a runner alone is its default model.
+  // Who answers: one row per agent, each a runner, one of its models and how hard it thinks.
+  // The first row alone can keep the thread's last pick or name nobody; more rows each add an agent.
+  const EFFORTS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+  const first = { runner: $('runner'), model: $('model'), effort: $('effort') };
+  const extra = [];
+  function fill(select, options) {
+    const value = select.value;
+    select.replaceChildren(...options.map(([v, label]) => build('option', { value: v, textContent: label })));
+    select.value = options.some(([v]) => v === value) ? value : options[0]?.[0] ?? '';
+  }
+  function fillRow(row, server, runners) {
+    fill(row.runner, runners);
+    const runner = server.runners.find((r) => r.name === row.runner.value);
+    fill(row.model, runner ? [['', `Default model${runner.model ? ` (${runner.model})` : ''}`], ...[...new Set([...runner.offers, ...runner.models, 'echo/echo'])].map((m) => [m, m])] : [['', '—']]);
+    fill(row.effort, runner ? [['', 'Default thinking'], ...EFFORTS.map((e) => [e, `Thinking: ${e}`])] : [['', '—']]);
+    row.model.disabled = row.effort.disabled = !runner;
+    return runner;
+  }
   function renderPicker() {
     const server = current();
     if (!server) return;
     const last = view?.entries.findLast((e) => e.data.to)?.data.to.map(agentName).join(', ');
-    const fallback = server.info?.modules.includes('director') ? 'the director decides' : last || 'nobody yet';
-    const known = [...view?.agents.map((a) => a.name) ?? [], 'nobody', ...server.runners.flatMap((r) =>
-      [r.name, ...[r.model, ...r.offers, ...r.models, 'echo/echo'].filter(Boolean).map((m) => `${m}@${r.name}`)])];
-    $('agents').replaceChildren(...[...new Set(known)].map((value) => build('option', { value })));
-    $('to').placeholder = `same as last time (${fallback})`;
-    $('body').placeholder = `A message for ${$('to').value.trim() || fallback}; $ command runs on its runner`;
+    const fallback = server.info?.modules.includes('director') ? 'Director decides' : last && `Same as last: ${last}`;
+    const runners = server.runners.map((r) => [r.name, r.online ? r.name : `${r.name} (offline)`]);
+    const named = fillRow(first, server, [...(fallback ? [['', fallback]] : []), ...runners, ['nobody', 'Nobody']]);
+    if (!named) extra.splice(0).forEach((row) => row.node.remove());
+    for (const row of extra) fillRow(row, server, runners);
+    $('dir').disabled = !named;
+    $('add-agent').hidden = !named;
+    $('body').placeholder = 'Message, or $ command to run on the runner';
     $('child').hidden = !selected?.id;
   }
-  $('to').oninput = renderPicker;
+  $('runner').onchange = renderPicker;
+  $('add-agent').onclick = () => {
+    const row = { runner: build('select', { ariaLabel: 'Runner', onchange: renderPicker }), model: build('select', { ariaLabel: 'Model' }), effort: build('select', { ariaLabel: 'Thinking' }) };
+    row.node = build('div', { className: 'more' }, [row.runner, row.model, row.effort, build('button', { type: 'button', className: 'link', textContent: 'remove', onclick: () => {
+      extra.splice(extra.indexOf(row), 1);
+      row.node.remove();
+    } })]);
+    extra.push(row);
+    $('more').append(row.node);
+    renderPicker();
+  };
 
-  // `model@runner`, `runner`, `nobody`, or several split by commas, into the API's `to`.
-  function parseTo(text, runners) {
-    if (!text.trim()) return undefined;
-    if (text.trim() === 'nobody') return null;
-    return text.split(',').map((s) => s.trim()).filter(Boolean).map((name) => {
-      const at = name.lastIndexOf('@');
-      const to = at < 0 ? { runner: name, model: '' } : { runner: name.slice(at + 1), model: name.slice(0, at) };
-      if (!runners.some((r) => r.name === to.runner)) throw new Error(`No runner ${to.runner}: name an agent as model@runner`);
-      return { ...to, dir: $('dir').value };
-    });
+  // The rows as the API's `to`: undefined keeps the last pick, null is nobody.
+  function pickedTo() {
+    if (!first.runner.value) return undefined;
+    if (first.runner.value === 'nobody') return null;
+    return [first, ...extra].map((row) => ({ runner: row.runner.value, model: row.model.value, effort: row.effort.value, dir: $('dir').value }));
   }
 
   // A child whose parent is hidden sits at the top.
@@ -393,8 +441,7 @@
     const body = $('body').value;
     const { url, id } = selected;
     const child = Boolean(id) && event.submitter?.value === 'child';
-    let to;
-    try { to = parseTo($('to').value, current().runners); } catch (error) { return alert(error.message); }
+    const to = pickedTo();
     const entry = to === undefined ? { body } : { body, to };
     $('body').value = '';
     attempt((async () => {
