@@ -100,9 +100,9 @@ const Shell = defineTask({
       await rt.commit(() => ({ status: 'running', checkpoint: { phase: 'interrupted' } }), ctx);
       const run = { threadId, author: input.author, to: input.to, command: input.command, stdout: '', stderr: '' };
       shells.set(id, run);
-      notify(threadId);
+      notify();
       const env = remoteEnv(runners, input.to.runner, folder((await known())[input.to.runner], input.to));
-      const result = await env.exec(input.command, { onOutput: (text, _context, info) => { run[info.stream] += text; notify(threadId); } }, ctx);
+      const result = await env.exec(input.command, { onOutput: (text, _context, info) => { run[info.stream] += text; notify(); } }, ctx);
       const output = result.ok ? { code: result.value.exitCode } : { error: result.error.message };
       await rt.commit(async (tx) => (await printed(tx, threadId, input, { ...run, ...output }), finished()), ctx);
       shells.delete(id);
@@ -123,7 +123,7 @@ function printed(tx, threadId, { author, command, to }, { code = null, stdout = 
 }
 
 const clients = new Set();
-const runners = createRunners({ onChange: () => notify(null) });
+const runners = createRunners({ onChange: notify });
 // What each running `$ cmd` has printed so far.
 const shells = new Map();
 const page = await readFile(new URL('./client.html', import.meta.url));
@@ -476,16 +476,16 @@ async function conversationView(id) {
   return view.value;
 }
 
-// As the README lists them; a module may serve GET /api/threads/:id/<its name>. Those marked `lists` change the lists.
+// As the README lists them; a module may serve GET /api/threads/:id/<its name>.
 const routes = [
   ['GET /api/server', async () => ({ port, file, modules: modules.map((m) => m.name), threads: (await threadIds()).length, runners: Object.keys(await known()).length, work: await harness.inspect(context) })],
   ['GET /api/runners', async () => Object.entries(await known()).map(([name, { models, offers, ...runner }]) => ({ name, ...runner, offers: offers ?? [], models: Object.keys(models ?? {}), online: runners.isOnline(name), calls: runners.working(name) }))],
   ['GET /api/threads', (req) => threadList(user(req))],
-  ['POST /api/threads', async (req) => createThread(user(req), await input(req)), 'lists'],
+  ['POST /api/threads', async (req) => createThread(user(req), await input(req))],
   ['GET /api/threads/:id', (req, id) => threadView(id, user(req))],
-  ['DELETE /api/threads/:id', (req, id) => hideThread(id), 'lists'],
+  ['DELETE /api/threads/:id', (req, id) => hideThread(id)],
   ['POST /api/threads/:id/entries', async (req, id) => postEntry(id, user(req), await input(req))],
-  ['POST /api/threads/:id/fork', async (req, id) => forkThread(user(req), id, await input(req)), 'lists'],
+  ['POST /api/threads/:id/fork', async (req, id) => forkThread(user(req), id, await input(req))],
   ['POST /api/threads/:id/read', (req, id) => markRead(id, user(req))],
   // Pi's abort of the thread reaches its tasks, and through each Anchor its agents.
   ['POST /api/threads/:id/stop', async (req, id) => {
@@ -494,7 +494,7 @@ const routes = [
   }],
   ['GET /api/conversations/:id', (req, id) => conversationView(id)],
   ...modules.filter((m) => m.serve).map((m) => [`GET /api/threads/:id/${m.name}`, (req, id, url) => m.serve(id, url.searchParams)]),
-].map(([key, handle, lists]) => [new RegExp(`^${key.replace(':id', '(\\d+)')}$`), handle, lists]);
+].map(([key, handle]) => [new RegExp(`^${key.replace(':id', '(\\d+)')}$`), handle]);
 
 function send(res, status, value) {
   res.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -512,12 +512,11 @@ async function handleRequest(req, res) {
     return res.end(page);
   }
   const key = `${req.method} ${url.pathname}`;
-  for (const [pattern, handle, lists] of routes) {
+  for (const [pattern, handle] of routes) {
     const match = pattern.exec(key);
     if (!match) continue;
     try {
       send(res, req.method === 'POST' ? 201 : 200, await handle(req, match[1] && Number(match[1]), url));
-      if (lists) notify(null);
     } catch (error) {
       send(res, error.status ?? 400, { error: error.message });
     }
@@ -526,28 +525,16 @@ async function handleRequest(req, res) {
   send(res, 404, { error: 'Not found' });
 }
 
-// Browsers hear which thread changed, at most every 100 ms; `null` means the lists.
-const dirty = new Set();
+// Browsers hear that something changed, at most every 100 ms, and refresh their lists.
 let flushing;
-function notify(threadId) {
-  dirty.add(threadId);
+function notify() {
   flushing ??= setTimeout(() => {
     flushing = undefined;
-    for (const id of dirty) {
-      const data = JSON.stringify({ threadId: id });
-      for (const socket of clients) socket.send(data);
-    }
-    dirty.clear();
+    for (const socket of clients) socket.send('{}');
     for (const m of modules) m.changed?.();
   }, 100);
 }
-
-harness.subscribeCommits(({ changes }) => {
-  for (const c of changes) {
-    const id = c.record?.conversationId ?? (c.type === 'conversation' ? c.record?.id : undefined) ?? c.conversationId ?? c.record?.address?.conversationId;
-    if (id) home(id).then((agent) => notify(agent?.thread ?? id), () => {});
-  }
-});
+harness.subscribeCommits(() => notify());
 
 // A browser watches one thread: Pi's agent events of its conversation and of each agent's, each stream snapshot first.
 // An agent's snapshots leave out its entries, which the thread has no use for.
@@ -594,7 +581,6 @@ async function upgrade(req, raw, head) {
     runners.disconnect(name);
     console.log(`runner ${name} offline`);
     commit(async (tx) => { (await tx.doc(Runners))[name].lastSeen = now(); }).catch(() => {});
-    notify(null);
   };
   socket.on('close', close);
   socket.on('error', close);
@@ -616,7 +602,6 @@ async function upgrade(req, raw, head) {
   socket.on('message', (data) => runners.receive(data.toString()));
   runners.connect(name, (text) => socket.send(text));
   console.log(`runner ${name} online: ${runner.dir}, default model ${runner.model || 'none'}`);
-  notify(null);
 }
 
 for (const host of process.env.HOST ? [process.env.HOST] : ['127.0.0.1', '::1']) {
