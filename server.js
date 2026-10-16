@@ -270,9 +270,11 @@ async function post(tx, threadId, data, { steer = false, empty = false } = {}) {
   return { entry: entry.id, to };
 }
 
-async function newAgent(tx, threadId, name, unseen) {
+// Owned by an Anchor in the thread; with `from`, Pi's fork of another agent's conversation at an entry.
+async function newAgent(tx, threadId, name, unseen, from) {
   const anchor = await tx.createTask(Anchor, null, { ...own, conversationId: threadId });
-  const { id } = await tx.createConversation({ ownership: { kind: 'task', taskId: anchor } });
+  const ownership = { ownership: { kind: 'task', taskId: anchor } };
+  const { id } = from ? await tx.forkConversation(from.conversation, from.entry, ownership) : await tx.createConversation(ownership);
   Object.assign(await tx.doc(AgentHome, id), { thread: threadId, name, unseen });
   return id;
 }
@@ -406,20 +408,16 @@ async function forkThread(author, id, { at, title }) {
     for (const t of data.to ?? []) asked[agentName(t)] = t;
   }
   const fresh = Object.entries(asked).filter(([name]) => !answers[name]);
-  const agents = await Promise.all(Object.entries(answers).map(async ([name, { conversation: c, entry }]) => {
-    const seen = new Set(await seenBy(c, entry));
-    return { name, c, entry, unseen: shown.filter((e) => !seen.has(e.id) && (e.data.author !== name || e.data.from)).map((e) => e.id) };
+  const agents = await Promise.all(Object.entries(answers).map(async ([name, answer]) => {
+    const seen = new Set(await seenBy(answer.conversation, answer.entry));
+    return { name, answer, unseen: shown.filter((e) => !seen.has(e.id) && (e.data.author !== name || e.data.from)).map((e) => e.id) };
   }));
   const named = title?.trim() || `${(await thread(id)).title} (fork)`;
   const fork = await (await conversation(id)).fork(Number(at), {
     ...ownerless,
     init: async (tx, forkId) => {
       const row = {};
-      for (const { name, c, entry, unseen } of agents) {
-        const anchor = await tx.createTask(Anchor, null, { ...own, conversationId: forkId });
-        row[name] = (await tx.forkConversation(c, entry, { ownership: { kind: 'task', taskId: anchor } })).id;
-        Object.assign(await tx.doc(AgentHome, row[name]), { thread: forkId, name, unseen });
-      }
+      for (const { name, answer, unseen } of agents) row[name] = await newAgent(tx, forkId, name, unseen, answer);
       for (const [name, t] of fresh) {
         row[name] = await newAgent(tx, forkId, name, shown.filter((e) => e.data.author !== name || e.data.from).map((e) => e.id));
         await setUp(tx, row[name], forkId, t);
