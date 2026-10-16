@@ -53,10 +53,9 @@
   #add summary::-webkit-details-marker { display: none; }
 
   #meta { margin-bottom: var(--l); }
-  #entries li { border-bottom: 1px solid var(--line); padding: var(--m) 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-  #entries li.agent { border-left: 2px solid var(--accent); padding-left: var(--m); }
-  #live li { border-bottom: 1px solid var(--line); padding: var(--m) 0; white-space: pre-wrap; overflow-wrap: anywhere; opacity: .75; }
-  #live li.agent { border-left: 2px solid var(--accent); padding-left: var(--m); }
+  #entries li, #live li { border-bottom: 1px solid var(--line); padding: var(--m) 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  #entries li.agent, #live li.agent { border-left: 2px solid var(--accent); padding-left: var(--m); }
+  #live li { opacity: .75; }
   #entries li.flash { outline: 2px solid #f0b400; }
   #memory { margin-bottom: var(--l); }
   #memory ul { padding-left: var(--l); }
@@ -92,7 +91,7 @@
       <input autocomplete="off" data-1p-ignore id="dir" aria-label="Folder" placeholder="Folder (.)">
       <div id="more"></div>
       <button type="button" id="add-agent" class="link">+ agent</button>
-      <input autocomplete="off" data-1p-ignore id="body" aria-label="Message" required maxlength="10000">
+      <input autocomplete="off" data-1p-ignore id="body" aria-label="Message" placeholder="Message, or $ command to run on the runner" required maxlength="10000">
       <div class="actions"><button>Send</button><button id="child" value="child">Send in a child thread</button></div>
     </form>
   </main>
@@ -473,7 +472,6 @@
     for (const row of extra) fillRow(row, server, runners);
     $('dir').disabled = !named;
     $('add-agent').hidden = !named;
-    $('body').placeholder = 'Message, or $ command to run on the runner';
     $('child').hidden = !selected?.id;
   }
   $('runner').onchange = renderPicker;
