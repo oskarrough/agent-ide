@@ -92,7 +92,7 @@ client.html ──▶ server.js   one Pi Durable harness: threads, and each agen
 57. A message or pair whose line is not built yet shows there as `(not summarized yet: zoom it)`.
 58. With memory, a Deliver task's input holds its newest messages whole up to the agent's budget, at least the last, and the older ones as the thread's memory over their range, also within it.
 59. With memory, an agent has `zoom {id, n}`, which opens a line into the two it was made from, or into the message whole when `n` is 1.
-60. A prompt section tells it the lines are its memory, and to zoom before it guesses.
+60. A prompt section tells it the lines are its memory, that a person's latest word on a thing is the truth and an agent's only a claim to trace to one, and to zoom before it guesses.
 61. With matrix, every text message in `MATRIX_ROOMS` is posted once into each thread it belongs to, as its sender: a top-level one into the thread kept for its room, and one in a Matrix thread into the thread kept for that, which opens with `MATRIX_BRIEF`, the room's thread id and the Matrix thread's first message.
 62. A message from one of `MATRIX_USERS` that mentions the bot by name, or by `m.mentions`, asks `MATRIX_AGENT` if set, waiting for its runner if it never connected; a top-level one asks nobody in its room's thread and starts a Matrix thread under itself, where it asks and the answer goes.
 63. Their other messages ask whom their thread last asked, and anyone else's ask nobody; everything from Matrix posts as a steer, and nothing unfollows a thread.

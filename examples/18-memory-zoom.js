@@ -1,5 +1,5 @@
 // With memory, an agent zooms a line into the two it was made from, and down to a message whole; a line that isn't in
-// the tree is an error. The prompt tells it to zoom before it guesses. With MEMORY=0, neither the tool nor the prompt.
+// the tree is an error. The prompt tells it to zoom before it guesses, and that an agent's word is only a claim. With MEMORY=0, neither the tool nor the prompt.
 import { rmSync } from 'node:fs';
 import { getCurrentTools } from '@earendil-works/pi-ai/utils/transcript';
 import { api, call, check, conversationOf, db, done, linesOf, say, scriptedRunner, server, sleep, text, until, view } from './lib.js';
@@ -41,7 +41,7 @@ const rows = text(one ?? {}).split('\n');
 check(rows.length === 2 && rows[0].startsWith('0+2|L') && rows[1].startsWith('2+2|L'), 'zoom(0, 4) gives the two lines it was made from', JSON.stringify(rows.map((r) => r.slice(0, 12))));
 check(text(two ?? {}) === `oskar: ${bodies[0]}`, 'zoom(0, 1) gives the message whole', text(two ?? {}).slice(0, 60));
 check(three?.isError && text(three).includes('1+2'), 'zoom(1, 2) is an error naming the line', JSON.stringify(three)?.slice(0, 200));
-check(on.offered.includes('zoom') && on.prompt.includes('Zoom is your way into the tree'), 'memory on: zoom and its prompt section', JSON.stringify(on.offered));
+check(on.offered.includes('zoom') && on.prompt.includes('Zoom is your way into the tree') && on.prompt.includes('is a claim'), 'memory on: zoom and its prompt section', JSON.stringify(on.offered));
 
 const off = await round({ MEMORY: '0' });
 check(!off.offered.includes('zoom') && !off.prompt.includes('Zoom is your way into the tree'), 'memory off: neither', JSON.stringify(off.offered));
