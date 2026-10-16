@@ -90,8 +90,8 @@ Send `x-user: name` to say who you are. The two POSTs that make something, a thr
 ```
 
 - `GET /api/server`: the server's options, its modules, and what Pi is running.
-- `GET|POST /api/threads` `{"title","parent"?,"requestId"?}`: each thread with its agents, status and running commands.
-- `GET /api/threads/:id`: the thread, its Pi conversation record, its `agents` as `{name, conversation, to, status}`, and every entry.
+- `GET|POST /api/threads` `{"title","parent"?,"requestId"?}`: each thread with its agents, status, running commands and Pi conversation record.
+- `GET /api/threads/:id`: the thread's row, its `agents` as `{name, conversation, to, status}`, and every entry.
 - `POST /api/threads/:id/entries` `{"body","to"?: agent | [agent] | null, "steer"?: true, "requestId"?}`, an agent being `{"runner","model"?,"effort"?,"dir"?}` and its model anything `pi --model` takes: a steer joins the answer being written.
 - `POST /api/threads/:id/fork` `{"at": entryId, "title"?}`: a new thread from that entry.
 - `POST /api/threads/:id/read`: marks it read for you, so its last answer stops counting as done.

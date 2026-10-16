@@ -106,7 +106,7 @@
   const aliases = JSON.parse(localStorage.getItem(ALIASES) || '{}');
   const servers = new Map();
   let selected = null; // { url, id }; a null id is a draft thread, made by its first entry
-  let view = null; // the thread's row, kept current by the list
+  let view = null; // the thread's row in its server's list, set as it renders
   let entries = null; // its messages, from the thread's events
   const live = new Map(); // each agent's live work, from its conversation's events
   let retry = null; // the request ids of the send that failed last
@@ -171,9 +171,7 @@
     const server = servers.get(url);
     try {
       [server.info, server.threads, server.runners] = await Promise.all([api(url, '/api/server'), api(url, '/api/threads'), api(url, '/api/runners')]);
-      const row = selected?.url === url && selected.id && server.threads.find((t) => t.id === selected.id);
-      if (row === undefined) select(null);
-      else if (row && view?.id === row.id) Object.assign(view, row);
+      if (selected?.url === url && selected.id && !server.threads.some((t) => t.id === selected.id)) select(null);
     } catch (error) { server.status = error.message; }
     render();
   }
@@ -191,17 +189,6 @@
     extra.splice(0).forEach((row) => row.node.remove());
     render();
     if (next) tell(next.url, next.id);
-    if (next?.id) attempt(loadThread());
-  }
-
-  async function loadThread() {
-    const { url, id } = selected;
-    const loaded = await api(url, `/api/threads/${id}`);
-    if (selected?.url !== url || selected.id !== id) return;
-    delete loaded.entries;
-    view = loaded;
-    renderThread();
-    await reread();
   }
 
   // What the thread's events change but don't carry: the read marker, the memory panel and opened conversations.
@@ -342,6 +329,7 @@
   function renderThread() {
     const server = current();
     const draft = selected && !selected.id;
+    view = (selected?.id && server?.threads.find((t) => t.id === selected.id)) || null;
     const fork = view?.conversation?.parent;
     $('heading').textContent = draft ? 'New thread' : view?.title || '';
     $('heading').hidden = !$('heading').textContent;

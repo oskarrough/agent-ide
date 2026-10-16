@@ -342,15 +342,14 @@ async function threadRow(id, reader, live) {
   const { reads, sent, ...row } = await thread(id);
   const agents = await agentsIn(row, live);
   const shell = live.some((t) => t.kind === Shell.definition.name && t.conversationId === id);
-  return { id, ...row, agents, shells: [...shells.values()].filter((run) => run.threadId === id), status: await status(id, reads, agents, shell, reader) };
+  return { id, ...row, agents, shells: [...shells.values()].filter((run) => run.threadId === id), status: await status(id, reads, agents, shell, reader),
+    conversation: await storage.conversation(id, context) };
 }
 const threadList = async (reader) => {
   const live = await liveTasks();
   return (await Promise.all((await threadIds()).map((id) => threadRow(id, reader, live)))).filter((row) => !row.hidden);
 };
-const threadView = async (id, reader) => ({
-  ...await threadRow(id, reader, await liveTasks()), conversation: await commit((tx) => tx.conversation(id)), entries: await messages(id),
-});
+const threadView = async (id, reader) => ({ ...await threadRow(id, reader, await liveTasks()), entries: await messages(id) });
 
 const home = (conversationId) => harness.snapshot(AgentHome, conversationId, context);
 
