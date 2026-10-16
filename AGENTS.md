@@ -20,6 +20,8 @@ The promises under "What it promises" in the README, and nothing else. Read the 
 3. Can it be a module, off by default? Then make it one.
 4. Is there a version that deletes more than it adds? Build that one.
 
+The rules can be wrong. When a clearly better design breaks one, don't bend the design to fit: stop and ask Oskar, saying which rule and why.
+
 ## Reviewing
 
 Read the README, the code and Pi Durable's spec as an adversary. Look for three things:
