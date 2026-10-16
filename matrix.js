@@ -1,4 +1,4 @@
-// Matrix rooms as agent-ide threads, by README rules 62 to 70.
+// Matrix rooms as agent-ide threads, by README rules 63 to 71.
 //
 // Setting it up:
 //   1. Give the bot its own account on any homeserver, and get a token for it:
@@ -27,7 +27,7 @@ const clean = (text) => text.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '').replace(/[\
 export function server(core) {
   const { MATRIX_HOMESERVER: home = 'https://matrix-client.matrix.org', MATRIX_TOKEN: token, MATRIX_AGENT: agent, MATRIX_BRIEF: brief } = process.env;
   const names = list('MATRIX_ROOMS');
-  const users = new Set(list('MATRIX_USERS'));
+  const users = new Set(list('MATRIX_USERS').map(core.speaker));
   if (!token || !names.length) throw new Error('MATRIX=1 needs MATRIX_TOKEN and MATRIX_ROOMS: see matrix.js');
 
   async function request(method, route, body, signal) {
@@ -86,8 +86,8 @@ export function server(core) {
     if (e.type !== 'm.room.message' || typeof e.content.body !== 'string' || relation?.rel_type === 'm.replace' || e.unsigned?.transaction_id) return null;
     const mentions = e.content['m.mentions']?.user_ids?.includes(me) || mentioned.test(e.content.body);
     return {
-      id: e.event_id, room, author: e.sender, body: clean(e.content.body),
-      root: relation?.rel_type === 'm.thread' ? relation.event_id : e.event_id, asks: Boolean(agent && mentions && users.has(e.sender)),
+      id: e.event_id, room, author: core.speaker(e.sender), body: clean(e.content.body),
+      root: relation?.rel_type === 'm.thread' ? relation.event_id : e.event_id, asks: Boolean(agent && mentions && users.has(core.speaker(e.sender))),
     };
   }
 

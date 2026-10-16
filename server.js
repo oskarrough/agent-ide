@@ -177,7 +177,9 @@ const agentTo = (name) => {
   const at = name.lastIndexOf('@');
   return { runner: name.slice(at + 1), model: at < 0 ? '' : name.slice(0, at) };
 };
-const user = (req) => req.headers['x-user'] || 'anon';
+// A person's name as one line of printable text, so no author can write a speaker line of their own.
+const speaker = (name) => [...String(name ?? '').normalize('NFKC').replace(/[\p{Cc}\p{Cf}]/gu, ' ').replace(/\s+/g, ' ').trim()].slice(0, 40).join('').trim() || 'anon';
+const user = (req) => speaker(req.headers['x-user']);
 
 function field(value, name) {
   if (typeof value !== 'string' || !value.trim()) throw new Error(`${name} is required`);
@@ -437,7 +439,7 @@ async function forkThread(author, id, { at, title }) {
   return { id: fork.id };
 }
 
-const core = { Thread, models, runners, known, address, agentName, agentTo, agentOf, conversation, thread, home, threadList, messages, lastAsked, field, startThread, post, said, seenBy, commit, collect };
+const core = { speaker, Thread, models, runners, known, address, agentName, agentTo, agentOf, conversation, thread, home, threadList, messages, lastAsked, field, startThread, post, said, seenBy, commit, collect };
 const modules = await load('server', { director: false, talk: true, status: true, memory: false, matrix: false }, core);
 for (const m of modules) if (m.extension) registry.install(m.extension);
 const hook = (name) => modules.find((m) => m[name])?.[name];
