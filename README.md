@@ -77,7 +77,7 @@ client.html ──▶ server.js   one Pi Durable harness: threads, and each agen
 42. [status.js](status.js) (on, `STATUS=0`) has runners report to their terminal with OSC 7501, a record for the runner and one per thread by its id.
 43. [director.js](director.js) (`DIRECTOR=1`) has a message ask the agents it @mentions.
 44. [memory.js](memory.js) (`MEMORY=1`, with `MEMORY_MODEL=model@runner`) gives each thread a memory.
-45. [matrix.js](matrix.js) (`MATRIX=1`, with `MATRIX_TOKEN` and `MATRIX_ROOMS`, and optionally `MATRIX_USERS`, `MATRIX_AGENT=model@runner`, `MATRIX_JOB` and `MATRIX_HOMESERVER`, matrix.org's by default) mirrors Matrix rooms into threads, where without `MATRIX_USERS` nothing from Matrix asks anyone; its top says how to set it up.
+45. [matrix.js](matrix.js) (`MATRIX=1`, with `MATRIX_TOKEN` and `MATRIX_ROOMS`, and optionally `MATRIX_USERS`, `MATRIX_AGENT=model@runner`, `MATRIX_BRIEF` and `MATRIX_HOMESERVER`, matrix.org's by default) mirrors Matrix rooms into threads, where without `MATRIX_USERS` nothing from Matrix asks anyone; its top says how to set it up.
 46. With talk, an agent's `post` is one commit, keyed by its tool call so a replay finds it.
 47. When an agent answers posts from another thread, the answer goes back to that thread instead of a report, as a message with `from` and `re`.
 48. That answer asks every agent who posted, and steers into their work if they're busy.
@@ -93,7 +93,7 @@ client.html ──▶ server.js   one Pi Durable harness: threads, and each agen
 58. With memory, a Deliver task's input holds its newest messages whole up to the agent's budget, at least the last, and the older ones as the thread's memory over their range, also within it.
 59. With memory, an agent has `zoom {id, n}`, which opens a line into the two it was made from, or into the message whole when `n` is 1.
 60. A prompt section tells it the lines are its memory, and to zoom before it guesses.
-61. With matrix, every text message in `MATRIX_ROOMS` is posted once into each thread it belongs to, as its sender: a top-level one into the thread kept for its room, and one in a Matrix thread into the thread kept for that, which opens with `MATRIX_JOB`, the room's thread id and the Matrix thread's first message.
+61. With matrix, every text message in `MATRIX_ROOMS` is posted once into each thread it belongs to, as its sender: a top-level one into the thread kept for its room, and one in a Matrix thread into the thread kept for that, which opens with `MATRIX_BRIEF`, the room's thread id and the Matrix thread's first message.
 62. A message from one of `MATRIX_USERS` that mentions the bot by name, or by `m.mentions`, asks `MATRIX_AGENT` if set, waiting for its runner if it never connected; a top-level one asks nobody in its room's thread and starts a Matrix thread under itself, where it asks and the answer goes.
 63. Their other messages ask whom their thread last asked, and anyone else's ask nobody; everything from Matrix posts as a steer, and nothing unfollows a thread.
 64. What the bridge itself sent and edits are skipped, and what comes in loses its terminal escapes and bidi overrides.

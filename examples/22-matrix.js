@@ -8,7 +8,7 @@ import { api, call, check, db, done, say, scriptedRunner, server, sleep, text, u
 
 const ROOM = '!room:fake';
 const BOT = '@bot:fake';
-const JOB = 'Answer what you heard.';
+const BRIEF = 'Answer what you heard.';
 const events = [];
 const sends = [];
 const sent = new Map();
@@ -77,7 +77,7 @@ const hs = Bun.serve({
   },
 });
 
-const env = { MATRIX: '1', MATRIX_HOMESERVER: `http://127.0.0.1:${hs.port}`, MATRIX_TOKEN: 'test-token', MATRIX_ROOMS: '#room:fake', MATRIX_USERS: `@oskar:fake,${BOT}`, MATRIX_AGENT: 'echo/echo@bot', MATRIX_JOB: JOB };
+const env = { MATRIX: '1', MATRIX_HOMESERVER: `http://127.0.0.1:${hs.port}`, MATRIX_TOKEN: 'test-token', MATRIX_ROOMS: '#room:fake', MATRIX_USERS: `@oskar:fake,${BOT}`, MATRIX_AGENT: 'echo/echo@bot', MATRIX_BRIEF: BRIEF };
 const all = async () => (await api('GET', '/api/threads')).json;
 const threads = async () => (await all()).filter((t) => t.title.startsWith('matrix #room:fake: ') && !t.title.endsWith('(fork)'));
 const titled = async (start) => (await threads()).find((t) => t.title.includes(start))?.id;
@@ -118,7 +118,7 @@ check(JSON.stringify(await bodies(room)) === JSON.stringify(['@ana:fake: the pla
   'every top-level message lands once in the room\'s thread, asking nobody, but not an edit, nor what was said before the bridge', JSON.stringify(await bodies(room)));
 check((await threads()).length === 2, 'only the two mentions by MATRIX_USERS open Matrix threads, not `@bottle`', JSON.stringify((await threads()).map((t) => t.title)));
 const opener = (await messages(a))[0];
-check(opener?.author === 'matrix' && opener.body.includes(JOB) && opener.body.includes(`thread ${room}`), 'a Matrix thread\'s thread opens with the job and the room\'s thread id', JSON.stringify(opener));
+check(opener?.author === 'matrix' && opener.body.includes(BRIEF) && opener.body.includes(`thread ${room}`), 'a Matrix thread\'s thread opens with the brief and the room\'s thread id', JSON.stringify(opener));
 const mention = (await messages(a))[1];
 check(mention?.author === '@oskar:fake' && mention.body === '@bot hello' && asked(mention), 'then the mention, its first message, as its sender, asking the agent', JSON.stringify(await bodies(a)));
 check(fromBot(hello).length === 1 && fromBot(null).length === 0, 'the answer goes into the Matrix thread under the mention, once, and nothing top-level', JSON.stringify(fromBot()));
