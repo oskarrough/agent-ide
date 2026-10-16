@@ -579,12 +579,12 @@ async function upgrade(req, raw, head) {
   sockets.set(name, socket);
   const q = (param) => url.searchParams.get(param) || '';
   const resolved = (await known())[name]?.models ?? {};
-  const runner = { alias: q('alias'), owner: q('owner'), host: q('host'), dir: q('dir') || '/', model: q('model'), offers: url.searchParams.getAll('offer'), models: resolved };
+  const runner = { alias: q('alias'), owner: q('owner'), host: q('host'), dir: q('dir') || '/', model: q('model'), modelError: q('modelError'), offers: url.searchParams.getAll('offer'), models: resolved };
   await commit(async (tx) => { (await tx.doc(Runners))[name] = runner; });
   if (!models.getProvider(`runner:${name}`)) models.setProvider(runnerProvider(runners, name, resolved));
   socket.on('message', (data) => runners.receive(data.toString()));
   runners.connect(name, (text) => socket.send(text));
-  console.log(`runner ${name} online: ${runner.dir}, default model ${runner.model || 'none'}`);
+  console.log(`runner ${name} online: ${runner.dir}, default model ${runner.model || `none (${runner.modelError || 'not set'})`}`);
 }
 
 for (const host of process.env.HOST ? [process.env.HOST] : ['127.0.0.1', '::1']) {
@@ -597,6 +597,6 @@ for (const host of process.env.HOST ? [process.env.HOST] : ['127.0.0.1', '::1'])
   });
   server.listen(port, host, () => {
     const addresses = host === '0.0.0.0' ? Object.values(os.networkInterfaces()).flat().filter((a) => a.family === 'IPv4').map((a) => a.address) : [host === '::1' ? '[::1]' : host];
-    for (const address of addresses) console.log(`http://${address}:${port} on ${file}, modules: ${modules.map((m) => m.name).join(', ') || 'none'}`);
+    for (const address of addresses) console.log(`http://${address}:${server.address().port} on ${file}, modules: ${modules.map((m) => m.name).join(', ') || 'none'}`);
   });
 }

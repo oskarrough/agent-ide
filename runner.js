@@ -30,7 +30,7 @@ function resolve(pattern) {
   if (!found.model) throw new Error(found.error ?? `${name} has no default model in pi; name one`);
   return { model: found.model, thinkingLevel: found.thinkingLevel ?? (pattern ? undefined : settings.getDefaultThinkingLevel()) };
 }
-const defaultModel = () => { try { const { model } = resolve(''); return `${model.provider}/${model.id}`; } catch { return ''; } };
+const defaultModel = () => { try { const { model } = resolve(''); return { model: `${model.provider}/${model.id}` }; } catch (error) { return { error: error.message }; } };
 
 // The models pi has enabled here, as `pi --models` expands them.
 async function offers() {
@@ -42,7 +42,9 @@ async function offers() {
 const modules = await load('runner', { status: true }, { name, server });
 
 async function connect() {
-  const query = new URLSearchParams({ runner: name, alias: args.alias, owner: args.owner, host: os.hostname(), dir, model: defaultModel() });
+  const { model, error } = defaultModel();
+  const query = new URLSearchParams({ runner: name, alias: args.alias, owner: args.owner, host: os.hostname(), dir, model: model ?? '', modelError: error ?? '' });
+  if (error) console.log(`pi's default model doesn't resolve: ${error}`);
   for (const ref of await offers().catch(() => [])) query.append('offer', ref);
   const socket = new WebSocket(`${server.replace(/^http/, 'ws')}/ws?${query}`);
   const runner = serveRunner({ name, dir, models, resolve, echo, send: (text) => socket.readyState === WebSocket.OPEN && socket.send(text),

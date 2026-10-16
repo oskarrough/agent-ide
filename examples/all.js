@@ -5,7 +5,7 @@ const files = readdirSync(import.meta.dirname).filter((f) => /^\d\d-.*\.js$/.tes
 const failed = [];
 for (const file of files) {
   console.log(`\n# ${file}`);
-  const p = Bun.spawn(['bun', `${import.meta.dirname}/${file}`], { stdout: 'inherit', stderr: 'inherit' });
+  const p = Bun.spawn([process.execPath, `${import.meta.dirname}/${file}`], { stdout: 'inherit', stderr: 'inherit' });
   if (await p.exited) failed.push(file);
 }
 console.log(failed.length ? `\n${failed.length} of ${files.length} failed: ${failed.join(', ')}` : `\nall ${files.length} ok`);

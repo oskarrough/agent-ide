@@ -1,7 +1,6 @@
 // What every example shares: a server and runners on a free port with a throwaway store. VERBOSE=1 shows their output.
 import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
-import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { createModels } from '@earendil-works/pi-ai/models';
@@ -11,13 +10,9 @@ import { messageText as text, serveRunner } from '../remote.js';
 export const repo = path.resolve(import.meta.dirname, '..');
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const free = (port) => new Promise((resolve) => {
-  const probe = net.createServer().once('error', () => resolve(false));
-  probe.listen(port, '127.0.0.1', () => probe.close(() => resolve(true)));
-});
-let port = 4001;
-while (!(await free(port))) port++;
-export const base = `http://127.0.0.1:${port}`;
+// The first server asks for port 0 and says which it got; later ones, restarts, keep it.
+export let base;
+let port = 0;
 
 const tmp = mkdtempSync(path.join(os.tmpdir(), 'agent-ide-example-'));
 export const db = path.join(tmp, 'store.sqlite');
@@ -35,7 +30,7 @@ process.on('exit', () => {
 process.on('SIGINT', () => process.exit(130));
 
 function start(file, args = [], env = {}) {
-  const p = spawn('bun', [file, ...args], { cwd: repo, env: { ...process.env, PORT: String(port), DB_PATH: db, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const p = spawn(process.execPath, [file, ...args], { cwd: repo, env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', DB_PATH: db, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
   p.stdout.on('data', (d) => process.env.VERBOSE && process.stdout.write(`[${file}] ${d}`));
   p.stderr.on('data', (d) => process.stdout.write(`[${file} err] ${d}`));
   procs.add(p);
@@ -45,6 +40,11 @@ function start(file, args = [], env = {}) {
 
 export async function server(env = {}) {
   const p = start('server.js', [], env);
+  if (!port) {
+    p.stdout.on('data', (d) => { port ||= Number(/http:\/\/127\.0\.0\.1:(\d+)/.exec(d)?.[1]); });
+    await until(async () => port);
+    base = `http://127.0.0.1:${port}`;
+  }
   await until(() => api('GET', '/api/server').then((r) => r.status === 200));
   return p;
 }

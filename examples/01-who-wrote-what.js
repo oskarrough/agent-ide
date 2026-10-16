@@ -54,4 +54,12 @@ await api('POST', `/api/threads/${id2}/entries`, { body: 'hi', to: { runner: 'de
 const v4 = await answered(id2);
 check(answers(v4 ?? { entries: [] })[0]?.data.author === 'echo/echo@desk', 'no model asks the runner\'s default', JSON.stringify(v4?.entries.at(-1)));
 
+// A default model pi can't resolve is said so, not offered.
+const odd = path.join(dir, '..', 'odd');
+mkdirSync(odd);
+writeFileSync(path.join(odd, 'settings.json'), JSON.stringify({ defaultProvider: 'nowhere', defaultModel: 'nowhere/x' }));
+await runner('odd', { env: { PI_CODING_AGENT_DIR: odd } });
+const lost = (await api('GET', '/api/runners')).json.find((r) => r.name === 'odd');
+check(!lost?.model && /nowhere/.test(lost?.modelError), 'a default model pi can\'t resolve is reported with why', JSON.stringify(lost));
+
 done();

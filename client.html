@@ -301,7 +301,7 @@
     const threads = server.threads.filter((t) => t.agents.some((a) => a.status !== 'idle' && a.to?.runner === runner.name));
     return build('li', {}, [
       build('span', { className: `dot ${runner.online ? 'on' : ''}` }), runner.name, ' ',
-      build('small', { textContent: `${runner.alias ? `${runner.alias} · ` : ''}${runner.owner ? `${runner.owner}'s · ` : ''}${runner.dir} · ${runner.model || 'no default model'}` }),
+      build('small', { textContent: `${runner.alias ? `${runner.alias} · ` : ''}${runner.owner ? `${runner.owner}'s · ` : ''}${runner.dir} · ${runner.model || `no default model${runner.modelError ? `: ${runner.modelError}` : ''}`}` }),
       ...threads.map((t) => build('div', {}, [build('small', { className: 'status' }, [`${t.status} in `, threadLink(server, t.id)])])),
       ...runner.calls.map((c) => build('div', {}, [build('small', { className: 'mute', textContent: `${c.op} ${c.what}` })])),
       raw(runner),
@@ -456,7 +456,7 @@
   function fillRow(row, server, runners) {
     fill(row.runner, runners);
     const runner = server.runners.find((r) => r.name === row.runner.value);
-    fill(row.model, runner ? [['', `Default model${runner.model ? ` (${runner.model})` : ''}`], ...[...new Set([...runner.offers, ...runner.models, 'echo/echo'])].map((m) => [m, m])] : [['', '—']]);
+    fill(row.model, runner ? [...(runner.model || !runner.modelError ? [['', `Default model${runner.model ? ` (${runner.model})` : ''}`]] : []), ...[...new Set([...runner.offers, ...runner.models, 'echo/echo'])].map((m) => [m, m])] : [['', '—']]);
     fill(row.effort, runner ? [['', 'Default thinking'], ...EFFORTS.map((e) => [e, `Thinking: ${e}`])] : [['', '—']]);
     row.model.disabled = row.effort.disabled = !runner;
     return runner;
