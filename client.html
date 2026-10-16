@@ -105,6 +105,7 @@
   const servers = new Map();
   let selected = null; // { url, id }; a null id is a draft thread, made by its first entry
   let view = null;
+  let retry = null; // the request ids of the send that failed last
   let structure = localStorage.getItem('agent-ide-structure') === '1';
 
   async function api(url, path, options = {}) {
@@ -443,11 +444,21 @@
     const child = Boolean(id) && event.submitter?.value === 'child';
     const to = pickedTo();
     const entry = to === undefined ? { body } : { body, to };
+    // A send that failed keeps its request ids, so sending the same text again lands once.
+    const key = JSON.stringify([url, id, child, entry]);
+    const ids = retry?.key === key ? retry.ids : { thread: crypto.randomUUID(), entry: crypto.randomUUID() };
     $('body').value = '';
     attempt((async () => {
-      const threadId = id && !child ? id : (await post(url, '/api/threads', { title: body.slice(0, 60), parent: id })).id;
-      await post(url, `/api/threads/${threadId}/entries`, entry);
-      if (threadId !== id) { await refresh(url); select({ url, id: threadId }); }
+      try {
+        const threadId = id && !child ? id : (await post(url, '/api/threads', { title: body.slice(0, 60), parent: id, requestId: ids.thread })).id;
+        await post(url, `/api/threads/${threadId}/entries`, { ...entry, requestId: ids.entry });
+        retry = null;
+        if (threadId !== id) { await refresh(url); select({ url, id: threadId }); }
+      } catch (error) {
+        retry = { key, ids };
+        $('body').value ||= body;
+        throw error;
+      }
     })());
   };
   $('add-server').onsubmit = (event) => {

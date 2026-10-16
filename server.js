@@ -4,7 +4,7 @@ import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context';
 import { createModels } from '@earendil-works/pi-ai/models';
-import { AgentDoc, configure, createRegistry, defineDoc, defineExtension, defineTask, Harness } from '@earendil-works/pi-durable';
+import { AgentDoc, configure, createRegistry, defineDoc, defineDocFamily, defineExtension, defineTask, Harness } from '@earendil-works/pi-durable';
 import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node';
 import { CodingTools } from '@earendil-works/pi-durable/tools';
 import { load } from './modules.js';
@@ -42,6 +42,8 @@ const Thread = defineDoc({
 });
 // On an agent's conversation: its thread, its name there, and the messages it hasn't seen.
 const AgentHome = defineDoc({ kind: 'agent-ide.agent', version: 1, scope: 'conversation', history: 'latest', fork: 'initial', initial: () => ({ thread: 0, name: '', unseen: [] }) });
+// By request id: the command a request made and what it answered, written in the commit that did the work.
+const Receipts = defineDocFamily({ kind: 'agent-ide.receipt', version: 1, scope: 'session', family: true, initial: () => ({ receipt: null }) });
 const now = () => new Date().toISOString();
 const ownerless = { ownership: { kind: 'ownerless' } };
 const own = { ownership: { kind: 'conversation' } };
@@ -351,6 +353,20 @@ const threadView = async (id, reader) => ({
 
 const home = (conversationId) => harness.snapshot(AgentHome, conversationId, context);
 
+// Does `work` once per request id, or every time without one; a retry gets the first result.
+const once = (requestId, command, work) => commit(async (tx) => {
+  if (requestId === undefined) return work(tx);
+  if (typeof requestId !== 'string' || !requestId || requestId.length > 128) throw new Error('requestId must be a string of 1 to 128 characters');
+  const doc = await tx.doc(Receipts, requestId, null);
+  if (doc.receipt) {
+    if (doc.receipt.command !== command) throw new Error(`requestId ${requestId} was used for ${doc.receipt.command}`);
+    return JSON.parse(JSON.stringify(doc.receipt.result));
+  }
+  const result = await work(tx);
+  doc.receipt = { command, result };
+  return result;
+});
+
 // No `to` asks whom the thread last asked, or with the director, whom the body @mentions.
 async function postEntry(id, author, input) {
   await conversation(id);
@@ -361,10 +377,9 @@ async function postEntry(id, author, input) {
   if (routed) to = await addresses(route({ body, to }, (await Promise.all(Object.values((await thread(id)).agents).map(agentOf))).filter(Boolean)));
   if (command) {
     if (!to.length) throw new Error('Pick a runner to run the command on');
-    await commit((tx) => tx.createTask(Shell, { author, command, to: to[0] }, { ...own, conversationId: id }));
-    return { command, to: to[0] };
+    return once(input.requestId, `post ${id}`, async (tx) => (await tx.createTask(Shell, { author, command, to: to[0] }, { ...own, conversationId: id }), { command, to: to[0] }));
   }
-  return commit((tx) => post(tx, id, { author, body, ...(to.length ? { to } : {}) }, { steer: input.steer === true }));
+  return once(input.requestId, `post ${id}`, (tx) => post(tx, id, { author, body, ...(to.length ? { to } : {}) }, { steer: input.steer === true }));
 }
 
 // Inside the caller's commit.
@@ -375,10 +390,10 @@ async function startThread(tx, author, title, parent) {
   return id;
 }
 
-async function createThread(author, { title, parent = null }) {
+async function createThread(author, { title, parent = null, requestId }) {
   if (parent !== null) await conversation(parent = Number(parent));
   title = field(title, 'title');
-  return { id: await commit((tx) => startThread(tx, author, title, parent)) };
+  return once(requestId, 'create thread', async (tx) => ({ id: await startThread(tx, author, title, parent) }));
 }
 
 // The thread messages an agent had seen by its entry `cut`, a fork's parent's included.
