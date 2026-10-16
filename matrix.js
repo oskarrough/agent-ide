@@ -14,9 +14,8 @@
 //   4. Write `@BOT …` in the room. Its thread shows up in the client, titled `matrix #room:matrix.org: …`.
 import { defineDoc, defineExtension, defineTask } from '@earendil-works/pi-durable';
 
-// `threads` keys a room by its id and a Matrix thread by its root event; `last` is each room's newest send; `done` the
-// events posted since `since`.
-const MatrixBridge = defineDoc({ kind: 'agent-ide.matrix.bridge', version: 1, scope: 'session', initial: () => ({ since: '', done: [], threads: {}, last: {}, salt: '' }) });
+// `threads` keys a room by its id and a Matrix thread by its root event; `last` is each room's newest send.
+const MatrixBridge = defineDoc({ kind: 'agent-ide.matrix.bridge', version: 1, scope: 'session', initial: () => ({ since: '', threads: {}, last: {}, salt: '' }) });
 const finished = (status = 'completed') => ({ status: 'terminal', outcome: { status, result: null } });
 const background = (threadId) => ({ ownership: { kind: 'conversation' }, conversationId: threadId, background: true });
 const list = (name) => (process.env[name] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -122,8 +121,7 @@ export function server(core) {
   async function relay(message) {
     const { id, room, root, author, body, asks } = message;
     const key = root !== id || asks ? root : room;
-    const { threads, done } = await state();
-    if (done.includes(id)) return;
+    const { threads } = await state();
     if (!threads[key]) {
       const first = root !== id && await firstOf(message);
       await core.commit(async (tx) => {
@@ -137,11 +135,8 @@ export function server(core) {
       });
     }
     const asked = asks ? [to ??= await address()] : users.has(author) ? await core.lastAsked((await state()).threads[key].thread) : [];
-    await core.commit(async (tx) => {
-      const bridge = await tx.doc(MatrixBridge);
-      await core.post(tx, bridge.threads[key].thread, { author, body, ...(asked.length ? { to: asked } : {}) }, { steer: true });
-      bridge.done.push(id);
-    });
+    await core.once(`matrix ${id}`, 'matrix', async (tx) =>
+      core.post(tx, (await tx.doc(MatrixBridge)).threads[key].thread, { author, body, ...(asked.length ? { to: asked } : {}) }, { steer: true }));
   }
 
   // A runner that never connected can't name its model yet, so this waits for it.
@@ -174,7 +169,7 @@ export function server(core) {
       const batch = await request('GET', `/v3/sync?timeout=30000&filter=${filter}${since ? `&since=${encodeURIComponent(since)}` : ''}`, undefined, AbortSignal.timeout(40000));
       const messages = since ? await readBatch(batch, since) : [];
       for (const message of messages) await relay(message);
-      if (!since || messages.length) await core.commit(async (tx) => Object.assign(await tx.doc(MatrixBridge), { since: batch.next_batch, done: [] }));
+      if (!since || messages.length) await core.commit(async (tx) => { (await tx.doc(MatrixBridge)).since = batch.next_batch; });
       return batch.next_batch;
     });
   }
