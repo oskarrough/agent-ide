@@ -370,11 +370,10 @@ async function postEntry(id, author, input) {
   const routed = route && !command;
   let to = 'to' in input ? await addresses(input.to) : routed ? [] : await lastAsked(id);
   if (routed) to = await addresses(route({ body, to }, (await Promise.all(Object.values((await thread(id)).agents).map(agentOf))).filter(Boolean)));
-  if (command) {
-    if (!to.length) throw new Error('Pick a runner to run the command on');
-    return once(input.requestId, `post ${id}`, async (tx) => (await tx.createTask(Shell, { author, command, to: to[0] }, { ...own, conversationId: id }), { command, to: to[0] }));
-  }
-  return once(input.requestId, `post ${id}`, (tx) => post(tx, id, { author, body, ...(to.length ? { to } : {}) }, { steer: input.steer === true }));
+  if (command && !to.length) throw new Error('Pick a runner to run the command on');
+  return once(input.requestId, `post ${id}`, async (tx) => command
+    ? (await tx.createTask(Shell, { author, command, to: to[0] }, { ...own, conversationId: id }), { command, to: to[0] })
+    : post(tx, id, { author, body, ...(to.length ? { to } : {}) }, { steer: input.steer === true }));
 }
 
 // Inside the caller's commit.
