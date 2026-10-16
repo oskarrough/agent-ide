@@ -23,7 +23,7 @@ export function server(core) {
       if (/^\$\s/.test(args.body)) throw new Error('Run commands with your own bash tool, not as a post');
       const title = args.thread === undefined ? core.field(args.title, 'title') : '';
       if (args.thread !== undefined) await core.conversation(args.thread);
-      const to = args.to === 'nobody' ? [] : args.to !== undefined ? [await named(args.to)]
+      const to = args.to === 'nobody' ? [] : args.to !== undefined ? [await core.address(core.agentTo(args.to))]
         : args.thread === undefined ? [await agentOf(api.conversationId)] : await core.lastAsked(args.thread);
       const id = await api.commit(async (tx) => {
         const sent = (await tx.doc(Thread, from)).sent;
@@ -71,12 +71,6 @@ export function server(core) {
     tag: false,
     render: () => 'A message from another thread says which. To wait for an answer from another thread, end your turn: the answer wakes you. Don\'t sleep or poll.',
   };
-
-  // `model@runner`, or a bare runner for its default model.
-  function named(name) {
-    const at = name.lastIndexOf('@');
-    return core.address({ runner: name.slice(at + 1), model: at < 0 ? '' : name.slice(0, at) });
-  }
 
   // An answer to posts goes back to each thread they came from, asking every agent there who posted.
   async function reply(posts, answeredIn, agent, body) {

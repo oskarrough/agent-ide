@@ -12,52 +12,49 @@ import { WebSocketServer } from 'ws';
 import { createRunners, messageText, remoteEnv, runnerProvider } from './remote.js';
 
 /**
- * @typedef {{ runner: string, model: string, effort?: string, dir?: string }} To  An agent: a model on a runner, as pi
- *   there resolved it, `provider/id`. Named `provider/id@runner`.
- * @typedef {object} Message  The data of every thread entry: something said there.
+ * @typedef {{ runner: string, model: string, effort?: string, dir?: string }} To  An agent, named `provider/id@runner`.
+ * @typedef {object} Message  The data of every thread entry.
  * @property {string} author  A human's name, or an agent's.
  * @property {string} body
  * @property {To[]} [to]  The agents it asks.
  * @property {number} [from]  The thread it came from.
- * @property {number[]} [re]  What it answers: messages here, or with `from`, posts in that thread.
- * @property {{ conversation: number, entry: number }} [answer]  On an agent's answer, the entry in its conversation it copies.
- * @property {true} [error]  On an agent's message when it gave no answer.
+ * @property {number[]} [re]  What it answers: messages here, or with `from`, posts there.
+ * @property {{ conversation: number, entry: number }} [answer]  The agent's entry it copies.
+ * @property {true} [error]  The agent gave no answer.
  * @property {{ runner: string, code: number | null, stdout: string, stderr: string, error?: string }} [shell]  What `$ cmd` printed.
- * @typedef {{ id: number, kind: 'agent-ide.message', data: Message }} Entry  A thread entry, as Pi keeps it and the API sends it.
- * @typedef {{ name: string, conversation: number, to: To | null, status: string }} Agent  An agent in a thread, in the API.
- * @typedef {{ agent: number, held: number[], steer: boolean }} Delivery  A Deliver task's input: the agent's
- *   conversation, and the thread messages its one input holds.
- * @typedef {{ author: string, command: string, to: To }} Command  A Shell task's input.
+ * @typedef {{ id: number, kind: 'agent-ide.message', data: Message }} Entry
+ * @typedef {{ name: string, conversation: number, to: To | null, status: string }} Agent
+ * @typedef {{ agent: number, held: number[], steer: boolean }} Delivery  The thread messages one input to an agent holds.
+ * @typedef {{ author: string, command: string, to: To }} Command
  */
 
 const port = Number(process.env.PORT || 3000);
 const file = process.env.DB_PATH || `agent-ide-${port}.sqlite`;
 const KIND = 'agent-ide.message';
-// An agent's input as placed in its conversation: `held` names the thread messages it gave the agent.
+// An agent's input in its conversation; `held` names the thread messages it gave.
 const DELIVERY = 'agent-ide.delivery';
-// Every runner that ever connected, and each model pi resolved on it, so they're known after a restart and offline.
+// Every runner that ever connected, with the models pi resolved on it.
 const Runners = defineDoc({ kind: 'agent-ide.runners', version: 1, scope: 'session', initial: () => ({}) });
-// `agents` maps each agent's name to its Pi conversation. `sent` maps an agent's `post` call to the thread it posted
-// to, so a replayed call finds it.
+// `agents`: name → Pi conversation. `sent`: a `post` call's task → the thread it posted to, for replays.
 const Thread = defineDoc({
   kind: 'agent-ide.thread', version: 1, scope: 'conversation', history: 'latest', fork: 'initial',
   initial: () => ({ title: '', parent: null, createdAt: '', createdBy: '', hidden: false, reads: {}, sent: {}, agents: {} }),
 });
-// On an agent's conversation: the thread it answers in, its name there, and the thread messages it hasn't seen.
+// On an agent's conversation: its thread, its name there, and the messages it hasn't seen.
 const AgentHome = defineDoc({ kind: 'agent-ide.agent', version: 1, scope: 'conversation', history: 'latest', fork: 'initial', initial: () => ({ thread: 0, name: '', unseen: [] }) });
+const now = () => new Date().toISOString();
 const ownerless = { ownership: { kind: 'ownerless' } };
 const own = { ownership: { kind: 'conversation' } };
 const finished = (status = 'completed') => ({ status: 'terminal', outcome: { status, result: null } });
 
-// Owns an agent's conversation for its thread, so stopping the thread reaches the agent's work. Done at once.
+// Owns an agent's conversation, so stopping the thread stops the agent.
 const Anchor = defineTask({
   name: 'agent-ide.anchor', version: 1, initial: () => ({ phase: 'own' }),
   phases: { own: (task, rt, ctx) => rt.commit(() => finished(), ctx) },
   abort: (task, rt, ctx) => rt.commit(() => finished('aborted'), ctx),
 });
 
-// Asks an agent once: it waits for the runner, submits one input under a request id made from its own id, so a rerun
-// finds it, placed as a delivery entry naming the messages it holds, and posts what came of it in the commit that ends it.
+// Asks an agent once, under its own id as request id so a rerun finds the input, and posts the outcome as it ends.
 const Deliver = defineTask({
   name: 'agent-ide.deliver', version: 1, initial: () => ({ phase: 'ask' }),
   phases: {
@@ -79,7 +76,7 @@ const Deliver = defineTask({
       }, ctx);
     },
   },
-  // Withdraws its input if still queued. An input never placed gave the agent nothing.
+  // Withdraws its input if still queued.
   async abort({ id, input: { agent, held } }, rt, ctx) {
     let record = await storage.submissionByRequest(agent, String(id), ctx);
     if (record?.status === 'queued') {
@@ -93,8 +90,7 @@ const Deliver = defineTask({
   },
 });
 
-// `$ cmd` in the runner's folder, as an effect sandwich: it commits that it began, runs, then posts what it printed.
-// Reopened after it began, it posts that a restart interrupted it.
+// `$ cmd` as an effect sandwich: commit, run, post. Reopened mid-run, it says a restart interrupted it.
 const Shell = defineTask({
   name: 'agent-ide.shell', version: 1, initial: () => ({ phase: 'run' }),
   phases: {
@@ -126,7 +122,7 @@ function printed(tx, threadId, { author, command, to }, { code = null, stdout = 
 
 const clients = new Set();
 const runners = createRunners({ onChange: () => notify(null) });
-// What each running `$ cmd` has printed so far, by its task.
+// What each running `$ cmd` has printed so far.
 const shells = new Map();
 const page = await readFile(new URL('./client.html', import.meta.url));
 
@@ -144,7 +140,7 @@ const harness = await Harness.open(storage, {
   },
   onReport: (error) => console.error('pi-durable:', error),
 }, context);
-// A storage error closes the harness for good; exit so whoever runs the server can reopen it.
+// A storage error closes the harness for good; exit, so a supervisor can restart.
 harness.closed.then((end) => end.reason === 'failed' && (console.error('pi-durable: storage failed, exiting:', end.error), process.exit(1)));
 
 const known = async () => (await harness.snapshot(Runners, context)) ?? {};
@@ -167,13 +163,18 @@ async function collect(scan) {
   return items;
 }
 
-// An agent's conversation has no Thread doc, so it never counts as a thread.
+// An agent's conversation has no Thread doc.
 const threadIds = async () => {
   const all = (await collect((cursor) => commit((tx) => tx.scanConversations({}, 500, cursor)))).map((c) => c.id).sort((a, b) => b - a);
   return (await Promise.all(all.map(async (id) => (await thread(id)) && id))).filter(Boolean);
 };
 
 const agentName = (to) => to && `${to.model}@${to.runner}`;
+// `model@runner`, or a bare runner for its default model.
+const agentTo = (name) => {
+  const at = name.lastIndexOf('@');
+  return { runner: name.slice(at + 1), model: at < 0 ? '' : name.slice(0, at) };
+};
 const user = (req) => req.headers['x-user'] || 'anon';
 
 function field(value, name) {
@@ -181,8 +182,7 @@ function field(value, name) {
   return value.trim();
 }
 
-// A model is whatever pi on the runner makes of it, as `pi --model` would. An offline runner can't resolve, so it
-// takes only a model it resolved before.
+// A model is what `pi --model` makes of it on the runner; offline, only one it resolved before.
 async function address(to) {
   const name = field(to?.runner, 'to.runner');
   const runner = (await known())[name];
@@ -213,7 +213,6 @@ function folder(runner, to) {
   return cwd;
 }
 
-// What an agent's conversation runs with is Pi's own agent setting.
 async function agentOf(id) {
   const agent = await harness.snapshot(AgentDoc, id, context);
   const name = agent?.model?.provider?.match(/^runner:(.+)$/)?.[1];
@@ -223,7 +222,7 @@ async function agentOf(id) {
   return { runner: name, model: agent.model.modelId, ...(agent.thinkingLevel ? { effort: agent.thinkingLevel } : {}), ...(dir ? { dir } : {}) };
 }
 
-// An agent is working while a delivery to it is live: queued, running, or copying its answer back.
+// Working while a delivery to it is live.
 /** @returns {Promise<Agent[]>} */
 async function agentsIn(row, live) {
   return Promise.all(Object.entries(row.agents).map(async ([name, conversation]) => {
@@ -248,10 +247,8 @@ function said({ data: m }) {
 }
 
 /**
- * Writes a message into a thread, inside the caller's commit: it's unseen by every agent there but its own, and each
- * agent in its `to` gets a Deliver task holding all it hasn't seen. An agent's conversation is made the first time it's
- * asked here, owned by an Anchor in the thread. A new agent makes it read the thread, and a commit can't read after
- * it writes, so post first, or into a new thread (`empty`).
+ * Writes a message, inside the caller's commit, and gives each agent it asks a Deliver task with all it hasn't seen.
+ * A new agent reads the thread, which a commit can't do after writing: post first, or pass `empty` for a new thread.
  * @param {Message} data
  */
 async function post(tx, threadId, data, { steer = false, empty = false } = {}) {
@@ -276,7 +273,6 @@ async function post(tx, threadId, data, { steer = false, empty = false } = {}) {
   return { entry: entry.id, to };
 }
 
-// An agent's conversation in a thread, owned by an Anchor there, with the thread messages it hasn't seen.
 async function newAgent(tx, threadId, name, unseen) {
   const anchor = await tx.createTask(Anchor, null, { ...own, conversationId: threadId });
   const { id } = await tx.createConversation({ ownership: { kind: 'task', taskId: anchor } });
@@ -291,15 +287,14 @@ const setUp = async (tx, agent, threadId, t) => configure(tx, agent, {
   instructions: `You are ${agentName(t)} in thread ${threadId}, with humans and other agents. Messages come to you as "name: text". Only your final answer goes back to the thread.`,
 });
 
-// An input withdrawn before it was placed gave its agent nothing: its messages are unseen again.
+// An input withdrawn before it was placed: its messages are unseen again.
 async function restore(tx, agent, held) {
   const home = await tx.doc(AgentHome, agent);
   home.unseen = [...new Set([...home.unseen, ...held])].sort((a, b) => a - b);
 }
 
-// What a settled input posts, and where: its answer, with `re`, the messages it held that asked the agent, or an error.
-// Inputs that share one answer post it once, by the first. Posts it answers get it back, else a child thread reports
-// it to its parent. A stopped input posts nothing at all. It reads the thread after settling, for steers that joined.
+// What a settled input posts, and where. Inputs sharing one answer post it once, by the first; posts get it back,
+// else a child thread tells its parent. Reads the thread after settling, for steers that joined.
 async function outcome(threadId, agent, settled, mine) {
   const done = settled.status === 'done';
   if (!done && settled.reason === 'aborted') return [];
@@ -320,7 +315,7 @@ async function outcome(threadId, agent, settled, mine) {
   return told;
 }
 
-// With no reader, as for a runner nobody owns, anyone's read counts. A stopped `$ cmd` is no result, like a stopped agent.
+// With no reader, anyone's read counts. A stopped `$ cmd` is no result.
 async function status(id, reads, agents, shell, reader) {
   if (shell || agents.some((a) => a.status === 'working')) return 'working';
   if (agents.some((a) => a.status === 'blocked')) return 'blocked';
@@ -356,7 +351,7 @@ const threadView = async (id, reader) => ({
 
 const home = (conversationId) => harness.snapshot(AgentHome, conversationId, context);
 
-// No `to` asks whom the thread last asked; with the director, whom the body @mentions. `$ cmd` starts a Shell task.
+// No `to` asks whom the thread last asked, or with the director, whom the body @mentions.
 async function postEntry(id, author, input) {
   await conversation(id);
   const body = field(input.body, 'body');
@@ -372,10 +367,10 @@ async function postEntry(id, author, input) {
   return commit((tx) => post(tx, id, { author, body, ...(to.length ? { to } : {}) }, { steer: input.steer === true }));
 }
 
-// A new thread, and with a parent, a hand-off message there. Inside the caller's commit.
+// Inside the caller's commit.
 async function startThread(tx, author, title, parent) {
   const { id } = await tx.createConversation(ownerless);
-  Object.assign(await tx.doc(Thread, id), { title, parent, createdAt: new Date().toISOString(), createdBy: author });
+  Object.assign(await tx.doc(Thread, id), { title, parent, createdAt: now(), createdBy: author });
   if (parent) await post(tx, parent, { author, body: `handed off → thread:${id}` });
   return id;
 }
@@ -386,17 +381,14 @@ async function createThread(author, { title, parent = null }) {
   return { id: await commit((tx) => startThread(tx, author, title, parent)) };
 }
 
-// The thread messages an agent's conversation had seen by its entry `cut`: those its deliveries up to there held, a
-// fork's included, since Pi's history of a fork holds its parent's up to the fork.
+// The thread messages an agent had seen by its entry `cut`, a fork's parent's included.
 async function seenBy(id, cut) {
   const handle = await harness.conversation(id, context);
   const entries = await collect((cursor) => handle.entries({ maxEntryId: cut, order: 'ascending' }, 500, cursor, context));
   return entries.filter((e) => e.kind === DELIVERY).flatMap((e) => e.data.held);
 }
 
-// One commit forks the thread at an entry and each agent's conversation at its last answer up to there; an agent's
-// unseen messages are those up to there it hadn't seen by that answer. An agent asked up to there with no answer yet
-// starts a new conversation, having seen nothing.
+// Forks the thread at `at`, and each agent at its last answer up to there. One asked but unanswered starts fresh.
 async function forkThread(author, id, { at, title }) {
   const shown = (await messages(id)).filter((e) => e.id <= Number(at));
   const answers = {};
@@ -424,27 +416,21 @@ async function forkThread(author, id, { at, title }) {
         row[name] = await newAgent(tx, forkId, name, shown.filter((e) => e.data.author !== name || e.data.from).map((e) => e.id));
         await setUp(tx, row[name], forkId, t);
       }
-      Object.assign(await tx.doc(Thread, forkId), { title: named, createdAt: new Date().toISOString(), createdBy: author, agents: row });
+      Object.assign(await tx.doc(Thread, forkId), { title: named, createdAt: now(), createdBy: author, agents: row });
     },
   }, context);
   return { id: fork.id };
 }
 
-const core = { Thread, models, runners, known, address, agentName, agentOf, conversation, thread, home, threadList, messages, lastAsked, field, startThread, post, said, seenBy, commit, collect };
+const core = { Thread, models, runners, known, address, agentName, agentTo, agentOf, conversation, thread, home, threadList, messages, lastAsked, field, startThread, post, said, seenBy, commit, collect };
 const modules = await load('server', { director: false, talk: true, status: true, memory: false, matrix: false }, core);
 for (const m of modules) if (m.extension) registry.install(m.extension);
+const hook = (name) => modules.find((m) => m[name])?.[name];
 const posted = modules.flatMap((m) => m.posted ?? []);
-const route = modules.find((m) => m.route)?.route;
-const reply = modules.find((m) => m.reply)?.reply;
-const catchUp = modules.find((m) => m.catchUp)?.catchUp;
+const [route, reply, catchUp] = ['route', 'reply', 'catchUp'].map(hook);
 
 for (const [name, runner] of Object.entries(await known())) models.setProvider(runnerProvider(runners, name, runner.models));
 harness.resume();
-
-function send(res, status, value) {
-  res.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-  res.end(JSON.stringify(value));
-}
 
 async function input(req) {
   let body = '';
@@ -455,73 +441,76 @@ async function input(req) {
   return JSON.parse(body || '{}');
 }
 
-const handleRequest = async (req, res) => {
+async function hideThread(id) {
+  await conversation(id);
+  await commit(async (tx) => { (await tx.doc(Thread, id)).hidden = true; });
+  return { id };
+}
+
+async function markRead(id, reader) {
+  const newest = (await (await conversation(id)).entries({}, 1, undefined, context)).items[0]?.id;
+  if (newest && (await thread(id)).reads[reader] !== newest) await commit(async (tx) => { (await tx.doc(Thread, id)).reads[reader] = newest; });
+  return { read: newest ?? null };
+}
+
+async function conversationView(id) {
+  const view = await (await harness.conversation(id, context))?.viewState(context);
+  if (!view) throw Object.assign(new Error('Conversation not found'), { status: 404 });
+  view.dispose();
+  return view.value;
+}
+
+// As the README lists them; a module may serve GET /api/threads/:id/<its name>. Those marked `lists` change the lists.
+const routes = [
+  ['GET /api/server', async () => ({ port, file, modules: modules.map((m) => m.name), threads: (await threadIds()).length, runners: Object.keys(await known()).length, work: await harness.inspect(context) })],
+  ['GET /api/runners', async () => Object.entries(await known()).map(([name, { models, offers, ...runner }]) => ({ name, ...runner, offers: offers ?? [], models: Object.keys(models ?? {}), online: runners.isOnline(name), calls: runners.working(name) }))],
+  ['GET /api/threads', (req) => threadList(user(req))],
+  ['POST /api/threads', async (req) => createThread(user(req), await input(req)), 'lists'],
+  ['GET /api/threads/:id', (req, id) => threadView(id, user(req))],
+  ['DELETE /api/threads/:id', (req, id) => hideThread(id), 'lists'],
+  ['POST /api/threads/:id/entries', async (req, id) => postEntry(id, user(req), await input(req))],
+  ['POST /api/threads/:id/fork', async (req, id) => forkThread(user(req), id, await input(req)), 'lists'],
+  ['POST /api/threads/:id/read', (req, id) => markRead(id, user(req))],
+  // Pi's abort of the thread reaches its tasks, and through each Anchor its agents.
+  ['POST /api/threads/:id/stop', async (req, id) => {
+    await (await conversation(id)).abort(context);
+    return { stopped: id };
+  }],
+  ['GET /api/conversations/:id', (req, id) => conversationView(id)],
+  ...modules.filter((m) => m.serve).map((m) => [`GET /api/threads/:id/${m.name}`, (req, id, url) => m.serve(id, url.searchParams)]),
+].map(([key, handle, lists]) => [new RegExp(`^${key.replace(':id', '(\\d+)')}$`), handle, lists]);
+
+function send(res, status, value) {
+  res.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+  res.end(JSON.stringify(value));
+}
+
+async function handleRequest(req, res) {
   const url = new URL(req.url, 'http://localhost');
-  const route = url.pathname;
   if (req.method === 'OPTIONS') {
     res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, x-user' });
     return res.end();
   }
-  if (req.method === 'GET' && route === '/') {
+  if (req.method === 'GET' && url.pathname === '/') {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     return res.end(page);
   }
-  try {
-    if (req.method === 'GET' && route === '/api/server') {
-      return send(res, 200, { port, file, modules: modules.map((m) => m.name), threads: (await threadIds()).length, runners: Object.keys(await known()).length, work: await harness.inspect(context) });
+  const key = `${req.method} ${url.pathname}`;
+  for (const [pattern, handle, lists] of routes) {
+    const match = pattern.exec(key);
+    if (!match) continue;
+    try {
+      send(res, req.method === 'POST' ? 201 : 200, await handle(req, match[1] && Number(match[1]), url));
+      if (lists) notify(null);
+    } catch (error) {
+      send(res, error.status ?? 400, { error: error.message });
     }
-    if (req.method === 'GET' && route === '/api/runners') {
-      return send(res, 200, Object.entries(await known()).map(([name, { models, offers, ...runner }]) => ({ name, ...runner, offers: offers ?? [], models: Object.keys(models ?? {}), online: runners.isOnline(name), calls: runners.working(name) })));
-    }
-    if (req.method === 'GET' && route === '/api/threads') return send(res, 200, await threadList(user(req)));
-    if (req.method === 'POST' && route === '/api/threads') {
-      send(res, 201, await createThread(user(req), await input(req)));
-      return notify(null);
-    }
-    const raw = /^\/api\/conversations\/(\d+)$/.exec(route);
-    if (raw && req.method === 'GET') {
-      const view = await (await harness.conversation(Number(raw[1]), context))?.viewState(context);
-      if (!view) return send(res, 404, { error: 'Conversation not found' });
-      send(res, 200, view.value);
-      return view.dispose();
-    }
-    const match = /^\/api\/threads\/(\d+)(?:\/(\w+))?$/.exec(route);
-    if (match) {
-      const id = Number(match[1]);
-      const action = match[2];
-      if (!action && req.method === 'GET') return send(res, 200, await threadView(id, user(req)));
-      if (!action && req.method === 'DELETE') {
-        await conversation(id);
-        await commit(async (tx) => { (await tx.doc(Thread, id)).hidden = true; });
-        send(res, 200, { id });
-        return notify(null);
-      }
-      // A module may serve GET /api/threads/:id/<its name>.
-      const served = modules.find((m) => m.name === action)?.serve;
-      if (served && req.method === 'GET') return send(res, 200, await served(id, url.searchParams));
-      if (action === 'entries' && req.method === 'POST') return send(res, 201, await postEntry(id, user(req), await input(req)));
-      if (action === 'fork' && req.method === 'POST') {
-        send(res, 201, await forkThread(user(req), id, await input(req)));
-        return notify(null);
-      }
-      if (action === 'read' && req.method === 'POST') {
-        const newest = (await (await conversation(id)).entries({}, 1, undefined, context)).items[0]?.id;
-        if (newest && (await thread(id)).reads[user(req)] !== newest) await commit(async (tx) => { (await tx.doc(Thread, id)).reads[user(req)] = newest; });
-        return send(res, 200, { read: newest ?? null });
-      }
-      // Pi's abort of the thread reaches its tasks, and through each Anchor its agents' runs and queued inputs.
-      if (action === 'stop' && req.method === 'POST') {
-        await (await conversation(id)).abort(context);
-        return send(res, 200, { stopped: id });
-      }
-    }
-    send(res, 404, { error: 'Not found' });
-  } catch (error) {
-    send(res, error.status ?? 400, { error: error.message });
+    return;
   }
-};
+  send(res, 404, { error: 'Not found' });
+}
 
-// Browsers hear which thread changed, at most every 100 ms; `null` means the lists did.
+// Browsers hear which thread changed, at most every 100 ms; `null` means the lists.
 const dirty = new Set();
 let flushing;
 function notify(threadId) {
@@ -557,13 +546,13 @@ async function upgrade(req, raw, head) {
     sockets.delete(name);
     runners.disconnect(name);
     console.log(`runner ${name} offline`);
-    commit(async (tx) => { (await tx.doc(Runners))[name].lastSeen = new Date().toISOString(); }).catch(() => {});
+    commit(async (tx) => { (await tx.doc(Runners))[name].lastSeen = now(); }).catch(() => {});
     notify(null);
   };
   socket.on('close', close);
   socket.on('error', close);
   if (!name) return clients.add(socket);
-  // A runner reconnecting under its name replaces its old socket; the old one's calls fail.
+  // A reconnecting runner replaces its old socket, whose calls fail.
   if (sockets.has(name)) {
     sockets.get(name).terminate();
     runners.disconnect(name);
@@ -571,7 +560,7 @@ async function upgrade(req, raw, head) {
   sockets.set(name, socket);
   const q = (param) => url.searchParams.get(param) || '';
   const resolved = (await known())[name]?.models ?? {};
-  const runner = { alias: q('alias'), owner: q('owner'), host: q('host'), dir: q('dir') || '/', model: q('model'), offers: url.searchParams.getAll('offer'), lastSeen: new Date().toISOString(), models: resolved };
+  const runner = { alias: q('alias'), owner: q('owner'), host: q('host'), dir: q('dir') || '/', model: q('model'), offers: url.searchParams.getAll('offer'), lastSeen: now(), models: resolved };
   await commit(async (tx) => { (await tx.doc(Runners))[name] = runner; });
   if (!models.getProvider(`runner:${name}`)) models.setProvider(runnerProvider(runners, name, resolved));
   socket.on('message', (data) => runners.receive(data.toString()));

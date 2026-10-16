@@ -1,6 +1,5 @@
-// A thread's memory: a line of at most 512 bytes per message, neighbouring lines merged in pairs up a binary tree, each
-// an `agent-ide.line` entry in the thread written once by a background Line task. Lines are keyed by (l, i): level, and
-// index at that level, so a line covers messages i·2^l to (i+1)·2^l - 1 by position in the thread.
+// A thread's memory: one line of at most 512 bytes per message, merged in pairs up a binary tree. Line (l, i) covers
+// messages i·2^l to (i+1)·2^l - 1 by position.
 import { retryAssistantCall, Type } from '@earendil-works/pi-ai';
 import { CompactionTask, defineExtension, defineTask, defineTool, hook } from '@earendil-works/pi-durable';
 import { messageText } from './remote.js';
@@ -11,9 +10,12 @@ const LINE = 512, PANEL = 64 * 1024, CONTEXT = 16 * 1024, RETRIES = 5;
 const bytes = (text) => Buffer.byteLength(text);
 const key = (l, i) => `${l}:${i}`;
 const RULER = '-'.repeat(LINE);
-// The text's first LINE bytes, never splitting a character.
+// The first LINE bytes, whole characters only.
 const cut = (text) => { let s = Buffer.from(text).subarray(0, LINE).toString(); while (bytes(s) > LINE) s = s.slice(0, -1); return s; };
 const NOT_YET = '(not summarized yet: zoom it)';
+const unwritten = (l, i) => ({ l, i, text: NOT_YET });
+const span = (x) => ({ id: x.i * 2 ** x.l, n: 2 ** x.l, text: x.text });
+const rendered = (x) => { const { id, n, text } = span(x); return `${id}+${n}|${text}`; };
 const finished = (status = 'completed') => ({ status: 'terminal', outcome: { status, result: null } });
 const background = (threadId) => ({ ownership: { kind: 'conversation' }, conversationId: threadId, background: true });
 
@@ -54,11 +56,9 @@ The memory is yours, and its latest word on a thing is the truth. Whenever you n
 export function server(core) {
   const name = process.env.MEMORY_MODEL;
   if (!name?.includes('@')) throw new Error('MEMORY=1 needs MEMORY_MODEL=model@runner');
-  const at = name.lastIndexOf('@');
-  const writer = { runner: name.slice(at + 1), model: name.slice(0, at) };
+  const writer = core.agentTo(name);
 
-  // A thread's lines: its own, then its source's whose range ends before the fork point, following Pi's parent link.
-  // Reads only, so a commit calls it before it writes; outside one, `core.commit((tx) => lines(tx, id))`.
+  // Its own lines, then those of the thread it forked from that end before the fork. Reads only: call before writing.
   async function lines(tx, threadId) {
     const map = new Map();
     const own = await core.collect((cursor) => tx.scanEntries({ conversationId: threadId, order: 'ascending' }, 500, cursor));
@@ -71,8 +71,7 @@ export function server(core) {
     return map;
   }
 
-  // A message or pair that fits is its own line. Otherwise the writer gets a few tries, and the shortest line wins, even
-  // over the limit: a cut would drop whatever came last, not what matters least.
+  // The shortest of a few tries wins, even over the limit: a cut would drop what came last, not what matters least.
   async function lineOf(source, task, signal) {
     if (bytes(source) <= LINE) return source;
     await core.runners.online(writer.runner, signal);
@@ -81,7 +80,6 @@ export function server(core) {
     const messages = [{ role: 'system', content: WRITER, timestamp: Date.now() }, { role: 'user', content: task, timestamp: Date.now() }];
     let best;
     for (let n = 0; n < RETRIES; n++) {
-      // A rate limit or a dropped connection waits and tries again, as Pi's generations do.
       const reply = await retryAssistantCall(() => core.models.completeSimple(model, { messages }, { signal }), RETRY, signal);
       if (reply.stopReason === 'error' || reply.stopReason === 'aborted') throw new Error(reply.errorMessage ?? reply.stopReason);
       const text = messageText(reply).trim();
@@ -95,7 +93,7 @@ export function server(core) {
   const Line = defineTask({
     name: 'agent-ide.line', version: 1, initial: () => ({ phase: 'write' }),
     phases: {
-      // input: { entry } for a message's own line, { l, i } for a merge.
+      // { entry } compresses a message, { l, i } merges.
       async write({ conversationId: threadId, input }, rt, ctx) {
         const all = await core.messages(threadId);
         const have = await core.commit((tx) => lines(tx, threadId));
@@ -137,13 +135,13 @@ export function server(core) {
     return (await core.messages(threadId)).findIndex((e) => e.id === newest);
   }
 
-  // An agent's budget: as many bytes as its model has tokens of context, about a quarter of its window.
+  // As many bytes as the model has tokens: about a quarter of its window.
   async function budget(agent) {
     const to = await core.agentOf(agent);
     return (to && core.models.getModel(`runner:${to.runner}`, to.model)?.contextWindow) || PANEL;
   }
 
-  // Pi's summary of an agent's conversation becomes its thread's memory up to the cut, and no model writes one.
+  // Compaction's summary is the thread's memory up to the cut; no model writes it.
   const beforeCompact = async ({ firstKept }, api) => {
     const home = await core.home(api.conversationId);
     if (!home?.thread) return undefined;
@@ -151,8 +149,7 @@ export function server(core) {
     return T > 0 ? { summary: render(memory(await core.commit((tx) => lines(tx, home.thread)), T, await budget(api.conversationId))) } : undefined;
   };
 
-  // An input holds its newest messages whole up to the agent's budget, at least the last, and the older ones as the
-  // memory over their range, within the budget too.
+  // The newest messages whole, at least the last, as far as the budget goes; the older ones as memory.
   async function catchUp(threadId, held, all, agent) {
     const most = await budget(agent);
     let k = held.length - 1, size = bytes(core.said(held[k]));
@@ -164,15 +161,14 @@ export function server(core) {
     return `${render(older)}\n\n${whole}`;
   }
 
-  // The two lines `id+n` was made from, or with n = 1 the message whole. A fork opens its source's lines too, as
-  // `lines` reads them through.
+  // The two lines `id+n` was made from, or with n = 1 the message whole.
   async function open(thread, id, n) {
     const all = await core.messages(thread);
     const l = Math.log2(n);
     if (!Number.isInteger(l) || !Number.isInteger(id) || id < 0 || id % n || id >= all.length) throw new Error(`No line ${id}+${n}; zoom one from your memory`);
     if (n === 1) return core.said(all[id]);
     const have = await core.commit((tx) => lines(tx, thread));
-    const half = (j) => have.get(key(l - 1, j)) ?? { l: l - 1, i: j, text: NOT_YET };
+    const half = (j) => have.get(key(l - 1, j)) ?? unwritten(l - 1, j);
     return [half(2 * (id / n)), half(2 * (id / n) + 1)].filter((x) => x.i * n / 2 < all.length);
   }
 
@@ -187,15 +183,14 @@ export function server(core) {
     },
   });
 
-  // GET /api/threads/:id/memory: the thread's memory now, or with `?zoom=id,n` what zoom gives.
-  const asLine = (x) => ({ id: x.i * 2 ** x.l, n: 2 ** x.l, text: x.text });
+  // `?zoom=id,n` answers as zoom does.
   async function serve(thread, query) {
     if (query.has('zoom')) {
       const opened = await open(thread, ...query.get('zoom').split(',').map(Number));
-      return typeof opened === 'string' ? { message: opened } : { lines: opened.map(asLine) };
+      return typeof opened === 'string' ? { message: opened } : { lines: opened.map(span) };
     }
     const T = (await core.messages(thread)).length;
-    return { lines: memory(await core.commit((tx) => lines(tx, thread)), T, PANEL).map(asLine) };
+    return { lines: memory(await core.commit((tx) => lines(tx, thread)), T, PANEL).map(span) };
   }
 
   return {
@@ -209,10 +204,10 @@ export function server(core) {
   };
 }
 
-// The memory: lines covering messages from..T-1, merging the most due pair first, (T - last) / 2^l, oldest first on ties,
-// where the parent line is built, else as not summarized yet, until it fits the budget as rendered.
+// Lines over messages from..T-1, merging the most due pair, (T - last) / 2^l, until they fit the budget. A written
+// parent beats an unwritten one; ties go to the oldest.
 export function memory(lines, T, budget, from = 0) {
-  const list = [...Array(T - from).keys()].map((k) => from + k).map((p) => lines.get(key(0, p)) ?? { l: 0, i: p, text: NOT_YET, size: bytes(NOT_YET) });
+  const list = Array.from({ length: T - from }, (_, k) => lines.get(key(0, from + k)) ?? unwritten(0, from + k));
   const cost = (x) => bytes(rendered(x)) + 1;
   let size = list.reduce((s, x) => s + cost(x), 0);
   while (size > budget) {
@@ -224,7 +219,7 @@ export function memory(lines, T, budget, from = 0) {
       if (last >= T) continue;
       const parent = lines.get(key(a.l + 1, a.i >> 1)), due = (T - last) / 2 ** a.l;
       if (parent && (!best || due > best.due)) best = { k, parent, due };
-      if (!parent && (!unbuilt || due > unbuilt.due)) unbuilt = { k, parent: { l: a.l + 1, i: a.i >> 1, text: NOT_YET }, due };
+      if (!parent && (!unbuilt || due > unbuilt.due)) unbuilt = { k, parent: unwritten(a.l + 1, a.i >> 1), due };
     }
     best ??= unbuilt;
     if (!best) break;
@@ -234,6 +229,4 @@ export function memory(lines, T, budget, from = 0) {
   return list;
 }
 
-// `<chat>`, then one `id+n|text` per line, `id` its first message's position and `n` how many it covers.
-const rendered = (x) => `${x.i * 2 ** x.l}+${2 ** x.l}|${x.text}`;
 export const render = (list) => `<chat>\n${list.map(rendered).join('\n')}\n</chat>`;

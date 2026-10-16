@@ -22,8 +22,7 @@ const models = await ModelRuntime.create();
 const echo = fauxProvider({ provider: 'echo', models: [{ id: 'echo' }] });
 models.registerNativeProvider(echo.provider);
 
-// What `pi --model PATTERN` runs, by pi's own resolver; no pattern is pi's default model and thinking level, from pi's
-// settings in the runner's folder, as `pi --provider P --model M`, which also takes an M that names its provider.
+// What `pi --model pattern` runs; no pattern is pi's default model and thinking level, from its settings in the folder.
 function resolve(pattern) {
   const settings = SettingsManager.create(dir);
   const asked = pattern ? { cliModel: pattern } : { cliProvider: settings.getDefaultProvider(), cliModel: settings.getDefaultModel() };
@@ -33,7 +32,7 @@ function resolve(pattern) {
 }
 const defaultModel = () => { try { const { model } = resolve(''); return `${model.provider}/${model.id}`; } catch { return ''; } };
 
-// The models pi has enabled here, as `pi --models` expands them; patterns that match nothing on this runner are skipped.
+// The models pi has enabled here, as `pi --models` expands them.
 async function offers() {
   const patterns = SettingsManager.create(dir).getEnabledModels() ?? [];
   const { scopedModels } = await resolveModelScopeWithDiagnostics(patterns, models);

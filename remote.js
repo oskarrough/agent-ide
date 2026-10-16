@@ -93,7 +93,7 @@ function failure(model, partial, message, aborted) {
   };
 }
 
-// Its models are those pi on the runner resolved, by `provider/id`; the runner resolves that again to stream.
+// The models pi on the runner resolved, by `provider/id`.
 export function runnerProvider(runners, name, resolved = {}) {
   const id = `runner:${name}`;
   const models = Object.entries(resolved).map(([ref, m]) => ({ ...m, provider: id, id: ref, name: `${m.name} on ${name}` }));
@@ -150,13 +150,13 @@ export function remoteEnv(runners, name, cwd) {
   return env;
 }
 
-// `resolve(pattern)` is what pi makes of `--model pattern`: { model, thinkingLevel? }. `echo` is the pi-ai faux provider
-// behind `echo/echo`. It answers from a queue, so each request queues one echo.
+// `resolve(pattern)` is pi's `--model pattern`: { model, thinkingLevel? }. `echo/echo` answers from a queue, one per request.
 export function serveRunner({ name, dir, models, resolve, echo, send, onTell }) {
   const running = new Map();
   const handles = new Map();
   let nextHandle = 0;
   const reply = (value) => send(encode(value));
+  const ops = { resolve: ({ model }) => resolved(model), stream: (message, context) => stream(message, context.abortSignal), env, handle };
 
   function inside(p, cwd = dir) {
     const full = path.resolve(cwd, p ?? '.');
@@ -217,11 +217,7 @@ export function serveRunner({ name, dir, models, resolve, echo, send, onTell }) 
       if (message.op === 'cancel') return running.get(message.id)?.cancel(new Error('cancelled by the server'));
       const { context, cancel } = withCancel(BACKGROUND_CONTEXT);
       running.set(message.id, { cancel });
-      const work = message.op === 'resolve' ? resolved(message.model)
-        : message.op === 'stream' ? stream(message, context.abortSignal)
-        : message.op === 'env' ? env(message, context)
-          : handle(message, context);
-      work.then((result) => reply({ id: message.id, result: result ?? null }), (error) => {
+      ops[message.op](message, context).then((result) => reply({ id: message.id, result: result ?? null }), (error) => {
         if (error instanceof FileError) reply({ id: message.id, result: { ok: false, error } });
         else reply({ id: message.id, error: error.message });
       }).finally(() => running.delete(message.id));
