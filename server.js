@@ -38,7 +38,7 @@ const Runners = defineDoc({ kind: 'agent-ide.runners', version: 1, scope: 'sessi
 // `agents`: name → Pi conversation. `sent`: a `post` call's task → the thread it posted to, for replays.
 const Thread = defineDoc({
   kind: 'agent-ide.thread', version: 1, scope: 'conversation', history: 'latest', fork: 'initial',
-  initial: () => ({ title: '', parent: null, createdAt: '', createdBy: '', hidden: false, reads: {}, sent: {}, agents: {} }),
+  initial: () => ({ title: '', parent: null, createdAt: '', hidden: false, reads: {}, sent: {}, agents: {} }),
 });
 // On an agent's conversation: its thread, its name there, and the messages it hasn't seen.
 const AgentHome = defineDoc({ kind: 'agent-ide.agent', version: 1, scope: 'conversation', history: 'latest', fork: 'initial', initial: () => ({ thread: 0, name: '', unseen: [] }) });
@@ -380,7 +380,7 @@ async function postEntry(id, author, input) {
 // Inside the caller's commit.
 async function startThread(tx, author, title, parent) {
   const { id } = await tx.createConversation(ownerless);
-  Object.assign(await tx.doc(Thread, id), { title, parent, createdAt: now(), createdBy: author });
+  Object.assign(await tx.doc(Thread, id), { title, parent, createdAt: now() });
   if (parent) await post(tx, parent, { author, body: `handed off → thread:${id}` });
   return id;
 }
@@ -399,7 +399,7 @@ async function seenBy(id, cut) {
 }
 
 // Forks the thread at `at`, and each agent at its last answer up to there. One asked but unanswered starts fresh.
-async function forkThread(author, id, { at, title }) {
+async function forkThread(id, { at, title }) {
   const shown = (await messages(id)).filter((e) => e.id <= Number(at));
   const answers = {};
   const asked = {};
@@ -422,7 +422,7 @@ async function forkThread(author, id, { at, title }) {
         row[name] = await newAgent(tx, forkId, name, shown.filter((e) => e.data.author !== name || e.data.from).map((e) => e.id));
         await setUp(tx, row[name], forkId, t);
       }
-      Object.assign(await tx.doc(Thread, forkId), { title: named, createdAt: now(), createdBy: author, agents: row });
+      Object.assign(await tx.doc(Thread, forkId), { title: named, createdAt: now(), agents: row });
     },
   }, context);
   return { id: fork.id };
@@ -475,7 +475,7 @@ const routes = [
   ['GET /api/threads/:id', (req, id) => threadView(id, user(req))],
   ['DELETE /api/threads/:id', (req, id) => hideThread(id)],
   ['POST /api/threads/:id/entries', async (req, id) => postEntry(id, user(req), await input(req))],
-  ['POST /api/threads/:id/fork', async (req, id) => forkThread(user(req), id, await input(req))],
+  ['POST /api/threads/:id/fork', async (req, id) => forkThread(id, await input(req))],
   ['POST /api/threads/:id/read', (req, id) => markRead(id, user(req))],
   // Pi's abort of the thread reaches its tasks, and through each Anchor its agents.
   ['POST /api/threads/:id/stop', async (req, id) => {
@@ -570,7 +570,6 @@ async function upgrade(req, raw, head) {
     sockets.delete(name);
     runners.disconnect(name);
     console.log(`runner ${name} offline`);
-    commit(async (tx) => { (await tx.doc(Runners))[name].lastSeen = now(); }).catch(() => {});
   };
   socket.on('close', close);
   socket.on('error', close);
@@ -586,7 +585,7 @@ async function upgrade(req, raw, head) {
   sockets.set(name, socket);
   const q = (param) => url.searchParams.get(param) || '';
   const resolved = (await known())[name]?.models ?? {};
-  const runner = { alias: q('alias'), owner: q('owner'), host: q('host'), dir: q('dir') || '/', model: q('model'), offers: url.searchParams.getAll('offer'), lastSeen: now(), models: resolved };
+  const runner = { alias: q('alias'), owner: q('owner'), host: q('host'), dir: q('dir') || '/', model: q('model'), offers: url.searchParams.getAll('offer'), models: resolved };
   await commit(async (tx) => { (await tx.doc(Runners))[name] = runner; });
   if (!models.getProvider(`runner:${name}`)) models.setProvider(runnerProvider(runners, name, resolved));
   socket.on('message', (data) => runners.receive(data.toString()));
