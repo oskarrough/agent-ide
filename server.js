@@ -35,10 +35,10 @@ const KIND = 'agent-ide.message';
 const DELIVERY = 'agent-ide.delivery';
 // Every runner that ever connected, with the models pi resolved on it.
 const Runners = defineDoc({ kind: 'agent-ide.runners', version: 1, scope: 'session', initial: () => ({}) });
-// `agents`: name → Pi conversation. `sent`: a `post` call's task → the thread it posted to, for replays.
+// `agents`: name → Pi conversation.
 const Thread = defineDoc({
   kind: 'agent-ide.thread', version: 1, scope: 'conversation', history: 'latest', fork: 'initial',
-  initial: () => ({ title: '', parent: null, createdAt: '', hidden: false, reads: {}, sent: {}, agents: {} }),
+  initial: () => ({ title: '', parent: null, createdAt: '', hidden: false, reads: {}, agents: {} }),
 });
 // On an agent's conversation: its thread, its name there, and the messages it hasn't seen.
 const AgentHome = defineDoc({ kind: 'agent-ide.agent', version: 1, scope: 'conversation', history: 'latest', fork: 'initial', initial: () => ({ thread: 0, name: '', unseen: [] }) });
@@ -334,7 +334,7 @@ async function status(id, reads, agents, shell, reader) {
 }
 
 async function threadRow(id, reader, live) {
-  const { reads, sent, ...row } = await thread(id);
+  const { reads, ...row } = await thread(id);
   const agents = await agentsIn(row, live);
   const shell = live.some((t) => t.kind === Shell.definition.name && t.conversationId === id);
   return { id, ...row, agents, shells: [...shells.values()].filter((run) => run.threadId === id), status: await status(id, reads, agents, shell, reader),
@@ -427,7 +427,7 @@ async function forkThread(id, { at, title }) {
   return { id: fork.id };
 }
 
-const core = { speaker, Thread, models, runners, known, address, agentName, agentTo, agentOf, conversation, thread, home, threadList, messages, lastAsked, field, startThread, post, said, seenBy, commit, collect };
+const core = { speaker, models, runners, known, address, agentName, agentTo, agentOf, conversation, thread, home, threadList, messages, lastAsked, field, startThread, post, said, seenBy, commit, collect, once };
 const modules = await load('server', { director: false, talk: true, status: true, memory: false, matrix: false }, core);
 for (const m of modules) if (m.extension) registry.install(m.extension);
 const hook = (name) => modules.find((m) => m[name])?.[name];

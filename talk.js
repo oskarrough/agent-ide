@@ -1,9 +1,9 @@
-// A `post` call does everything in one commit, keyed by its task id in the poster's thread, so a replay finds it.
+// A `post` call does everything in one commit, with a receipt keyed by its task id, so a replay finds it.
 import { Type } from '@earendil-works/pi-ai';
 import { defineExtension, defineTool } from '@earendil-works/pi-durable';
 
 export function server(core) {
-  const { Thread, agentName, agentOf, home } = core;
+  const { agentName, agentOf, home } = core;
 
   const post = defineTool({
     name: 'post',
@@ -16,7 +16,7 @@ export function server(core) {
       to: Type.Optional(Type.String({ description: 'Who should answer: model@runner, where model is anything `pi --model` takes, a runner for its default model, or "nobody". Leave out for whom the thread last asked; in a new thread, yourself.' })),
     }),
     replay: 'safe',
-    execute: async (args, api, context) => {
+    execute: async (args, api) => {
       const { thread: from, name } = await home(api.conversationId);
       if (args.thread === from) throw new Error('That is your own thread; just answer');
       // A replay would run it twice, and its output would never reach the agent.
@@ -25,13 +25,11 @@ export function server(core) {
       if (args.thread !== undefined) await core.conversation(args.thread);
       const to = args.to === 'nobody' ? [] : args.to !== undefined ? [await core.address(core.agentTo(args.to))]
         : args.thread === undefined ? [await agentOf(api.conversationId)] : await core.lastAsked(args.thread);
-      const id = await api.commit(async (tx) => {
-        const sent = (await tx.doc(Thread, from)).sent;
-        if (sent[api.taskId]) return sent[api.taskId];
+      const id = await core.once(`post ${api.taskId}`, 'post', async (tx) => {
         const id = args.thread ?? await core.startThread(tx, name, title, from);
         await core.post(tx, id, { author: name, body: args.body, ...(to.length ? { to } : {}), from }, { empty: args.thread === undefined });
-        return sent[api.taskId] = id;
-      }, context);
+        return id;
+      });
       const who = to.map(agentName).join(', ') || 'nobody';
       return { output: [{ type: 'text', text: `Posted to thread ${id} for ${who}.${to.length ? ' The answer will come to you here on its own; carry on, or end your turn.' : ''}` }], details: { thread: id } };
     },
