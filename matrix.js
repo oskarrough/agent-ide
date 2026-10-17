@@ -1,4 +1,6 @@
-// Matrix rooms as agent-ide threads, by README rules 65 to 73.
+// Matrix rooms as agent-ide threads. Every message posts once into its room's thread, or its Matrix thread's, even
+// across restarts. Only MATRIX_USERS ask anyone: a mention asks MATRIX_AGENT and starts a Matrix thread, anything else
+// asks whom the thread last asked. Answers go back to the room in order, and a fork sends nothing.
 //
 // Setting it up:
 //   1. Give the bot its own account on any homeserver, and get a token for it:

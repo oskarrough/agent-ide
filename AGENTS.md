@@ -8,19 +8,19 @@ The promises under "What it promises" in the README, and nothing else. Read the 
 
 ## What every change keeps
 
-- **Clean.** One name per concept. Every rule is a numbered sentence under "The machine" in the README. If a change can't be said in one sentence, it isn't understood yet.
+- **Clean.** One name per concept, named in the README. If a change can't be said in one sentence, it isn't understood yet.
 - **Stable.** A restart or a stop at any point loses nothing and duplicates nothing. An action that takes more than one commit is a Pi task or transaction, or it's a bug. Durability, ordering, retries and cancellation belong to Pi Durable, so find its primitive before writing your own.
 - **Fast.** No guardrail yet. Don't make it slower.
-- **Planned.** The README is the machine's plan, in rules; the code is how it runs. They change together.
+- **Planned.** The README holds the principles and primitives; the code is the truth. Keep them agreeing.
 
 ## Before adding anything
 
 1. Which promise does it serve? If none, the answer is no.
-2. Which README sentence changes? If no sentence can say it, it's not ready.
+2. Which primitive or principle does it touch? If none can say it, it's not ready.
 3. Can it be a module, off by default? Then make it one.
 4. Is there a version that deletes more than it adds? Build that one.
 
-The rules can be wrong. When a clearly better design breaks one, don't bend the design to fit: stop and ask Oskar, saying which rule and why.
+The principles can be wrong. When a clearly better design breaks one, don't bend the design to fit: stop and ask Oskar, saying which principle and why.
 
 ## Reviewing
 
