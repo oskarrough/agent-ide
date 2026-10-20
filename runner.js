@@ -12,6 +12,7 @@ const { values: args } = parseArgs({ options: {
   alias: { type: 'string', default: '' },
   dir: { type: 'string', default: process.cwd() },
   owner: { type: 'string', default: '' },
+  allow: { type: 'string', multiple: true, default: [] },
 } });
 const dir = path.resolve(args.dir);
 const server = new URL(args.server).origin;
@@ -46,10 +47,12 @@ async function connect() {
   const query = new URLSearchParams({ runner: name, alias: args.alias, owner: args.owner, host: os.hostname(), dir, model: model ?? '', modelError: error ?? '' });
   if (error) console.log(`pi's default model doesn't resolve: ${error}`);
   for (const ref of await offers().catch(() => [])) query.append('offer', ref);
+  for (const who of args.allow) query.append('allow', who);
   const socket = new WebSocket(`${server.replace(/^http/, 'ws')}/ws?${query}`);
   const runner = serveRunner({ name, dir, models, resolve, echo, send: (text) => socket.readyState === WebSocket.OPEN && socket.send(text),
     onTell: (message) => { for (const m of modules) m.told?.(message); } });
-  socket.onopen = () => console.log(`${name} online at ${server}, lending pi's logins and ${dir}`);
+  const from = args.owner ? `, to ${[args.owner, ...args.allow].join(', ')}` : '';
+  socket.onopen = () => console.log(`${name} online at ${server}, lending pi's logins and ${dir}${from}`);
   socket.onmessage = ({ data }) => runner.receive(data);
   socket.onclose = () => {
     runner.stopAll();

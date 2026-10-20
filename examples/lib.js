@@ -94,10 +94,10 @@ export function done() {
 }
 
 // A runner in this process, reconnecting like runner.js, serving `models` as `serveRunner` does.
-export async function localRunner(name, { models, resolve, echo, onTell, model = '' }) {
+export async function localRunner(name, { models, resolve, echo, onTell, model = '', query = [] }) {
   let socket, closing = false;
   const connect = () => {
-    socket = new WebSocket(`ws://127.0.0.1:${port}/ws?${new URLSearchParams({ runner: name, dir, model })}`);
+    socket = new WebSocket(`ws://127.0.0.1:${port}/ws?${new URLSearchParams([['runner', name], ['dir', dir], ['model', model], ...query])}`);
     const r = serveRunner({ name, dir, models, resolve, echo, send: (t) => socket.readyState === WebSocket.OPEN && socket.send(t), onTell });
     socket.onmessage = ({ data }) => r.receive(data);
     socket.onclose = () => { r.stopAll(); if (!closing) setTimeout(connect, 300); };
@@ -109,13 +109,13 @@ export async function localRunner(name, { models, resolve, echo, onTell, model =
 }
 
 // A local runner whose only model, echo/echo, answers route(request). `model` adds to it, like a small `contextWindow`
-// to force a compaction.
-export async function scriptedRunner(name, route, { onTell, model = {} } = {}) {
+// to force a compaction. `query` adds to what it says when it connects, like `[['owner', 'oskar']]`.
+export async function scriptedRunner(name, route, { onTell, model = {}, query } = {}) {
   const script = fauxProvider({ provider: 'echo', models: [{ id: 'echo', ...model }], tokensPerSecond: 200 });
   script.setResponses(Array.from({ length: 2000 }, () => route));
   const models = createModels();
   models.setProvider(script.provider);
-  return localRunner(name, { models, resolve: () => ({ model: script.getModel() }), echo: script, onTell, model: 'echo/echo' });
+  return localRunner(name, { models, resolve: () => ({ model: script.getModel() }), echo: script, onTell, model: 'echo/echo', query });
 }
 
 export const say = (t) => fauxAssistantMessage([fauxText(t)]);

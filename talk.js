@@ -25,6 +25,7 @@ export function server(core) {
       if (args.thread !== undefined) await core.conversation(args.thread);
       const to = args.to === 'nobody' ? [] : args.to !== undefined ? [await core.address(core.agentTo(args.to))]
         : args.thread === undefined ? [await agentOf(api.conversationId)] : await core.lastAsked(args.thread);
+      await core.reach(to, `@${core.agentTo(name).runner}`);
       const id = await core.once(`post ${api.taskId}`, 'post', async (tx) => {
         const id = args.thread ?? await core.startThread(tx, name, title, from);
         await core.post(tx, id, { author: name, body: args.body, ...(to.length ? { to } : {}), from }, { empty: args.thread === undefined });

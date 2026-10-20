@@ -204,6 +204,17 @@ async function address(to) {
 }
 const addresses = (to) => Promise.all((to === null ? [] : [to].flat()).map(address));
 
+// A runner with an owner takes work from its owner and the names it allows: people, or `@runner` for the agents there.
+// `by` is a person, or `@runner` for an agent. Offline, the runner's last word holds.
+async function reach(to, by) {
+  for (const { runner: name } of to) {
+    const { owner, allow = [] } = (await known())[name];
+    if (owner && by !== owner && by !== `@${name}` && !allow.includes(by)) {
+      throw Object.assign(new Error(`${name} takes work only from ${[owner, ...allow].join(', ')}`), { status: 403 });
+    }
+  }
+}
+
 function folder(runner, to) {
   const cwd = path.resolve(runner.dir, to.dir || '.');
   if (cwd !== runner.dir && !cwd.startsWith(runner.dir + path.sep)) throw new Error(`${to.dir} is outside ${to.runner}'s folder`);
@@ -371,6 +382,7 @@ async function postEntry(id, author, input) {
   let to = 'to' in input ? await addresses(input.to) : routed ? [] : await lastAsked(id);
   if (routed) to = await addresses(route({ body, to }, (await Promise.all(Object.values((await thread(id)).agents).map(agentOf))).filter(Boolean)));
   if (command && !to.length) throw new Error('Pick a runner to run the command on');
+  await reach(to, author);
   return once(input.requestId, `post ${id}`, async (tx) => command
     ? (await tx.createTask(Shell, { author, command, to: to[0] }, { ...own, conversationId: id }), { command, to: to[0] })
     : post(tx, id, { author, body, ...(to.length ? { to } : {}) }, { steer: input.steer === true }));
@@ -427,7 +439,7 @@ async function forkThread(id, { at, title }) {
   return { id: fork.id };
 }
 
-const core = { speaker, models, runners, known, address, agentName, agentTo, agentOf, conversation, thread, home, threadList, messages, lastAsked, field, startThread, post, said, seenBy, commit, collect, once };
+const core = { speaker, models, runners, known, address, reach, agentName, agentTo, agentOf, conversation, thread, home, threadList, messages, lastAsked, field, startThread, post, said, seenBy, commit, collect, once };
 const modules = await load('server', { director: false, talk: true, status: true, memory: false, matrix: false }, core);
 for (const m of modules) if (m.extension) registry.install(m.extension);
 const hook = (name) => modules.find((m) => m[name])?.[name];
@@ -579,12 +591,12 @@ async function upgrade(req, raw, head) {
   sockets.set(name, socket);
   const q = (param) => url.searchParams.get(param) || '';
   const resolved = (await known())[name]?.models ?? {};
-  const runner = { alias: q('alias'), owner: q('owner'), host: q('host'), dir: q('dir') || '/', model: q('model'), modelError: q('modelError'), offers: url.searchParams.getAll('offer'), models: resolved };
+  const runner = { alias: q('alias'), owner: q('owner') && speaker(q('owner')), allow: url.searchParams.getAll('allow').map(speaker), host: q('host'), dir: q('dir') || '/', model: q('model'), modelError: q('modelError'), offers: url.searchParams.getAll('offer'), models: resolved };
   await commit(async (tx) => { (await tx.doc(Runners))[name] = runner; });
   if (!models.getProvider(`runner:${name}`)) models.setProvider(runnerProvider(runners, name, resolved));
   socket.on('message', (data) => runners.receive(data.toString()));
   runners.connect(name, (text) => socket.send(text));
-  console.log(`runner ${name} online: ${runner.dir}, default model ${runner.model || `none (${runner.modelError || 'not set'})`}`);
+  console.log(`runner ${name} online: ${runner.dir}, default model ${runner.model || `none (${runner.modelError || 'not set'})`}${runner.owner ? `, work from ${[runner.owner, ...runner.allow].join(', ')}` : ''}`);
 }
 
 for (const host of process.env.HOST ? [process.env.HOST] : ['127.0.0.1', '::1']) {

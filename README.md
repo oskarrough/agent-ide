@@ -58,6 +58,7 @@ And a few principles:
 - A fork forks the thread and each agent's conversation at the same point, in one commit.
 - Threads talk like email. A child reports its answers to its parent. When an agent answers another thread's post, the answer goes back to that thread, and a reply to that answer ends the exchange.
 - A name is one line of plain text, so nobody can forge a speaker in an agent's input.
+- A runner with an `--owner` takes work only from its owner and the names it `--allow`s: people, or `@runner` for the agents there. An agent always reaches its own runner. Allowing is transitive: allow `@desktop`, and whoever desktop takes can reach you through its agents. A refusal writes nothing.
 - The client watches Pi's own event streams, so replies and tool calls show live. A reconnect starts from fresh snapshots.
 - Anything optional is a module: one file, switched by an env var of the same name. [talk.js](talk.js) gives agents `post` and `threads` tools. [status.js](status.js) has runners report status to their terminal. [director.js](director.js) asks the agents a message @mentions. [memory.js](memory.js) gives each thread a memory of short lines that agents read within their context and zoom back down to the words. [matrix.js](matrix.js) mirrors Matrix rooms into threads, and its top says how to set it up.
 
@@ -75,10 +76,10 @@ MATRIX=1 MATRIX_TOKEN=… MATRIX_ROOMS=… bun server.js   # Matrix rooms as thr
 bun scripts/replay-pi.js ~/.pi/agent/sessions/FOLDER   # pi sessions, or one .jsonl, as one long thread
 DB_PATH=other.sqlite bun server.js     # another store; only one server may use a file
 
-bun runner.js --server http://127.0.0.1:3000 --name laptop [--alias "Oskar's laptop"] --dir ~/code [--owner oskar]
+bun runner.js --server http://127.0.0.1:3000 --name laptop [--alias "Oskar's laptop"] --dir ~/code [--owner oskar [--allow ana --allow @desktop]]
 ```
 
-The client is served at `/`, or by `bun client.html` with live reload. It can hold several servers. `?user=ana` posts as someone else. There is no authentication: anyone who can reach the server can claim any name, so keep it on a trusted network.
+The client is served at `/`, or by `bun client.html` with live reload. It can hold several servers. `?user=ana` posts as someone else. There is no authentication: anyone who can reach the server can claim any name, so keep it on a trusted network. A runner's owner keeps out agents on other runners, which can't pick their name, but not a person who claims to be the owner.
 
 ## API
 
@@ -92,13 +93,13 @@ Send `x-user: name` to say who you are. The two POSTs that make something, a thr
 - `GET /api/server`: the server's options, its modules, and what Pi is running.
 - `GET|POST /api/threads` `{"title","parent"?,"requestId"?}`: each thread with its agents, status, running commands and Pi conversation record.
 - `GET /api/threads/:id`: the thread's row, its `agents` as `{name, conversation, to, status}`, and every entry.
-- `POST /api/threads/:id/entries` `{"body","to"?: agent | [agent] | null, "steer"?: true, "requestId"?}`, an agent being `{"runner","model"?,"effort"?,"dir"?}` and its model anything `pi --model` takes: a steer joins the answer being written.
+- `POST /api/threads/:id/entries` `{"body","to"?: agent | [agent] | null, "steer"?: true, "requestId"?}`, an agent being `{"runner","model"?,"effort"?,"dir"?}` and its model anything `pi --model` takes: a steer joins the answer being written. A runner that doesn't take work from you answers 403.
 - `POST /api/threads/:id/fork` `{"at": entryId, "title"?}`: a new thread from that entry.
 - `POST /api/threads/:id/read`: marks it read for you, so its last answer stops counting as done.
 - `POST /api/threads/:id/stop`: stops its agents, deliveries and commands, and withdraws their queued inputs.
 - `DELETE /api/threads/:id`: hides it; Pi Durable keeps everything.
 - `GET /api/threads/:id/memory?zoom=id,n`: with memory, the thread's memory within 64 KB as `{lines: [{id, n, text}]}`, or with `zoom` the two lines that line was made from, or `{message}` whole when `n` is 1; the client shows it as a panel.
 - `GET /api/conversations/:id`: any Pi conversation's view as Pi gives it, such as an agent's: its entries and docs.
-- `GET /api/runners`: each runner, its default model or `modelError` when pi's default doesn't resolve, the models it `offers` from pi's enabled models, the models it has resolved, and the calls it's answering.
+- `GET /api/runners`: each runner, its `owner` and whom it `allow`s, its default model or `modelError` when pi's default doesn't resolve, the models it `offers` from pi's enabled models, the models it has resolved, and the calls it's answering.
 - Agents' tools, with talk: `post {"thread"?, "title"?, "body", "to"?}`, where no thread starts a child and `to` is `model@runner`, a runner, or `nobody`; and `threads {"thread"?, "last"?, "query"?}`; with memory, `zoom {"id","n"}`.
 - `/ws`: pushes `{}` whenever something changes. Send `{"watch": threadId}` (or `null`) to watch one: `{thread, events}` for its conversation and `{thread, agent, events}` for each agent's, Pi's `watchEvents` stream, snapshot first. Runners connect here too and speak the protocol in [remote.js](remote.js).
