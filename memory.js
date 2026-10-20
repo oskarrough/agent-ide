@@ -8,7 +8,7 @@ const KIND = 'agent-ide.line';
 const RETRY = { enabled: true, maxRetries: 10, baseDelayMs: 2000 };
 const LINE = 512, PANEL = 64 * 1024, CONTEXT = 16 * 1024, RETRIES = 5;
 // A zoomed page fits under Pi's cap on a tool's output, 2000 lines or 50 KB: 16K UTF-16 units are at most 48 KB.
-const PAGE = 16 * 1024, PAGE_LINES = 1000;
+const PAGE = 16 * 1024, PAGE_LINES = /^(?:[^\n]*\n){1000}/;
 const bytes = (text) => Buffer.byteLength(text);
 const key = (l, i) => `${l}:${i}`;
 const RULER = '-'.repeat(LINE);
@@ -231,18 +231,13 @@ export function memory(lines, T, budget, from = 0) {
   return list;
 }
 
-// Message `id` from character `at`, up to PAGE characters or PAGE_LINES lines, back to the page's last newline if it
-// has one, and where to go on.
+// Message `id` from character `at`, up to PAGE characters or PAGE_LINES lines, and where to go on.
 function page(text, id, at) {
   if (!Number.isInteger(at) || at < 0 || (at && at >= text.length)) throw new Error(`Message ${id} has ${text.length} characters; no page at ${at}`);
-  let end = Math.min(text.length, at + PAGE);
-  for (let n = 1, k = text.indexOf('\n', at); k >= 0 && k < end; n++, k = text.indexOf('\n', k + 1)) if (n === PAGE_LINES) end = k + 1;
-  if (end < text.length) {
-    const nl = text.lastIndexOf('\n', end - 1);
-    end = nl > at ? nl + 1 : end - ((text.charCodeAt(end) & 0xfc00) === 0xdc00 ? 1 : 0);
-  }
-  const more = end < text.length ? `\n\n[characters ${at} to ${end} of ${text.length}: zoom(${id}, 1, ${end}) goes on]` : '';
-  return text.slice(at, end) + more;
+  const head = text.slice(at, at + PAGE);
+  let end = at + (head.match(PAGE_LINES)?.[0] ?? head).length;
+  if ((text.charCodeAt(end) & 0xfc00) === 0xdc00) end--;
+  return end < text.length ? `${text.slice(at, end)}\n\n[characters ${at} to ${end} of ${text.length}: zoom(${id}, 1, ${end}) goes on]` : text.slice(at);
 }
 
 export const render = (list) => `<chat>\n${list.map(rendered).join('\n')}\n</chat>`;
