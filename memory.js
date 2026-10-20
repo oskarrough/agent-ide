@@ -7,6 +7,8 @@ import { messageText } from './remote.js';
 const KIND = 'agent-ide.line';
 const RETRY = { enabled: true, maxRetries: 10, baseDelayMs: 2000 };
 const LINE = 512, PANEL = 64 * 1024, CONTEXT = 16 * 1024, RETRIES = 5;
+// A zoomed page fits under Pi's cap on a tool's output, 2000 lines or 50 KB: 16K UTF-16 units are at most 48 KB.
+const PAGE = 16 * 1024, PAGE_LINES = 1000;
 const bytes = (text) => Buffer.byteLength(text);
 const key = (l, i) => `${l}:${i}`;
 const RULER = '-'.repeat(LINE);
@@ -49,7 +51,7 @@ const SECTION = `Your memory of this thread may come as <chat> lines \`id+n|text
 
 Tools:
 - zoom(id, n) opens line id+n into the two lines it was made from;
-- zoom(id, 1) gives message id whole.
+- zoom(id, 1) gives message id whole, a long one in pages: zoom(id, 1, at) gives the page from character at.
 
 The memory is yours. A person's latest word on a thing is the truth; an agent's word, yours included, is a claim, so before you rely on one, zoom or search to what a person said. Whenever you need any information, first find its latest mention in the memory and zoom until you have it whole, before any other source, and before you act, guess or ask. Zoom is your way into the tree; when you know words it used, a tool that searches this thread's messages, if you have one, finds them faster. Lines keep little of tool output, so say in your answer what you learned that will matter later.`;
 
@@ -174,12 +176,12 @@ export function server(core) {
 
   const zoom = defineTool({
     name: 'zoom',
-    description: 'Open a line of your memory of this thread, `id+n|…`: you get the two lines it was made from, or the message whole when n is 1.',
-    parameters: Type.Object({ id: Type.Number(), n: Type.Number() }),
+    description: 'Open a line of your memory of this thread, `id+n|…`: you get the two lines it was made from, or the message whole when n is 1, a long one in pages from character `at`.',
+    parameters: Type.Object({ id: Type.Number(), n: Type.Number(), at: Type.Optional(Type.Number()) }),
     replay: 'safe',
-    execute: async ({ id, n }, api) => {
+    execute: async ({ id, n, at = 0 }, api) => {
       const opened = await open((await core.home(api.conversationId)).thread, id, n);
-      return { output: [{ type: 'text', text: typeof opened === 'string' ? opened : opened.map(rendered).join('\n') }] };
+      return { output: [{ type: 'text', text: typeof opened === 'string' ? page(opened, id, at) : opened.map(rendered).join('\n') }] };
     },
   });
 
@@ -227,6 +229,20 @@ export function memory(lines, T, budget, from = 0) {
     list.splice(best.k, 2, best.parent);
   }
   return list;
+}
+
+// Message `id` from character `at`, up to PAGE characters or PAGE_LINES lines, back to the page's last newline if it
+// has one, and where to go on.
+function page(text, id, at) {
+  if (!Number.isInteger(at) || at < 0 || (at && at >= text.length)) throw new Error(`Message ${id} has ${text.length} characters; no page at ${at}`);
+  let end = Math.min(text.length, at + PAGE);
+  for (let n = 1, k = text.indexOf('\n', at); k >= 0 && k < end; n++, k = text.indexOf('\n', k + 1)) if (n === PAGE_LINES) end = k + 1;
+  if (end < text.length) {
+    const nl = text.lastIndexOf('\n', end - 1);
+    end = nl > at ? nl + 1 : end - ((text.charCodeAt(end) & 0xfc00) === 0xdc00 ? 1 : 0);
+  }
+  const more = end < text.length ? `\n\n[characters ${at} to ${end} of ${text.length}: zoom(${id}, 1, ${end}) goes on]` : '';
+  return text.slice(at, end) + more;
 }
 
 export const render = (list) => `<chat>\n${list.map(rendered).join('\n')}\n</chat>`;
