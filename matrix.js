@@ -15,7 +15,7 @@
 import { defineDoc, defineExtension, defineTask } from '@earendil-works/pi-durable';
 
 // `threads` keys a room by its id and a Matrix thread by its root event; `last` is each room's newest send.
-const MatrixBridge = defineDoc({ kind: 'agent-ide.matrix.bridge', version: 1, scope: 'session', initial: () => ({ since: '', threads: {}, last: {}, salt: '' }) });
+const MatrixBridge = defineDoc({ kind: 'agent-ide.matrix.bridge', version: 1, scope: 'session', checkpointWhen: () => true, initial: () => ({ since: '', threads: {}, last: {}, salt: '' }) });
 const finished = (status = 'completed') => ({ status: 'terminal', outcome: { status, result: null } });
 const background = (threadId) => ({ ownership: { kind: 'conversation' }, conversationId: threadId, background: true });
 const list = (name) => (process.env[name] ?? '').split(',').map((s) => s.trim()).filter(Boolean);

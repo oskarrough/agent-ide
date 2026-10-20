@@ -33,17 +33,19 @@ const file = process.env.DB_PATH || `agent-ide-${port}.sqlite`;
 const KIND = 'agent-ide.message';
 // An agent's input in its conversation; `held` names the thread messages it gave.
 const DELIVERY = 'agent-ide.delivery';
+// Our docs are small, so every change stores the whole doc and a read replays nothing.
+const base = () => true;
 // Every runner that ever connected, with the models pi resolved on it.
-const Runners = defineDoc({ kind: 'agent-ide.runners', version: 1, scope: 'session', initial: () => ({}) });
+const Runners = defineDoc({ kind: 'agent-ide.runners', version: 1, scope: 'session', checkpointWhen: base, initial: () => ({}) });
 // `agents`: name → Pi conversation.
 const Thread = defineDoc({
-  kind: 'agent-ide.thread', version: 1, scope: 'conversation', history: 'latest', fork: 'initial',
+  kind: 'agent-ide.thread', version: 1, scope: 'conversation', history: 'latest', fork: 'initial', checkpointWhen: base,
   initial: () => ({ title: '', parent: null, createdAt: '', hidden: false, reads: {}, agents: {} }),
 });
 // On an agent's conversation: its thread, its name there, and the messages it hasn't seen.
-const AgentHome = defineDoc({ kind: 'agent-ide.agent', version: 1, scope: 'conversation', history: 'latest', fork: 'initial', initial: () => ({ thread: 0, name: '', unseen: [] }) });
+const AgentHome = defineDoc({ kind: 'agent-ide.agent', version: 1, scope: 'conversation', history: 'latest', fork: 'initial', checkpointWhen: base, initial: () => ({ thread: 0, name: '', unseen: [] }) });
 // By request id: the command a request made and what it answered, written in the commit that did the work.
-const Receipts = defineDocFamily({ kind: 'agent-ide.receipt', version: 1, scope: 'session', family: true, initial: () => ({ receipt: null }) });
+const Receipts = defineDocFamily({ kind: 'agent-ide.receipt', version: 1, scope: 'session', family: true, checkpointWhen: base, initial: () => ({ receipt: null }) });
 const now = () => new Date().toISOString();
 const ownerless = { ownership: { kind: 'ownerless' } };
 const own = { ownership: { kind: 'conversation' } };
@@ -137,6 +139,8 @@ const harness = await Harness.open(storage, {
 }, context);
 // A storage error closes the harness for good; exit, so a supervisor can restart.
 harness.closed.then((end) => end.reason === 'failed' && (console.error('pi-durable: storage failed, exiting:', end.error), process.exit(1)));
+// A stop closes the harness, so the tasks it cuts off wait to resume, and Pi doesn't count them as crashed.
+for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => harness.close(context).finally(() => process.exit(0)));
 
 const known = async () => (await harness.snapshot(Runners, context)) ?? {};
 const thread = (id) => harness.snapshot(Thread, id, context);
