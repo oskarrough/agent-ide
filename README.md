@@ -37,10 +37,30 @@ Or read [examples/](examples): one file per idea, each starting its own server a
 ## The machine
 
 ```
-client.html ──▶ server.js   one Pi Durable harness: threads, and each agent's conversation in them
-                   ▲  model streams, file and shell calls
-                   └── runner.js   on your machine: its pi logins, its folder
+   client.html   client.html   …      in any browser, or `bun client.html`
+        └──────┬──────┘
+               │ HTTP and /ws
+               ▼
+          ╔═══════════════════════════════════╗
+          ║ server.js · 127.0.0.1:3000        ║
+          ║ one Pi Durable harness: threads,  ║
+          ║ every agent's loop, one sqlite    ║
+          ║ checks each runner's owner gate   ║
+          ╚═══════════════════════════════════╝
+               ▲     │ resolve · stream · files · exec · cancel
+      dials /ws│     ▼
+          ┌───────────────────────────────────┐
+          │ runner.js · laptop                │
+          │ stores nothing                    │
+          │ ┌╌ ~/code ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┐ │
+          │ ╎ file tools stay inside,       ╎ │
+          │ ╎ $ commands only start here    ╎ │
+          │ └╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┘ │
+          │ pi logins ────────────────────────┼──▶ Anthropic, OpenAI, …
+          └───────────────────────────────────┘
 ```
+
+The server thinks and the runner acts. Every agent's loop runs in the server; each model call and tool call crosses the socket the runner dialled, so its logins never leave its machine. File tools stay inside the runner's folder, but a command only starts there, which is why that line is dashed. A runner with an owner says whom it takes work from, and the server checks.
 
 Pi Durable does the heavy lifting: storage, tasks, ordering, retries, restarts, stops and forks. agent-ide adds four things on top.
 
