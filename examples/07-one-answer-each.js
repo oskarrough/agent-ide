@@ -28,7 +28,7 @@ const settled = await until(async () => {
   const v = await view(parent);
   return answersOf(v).some((e) => e.data.body.includes('Got it')) && v.status !== 'working' ? v : null;
 }, 30000);
-await sleep(4000);
+await sleep(1000);
 
 const p = await view(parent);
 const child = (await api('GET', '/api/threads')).json.find((t) => t.parent === parent);

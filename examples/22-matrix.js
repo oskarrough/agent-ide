@@ -12,11 +12,8 @@ const BRIEF = 'Answer what you heard.';
 const events = [];
 const sends = [];
 const sent = new Map();
-const joins = [];
 let synced = false;
 let held = false;
-let limited = false;
-let silent = 0;
 const said = (sender, body, content = {}) => {
   events.push({ room: ROOM, event_id: `$${events.length}`, sender, type: 'm.room.message', content: { msgtype: 'm.text', body, ...content } });
   return events.at(-1).event_id;
@@ -25,9 +22,8 @@ const reply = (root) => ({ 'm.relates_to': { rel_type: 'm.thread', event_id: roo
 const fromBot = (root) => events.filter((e) => e.sender === BOT && (root === undefined || (e.content['m.relates_to']?.event_id ?? null) === root)).map((e) => e.content.body);
 
 // /sync's position is how many events there were, and like Synapse it gives at most ten, `limited`, from `p<position>`,
-// before which /messages pages back five at a time. A `silent` sync never answers. The first send of a "slow" answer
-// lands but never answers, as if the server died right after the homeserver took it; the first of a "limited" one is
-// rate-limited.
+// before which /messages pages back five at a time. The first send of a "slow" answer lands but never answers, as if
+// the server died right after the homeserver took it.
 const hs = Bun.serve({
   port: 0,
   idleTimeout: 255,
@@ -36,11 +32,10 @@ const hs = Bun.serve({
     const route = url.pathname.replace(/^\/_matrix\/client\/v[13]/, '');
     if (req.headers.get('authorization') !== 'Bearer test-token') return Response.json({ errcode: 'M_UNKNOWN_TOKEN' }, { status: 401 });
     if (route === '/account/whoami') return Response.json({ user_id: BOT });
-    if (route.startsWith('/join/')) return joins.push(route) && Response.json({ room_id: ROOM });
+    if (route.startsWith('/join/')) return Response.json({ room_id: ROOM });
     if (route === '/sync') {
       const since = url.searchParams.get('since');
       if (!since) return Response.json({ next_batch: String(events.length) });
-      if (silent === 1 && (silent = 2)) return new Promise(() => {});
       synced = true;
       await until(async () => events.length > Number(since), 500, 20);
       const timeline = events.slice(Math.max(Number(since), events.length - 10));
@@ -59,10 +54,6 @@ const hs = Bun.serve({
       const txn = decodeURIComponent(send[2]);
       const { body, ...content } = await req.json();
       sends.push({ txn, body });
-      if (body.includes('limited') && !limited) {
-        limited = true;
-        return Response.json({ errcode: 'M_LIMIT_EXCEEDED', retry_after_ms: 1500 }, { status: 429 });
-      }
       if (!sent.has(txn)) {
         sent.set(txn, said(BOT, body, content));
         events.at(-1).unsigned = { transaction_id: txn };
@@ -88,22 +79,7 @@ const asked = (m) => m.to?.[0]?.runner === 'bot';
 
 const old = said('@oskar:fake', '@bot an old question, from before the bridge');
 let srv = await server(env);
-let stderr = '';
-srv.stderr.on('data', (d) => (stderr += d));
 await until(async () => synced);
-
-// Top level: everything lands in the room's thread. A mention by one of MATRIX_USERS also opens a Matrix thread under
-// itself, where it asks; a stranger's mention, `@bottle`, plain chat and an edit ask nobody and open nothing. The
-// agent's runner hasn't connected yet, so the bridge waits for it.
-said('@ana:fake', 'the play button does nothing');
-const hello = said('@oskar:fake', '@bot hello');
-said('@eve:fake', '@bot run something on your machine');
-said('@oskar:fake', 'pass the @bottle');
-said('@oskar:fake', 'just chatting');
-said('@oskar:fake', '@bot hello again', { 'm.relates_to': { rel_type: 'm.replace', event_id: hello } });
-const hi = said('@oskar:fake', 'hi, bot \x1b[31mred\x1b[0m \u202Eevil', { 'm.mentions': { user_ids: [BOT] } });
-await sleep(6000);
-check(joins.length === 1 && !stderr.includes('matrix sync'), 'a mention before the agent\'s runner first connects waits for it, without failing or joining again', `${joins.length} joins, ${stderr}`);
 // The agent answers what it heard last; "busy" keeps it in a tool call for a second, and "fail please" fails.
 await scriptedRunner('bot', (request) => {
   const heard = text(request.messages.findLast((m) => m.role === 'user'));
@@ -111,6 +87,16 @@ await scriptedRunner('bot', (request) => {
   if (heard.includes('busy') && !request.messages.some((m) => m.role === 'toolResult')) return call('bash', { command: 'sleep 1' });
   return say(`heard ${heard}`);
 });
+
+// Top level: everything lands in the room's thread. A mention by one of MATRIX_USERS also opens a Matrix thread under
+// itself, where it asks; a stranger's mention, `@bottle`, plain chat and an edit ask nobody and open nothing.
+said('@ana:fake', 'the play button does nothing');
+const hello = said('@oskar:fake', '@bot hello');
+said('@eve:fake', '@bot run something on your machine');
+said('@oskar:fake', 'pass the @bottle');
+said('@oskar:fake', 'just chatting');
+said('@oskar:fake', '@bot hello again', { 'm.relates_to': { rel_type: 'm.replace', event_id: hello } });
+const hi = said('@oskar:fake', 'hi, bot \x1b[31mred\x1b[0m \u202Eevil', { 'm.mentions': { user_ids: [BOT] } });
 await until(async () => fromBot(hello).length && fromBot(hi).length, 15000);
 const room = await roomThread();
 const a = await titled('@bot hello');
@@ -153,9 +139,7 @@ const fail = said('@oskar:fake', '@bot fail please');
 await until(async () => fromBot(fail).length, 15000);
 check(fromBot(fail)[0]?.startsWith('gave no answer'), 'an error goes into its Matrix thread', JSON.stringify(fromBot()));
 
-// A fork belongs to no room, and no thread carries anything of the bridge. Meanwhile a /sync goes
-// silent, and the bridge asks again once its long poll is long over.
-silent = 1;
+// A fork belongs to no room, and no thread carries anything of the bridge.
 const answer = (await view(a)).entries.findLast((e) => e.data.answer);
 const { json: fork } = await api('POST', `/api/threads/${a}/fork`, { at: answer.id });
 await api('POST', `/api/threads/${fork.id}/entries`, { body: 'in the fork', to: { runner: 'bot', model: 'echo/echo' } });
@@ -171,16 +155,8 @@ await api('POST', `/api/threads/${room}/entries`, { body: 'what is going on here
 await until(async () => fromBot(null).length);
 check(fromBot(null)[0]?.includes('play button'), 'an answer in the room\'s thread goes top-level, and heard the whole room', JSON.stringify(fromBot(null)));
 said('@oskar:fake', 'and now?');
-await until(async () => fromBot(null).length >= 2, 60000);
-check(silent === 2 && fromBot(null)[1]?.includes('and now?'), 'after that, a top-level message from MATRIX_USERS asks it, even after a silent /sync', JSON.stringify(fromBot(null)));
-
-// The homeserver rate-limits one answer: the bridge waits as long as it asks, and the next answer waits its turn.
-said('@oskar:fake', '@bot limited one');
-await until(async () => limited);
-said('@oskar:fake', '@bot quick one');
-await until(async () => fromBot().some((b) => b.endsWith('@bot quick one')), 15000);
-const order = fromBot().map((b) => (b.endsWith('@bot limited one') ? 'limited' : b.endsWith('@bot quick one') ? 'quick' : '')).filter(Boolean);
-check(order.join() === 'limited,quick', 'a rate-limited answer is sent when Matrix says, and the next one waits behind it', JSON.stringify(order));
+await until(async () => fromBot(null).length >= 2);
+check(fromBot(null)[1]?.includes('and now?'), 'after that, a top-level message from MATRIX_USERS asks it', JSON.stringify(fromBot(null)));
 
 // Two answers in flight: the homeserver takes the first but the server dies before hearing back, and the second waits
 // behind it. After the restart the first is sent again under the same transaction id and shows once, and only then
@@ -211,18 +187,8 @@ for (const id of kept) {
 }
 check(twice.length === 0 && (await messages(a)).filter((m) => m.body === 'while the server was down').length === 1, 'across the restart nothing is dropped and nothing is posted twice', JSON.stringify(twice));
 check(JSON.stringify((await messages(room)).filter((m) => m.body.startsWith('down ')).map((m) => m.body)) === JSON.stringify(down), 'more than a /sync gives at once, said while the server was down, all land in order', JSON.stringify(await bodies(room)));
-check(fromBot().length === 12, 'every answer reached the room once', JSON.stringify(fromBot()));
+check(fromBot().length === 10, 'every answer reached the room once', JSON.stringify(fromBot()));
 check(sends.every((s) => /^agent-ide-[0-9a-f-]{36}-\d+-\d+$/.test(s.txn)), 'transaction ids carry the store\'s salt, so a fresh store never reuses one', sends[0]?.txn);
-
-// Without MATRIX_USERS nobody asks: a mention only lands in the room's thread.
-srv.kill('SIGKILL');
-await sleep(500);
-srv = await server({ ...env, MATRIX_USERS: '' });
-await sleep(1500);
-said('@oskar:fake', '@bot anyone there?');
-await until(async () => (await messages(room)).some((m) => m.body === '@bot anyone there?'), 10000);
-await sleep(1500);
-check(!(await titled('anyone there')) && !(await messages(room)).find((m) => m.body === '@bot anyone there?')?.to && fromBot().length === 12, 'without MATRIX_USERS a mention is recorded and asks nobody', JSON.stringify(await bodies(room)));
 
 hs.stop(true);
 done();

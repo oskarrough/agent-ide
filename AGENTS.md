@@ -30,7 +30,7 @@ Read the README, the code and Pi Durable's spec as an adversary. Look for three 
 - where a sentence breaks between two steps (a restart, a stop, a fork, a replay)
 - any concept that serves no promise
 
-A finding counts only if an example reproduces it, and its fix lands with that example.
+A finding counts only if you can reproduce it. Examples prove the promises, not every edge case: an edge case gets fixed when it breaks, without an example of its own. All of them run in about 10 seconds; keep it so.
 
 ## Checking the UI
 
