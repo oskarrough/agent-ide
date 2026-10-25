@@ -189,30 +189,31 @@ function field(value, name) {
   return value.trim();
 }
 
-// A model is what `pi --model` makes of it on the runner; offline, only one it resolved before.
-async function address(to) {
+// A command needs no model.
+async function address(to, command = false) {
   const name = field(to?.runner, 'to.runner');
   const runner = (await known())[name];
   if (!runner) throw new Error(`No runner ${name} has connected to this server`);
-  const asked = typeof to.model === 'string' ? to.model.trim() : '';
-  let model = runner.models?.[asked];
-  let effort;
-  if (!model) {
-    if (!runners.isOnline(name)) throw new Error(`${name} is offline; name a model it has run, as provider/id`);
-    ({ model, thinkingLevel: effort } = await runners.call(name, { op: 'resolve', model: asked }, {}));
-    const ref = `${model.provider}/${model.id}`;
-    if (!runner.models?.[ref]) {
-      await commit(async (tx) => { (await tx.doc(Runners))[name].models[ref] = model; });
-      models.setProvider(runnerProvider(runners, name, (await known())[name].models));
-    }
-  }
-  const clean = { runner: name, model: `${model.provider}/${model.id}` };
-  if (effort) clean.effort = effort;
+  const clean = { runner: name, ...(command ? {} : await modelOn(name, runner, typeof to.model === 'string' ? to.model.trim() : '')) };
   for (const key of ['effort', 'dir']) if (typeof to[key] === 'string' && to[key].trim()) clean[key] = to[key].trim();
   folder(runner, clean);
   return clean;
 }
-const addresses = (to) => Promise.all((to === null ? [] : [to].flat()).map(address));
+const addresses = (to, command) => Promise.all((to === null ? [] : [to].flat()).map((t) => address(t, command)));
+
+// What `pi --model asked` makes of it on the runner, kept with its models; offline, only one it resolved before.
+async function modelOn(name, runner, asked) {
+  const had = runner.models?.[asked];
+  if (had) return { model: `${had.provider}/${had.id}` };
+  if (!runners.isOnline(name)) throw new Error(`${name} is offline; name a model it has run, as provider/id`);
+  const { model, thinkingLevel } = await runners.call(name, { op: 'resolve', model: asked }, {});
+  const ref = `${model.provider}/${model.id}`;
+  if (!runner.models?.[ref]) {
+    await commit(async (tx) => { (await tx.doc(Runners))[name].models[ref] = model; });
+    models.setProvider(runnerProvider(runners, name, (await known())[name].models));
+  }
+  return { model: ref, ...(thinkingLevel ? { effort: thinkingLevel } : {}) };
+}
 
 // A runner with an owner takes work from its owner and the names it allows: people, or `@runner` for the agents there.
 // `by` is a person, or `@runner` for an agent. Offline, the runner's last word holds.
@@ -389,7 +390,7 @@ async function postEntry(id, author, input) {
   const body = field(input.body, 'body');
   const command = body.match(/^\$\s+([\s\S]+)/)?.[1];
   const routed = route && !command;
-  let to = 'to' in input ? await addresses(input.to) : routed ? [] : await lastAsked(id);
+  let to = 'to' in input ? await addresses(input.to, Boolean(command)) : routed ? [] : await lastAsked(id);
   if (routed) to = await addresses(route({ body, to }, (await Promise.all(Object.values((await thread(id)).agents).map(agentOf))).filter(Boolean)));
   if (command && !to.length) throw new Error('Pick a runner to run the command on');
   await reach(to, author);
