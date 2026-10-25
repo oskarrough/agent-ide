@@ -79,6 +79,7 @@ And a few principles:
 - A stop posts nothing, and messages that were never delivered wait for the next delivery.
 - A fork forks the thread and each agent's conversation at the same point, in one commit.
 - Threads talk like email. A child reports its answers to its parent. When an agent answers another thread's post, the answer goes back to that thread, and a reply to that answer ends the exchange.
+- Whoever lends a runner pays for the thinking on it: its pi logins are its agents' logins, and the server holds none. A shared pool is a runner without an owner.
 - A name is one line of plain text, so nobody can forge a speaker in an agent's input.
 - A runner with an `--owner` takes work only from its owner and the names it `--allow`s: people, or `@runner` for the agents there. An agent always reaches its own runner. Allowing is transitive: allow `@desktop`, and whoever desktop takes can reach you through its agents. A refusal writes nothing.
 - The client watches Pi's own event streams, so replies and tool calls show live. A reconnect starts from fresh snapshots.

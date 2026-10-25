@@ -170,41 +170,34 @@ stateDiagram-v2
   <dd>A server is the workspace. Who may use a runner is the runner's owner's call.</dd>
 </dl>
 
-<h2>Open questions</h2>
-<p>Both are about the runner, which today is two things at once: where an agent works, and who pays for its thinking. do-computer answers both the other way, which is why they're here.</p>
+<h2 id="who-pays">Who pays: the runner</h2>
+<p>An agent's model calls go out through the pi logins on its runner, so whoever lends a runner pays for the thinking on it. agent-ide is for one person and for teams alike, and this answer holds for both.</p>
+<pre class="mermaid">
+flowchart LR
+  subgraph yours["Your runner pays for your agents"]
+    a1["sonnet@laptop"] -- "thinks with" --> l1["the laptop's login"]
+    a1 -- "works in" --> f1["the laptop's ~/code"]
+  end
+  subgraph pool["A shared pool is a runner without an owner"]
+    a2["anyone's agent @pool"] -- "thinks with" --> l2["a key in that machine's environment"]
+    a2 -- "works in" --> f2["its folder"]
+  end
+</pre>
+<ul>
+  <li><b>Just you:</b> every runner is yours, with your logins. Nothing to decide.</li>
+  <li><b>A team:</b> Ana's runners pay for the agents on them, and <code>--owner</code> and <code>--allow</code> say who else may use them. Nobody's subscription quietly becomes everyone's, and someone who leaves takes their logins along by stopping their runner.</li>
+  <li><b>A pool</b>, if a team wants one: a runner without an owner, next to the server, with a key in its environment. pi's enabled models there are the list, and pi's default there is the default.</li>
+  <li><b>The server holds no secrets.</b> do-computer keeps keys and subscriptions on its server, pooled per workspace, and says itself that with one key and no per-user limits, sign-up has to be by invitation.</li>
+</ul>
+<p>Two costs we accept. A machine with no login can't think: give it a key in its environment. And someone has to run <code>pi</code> and <code>/login</code> on a machine once, where do-computer signs in from the app. If thinking on the laptop while working on the vps is ever needed, it's one optional field on an agent.</p>
 
-<h3 id="one-runner">One runner per agent, or several?</h3>
-<p>Today an agent has one runner. To work somewhere else, it asks an agent there in a thread, and the answer comes back to it.</p>
+<h2>Open question: one runner per agent, or several?</h2>
+<p id="one-runner">Today an agent has one runner. To work somewhere else, it asks an agent there in a thread, and the answer comes back to it.</p>
 <ul>
   <li><b>For one:</b> the model never has to pick a machine, so the tools stay the same on every call, and every hop between machines is a message you can read. A bot, when it comes, can still work on the laptop in one thread and on the vps in another.</li>
   <li><b>For several:</b> a task that spans machines, like "read the logs on the vps, fix it on the laptop", is one agent with one memory of what it found, not two agents passing notes. do-computer chose this: a Dood names the computer on each call.</li>
 </ul>
 <p>My lean: one, until a real task shows the hand-off in a thread is too clumsy.</p>
-
-<h3 id="who-pays">Who pays for the thinking?</h3>
-<p>Today the runner does: an agent's model calls go out through the pi logins on its runner.</p>
-<pre class="mermaid">
-flowchart LR
-  subgraph today["Today: the runner pays"]
-    a1["sonnet@laptop"] -- "thinks with" --> l1["the laptop's login"]
-    a1 -- "works in" --> f1["the laptop's ~/code"]
-  end
-  subgraph keys["do-computer: the server pays"]
-    a2["a Dood"] -- "thinks with" --> l2["keys on the server"]
-    a2 -- "works in" --> f2["any computer"]
-  end
-  subgraph split["Maybe: think here, work there"]
-    a3["sonnet@laptop, on vps"] -- "thinks with" --> l3["the laptop's login"]
-    a3 -- "works in" --> f3["the vps's /srv"]
-  end
-</pre>
-<ul>
-  <li><b>For the runner:</b> the server holds no secrets, you think on your own subscriptions from your own machine, and with several people the answer is plain: whoever lends a runner pays for the agents on it.</li>
-  <li><b>Against it:</b> thinking and working come as one. A vps with no login can't think, and an agent can't think on the laptop's login while it works on the vps's disk.</li>
-  <li><b>With several people:</b> do-computer pools keys and subscriptions at the workspace, so one person's sign-in pays for everyone's Doods. Here a login stays with whoever lends the runner, and <code>--owner</code> decides who else may use it. A pool paid for by the server is a runner without an owner, next to the server. What do-computer has that we don't: signing in from the app, where here someone runs <code>pi</code> and <code>/login</code> on the runner's machine.</li>
-  <li><b>The ways out:</b> keys on the server, as do-computer does, which turns the server into a keeper of secrets; or an agent that thinks with one runner and works on another, which is one optional field on an agent rather than a new design.</li>
-</ul>
-<p>It comes down to whom agent-ide is for. One person across their machines: the server should pay. Sign in once, runners are pure hands, and "brain on the server, hands on runners" becomes literally true, since today the runner is the voice too. A group: the runner should pay, so each person's login stays theirs. My lean is the first, with a runner's own logins as an extra only if a group ever needs it. Whom it's for is the open question underneath.</p>
 
 <h2>Where we are</h2>
 <ul class="status">
@@ -213,6 +206,7 @@ flowchart LR
   <li class="done">Agents as <code>model:thinking@runner</code>, knowing their folder's AGENTS.md and skills.</li>
   <li class="done">Threads with many people and agents, forks, and threads that talk to each other.</li>
   <li class="done">Clients: the web client, the CLI, Matrix.</li>
+  <li class="next">Web search, as a tool every agent has, run on its runner's logins.</li>
   <li class="next">Bots, once the rest is rock solid.</li>
   <li class="next">Memory, a thread that never has to end, still being explored.</li>
   <li class="no">A desktop app, a phone app, cloud machine kinds, accounts. Each is a shell around what's already here.</li>
