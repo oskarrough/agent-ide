@@ -109,6 +109,7 @@
   let entries = null; // its messages, from the thread's events
   const live = new Map(); // each agent's live work, from its conversation's events
   let retry = null; // the request ids of the send that failed last
+  let picked = false; // someone chose who answers in this thread, rather than whom it last asked
   let structure = localStorage.getItem('agent-ide-structure') === '1';
 
   async function api(url, path, options = {}) {
@@ -185,6 +186,7 @@
     opened.clear();
     zoomed.clear();
     $('runner').value = $('model').value = $('effort').value = $('dir').value = '';
+    picked = false;
     extra.splice(0).forEach((row) => row.node.remove());
     render();
     if (next) tell(next.url, next.id);
@@ -467,6 +469,8 @@
     const last = entries?.findLast((e) => e.data.to)?.data.to.map(agentName).join(', ');
     const fallback = server.info?.modules.includes('director') ? 'Director decides' : last && `Same as last: ${last}`;
     const runners = server.runners.map((r) => [r.name, r.online ? r.name : `${r.name} (offline)`]);
+    // Until someone picks, the thread keeps asking whom it last asked, even if its entries arrive after this render.
+    if (!picked) first.runner.value = '';
     const named = fillRow(first, server, [...(fallback ? [['', fallback]] : []), ...runners, ['nobody', 'Nobody']]);
     if (!named) extra.splice(0).forEach((row) => row.node.remove());
     for (const row of extra) fillRow(row, server, runners);
@@ -474,7 +478,7 @@
     $('add-agent').hidden = !named;
     $('child').hidden = !selected?.id;
   }
-  $('runner').onchange = renderPicker;
+  $('runner').onchange = () => { picked = true; renderPicker(); };
   $('add-agent').onclick = () => {
     const row = { runner: build('select', { ariaLabel: 'Runner', onchange: renderPicker }), model: build('select', { ariaLabel: 'Model' }), effort: build('select', { ariaLabel: 'Thinking' }) };
     row.node = build('div', { className: 'more' }, [row.runner, row.model, row.effort, build('button', { type: 'button', className: 'link', textContent: 'remove', onclick: () => {
