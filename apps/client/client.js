@@ -7,6 +7,8 @@ const me = params.get('user') || 'you';
 const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, ...children) => { const e = Object.assign(document.createElement(tag), props); e.append(...children.filter((c) => c != null && c !== false)); return e; };
 const EFFORTS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+// One dot everywhere: grey when there's nothing, green when it's on, pulsing green while it works, amber when it's blocked.
+const light = (state) => `dot${state === 'on' ? ' on' : state === 'working' ? ' working' : state === 'blocked' ? ' blocked' : ''}`;
 
 // Where the four pieces live, per product. The chips move between the places; hovering one lights it up on the stage.
 const PIECES = { model: 'Claude, GPT, Gemini', loop: 'Pi, Claude Code, Codex', hands: 'where tools run', memory: 'the chat history' };
@@ -191,7 +193,7 @@ function pickerRows() {
     const also = el('input', { type: 'checkbox', checked: on, title: 'Ask it too', onchange: () => toggle(r, true) });
     return el('li', { className: on ? 'on' : '' },
       el('button', { type: 'button', className: 'who', onclick: () => { toggle(r, false); $picker.hidePopover(); } },
-        el('span', { className: 'dot on' }), el('b', { textContent: r.name }), el('small', { textContent: r.dir })),
+        el('span', { className: light('on') }), el('b', { textContent: r.name }), el('small', { textContent: r.dir })),
       el('div', { className: 'set' }, swap, think, el('label', { title: 'Ask it too' }, also, 'also')));
   });
   $picker.querySelector('ul').replaceChildren(...(rows.length ? rows : [el('li', { className: 'mute', textContent: 'No runner is online.' })]));
@@ -205,7 +207,7 @@ function fleetRows() {
   $('fleet').querySelector('ul').replaceChildren(...runners.map((r) => {
     const work = busy(r);
     const hands = work.map(({ t, a }) => handsOf(live.get(`${t.id} ${a.name}`))).find(Boolean);
-    return el('li', {}, el('span', { className: `dot${r.online ? work.length ? ' working' : ' on' : ''}` }),
+    return el('li', {}, el('span', { className: light(r.online ? (work.length ? 'working' : 'on') : '') }),
       el('div', {}, el('b', { textContent: r.name }), el('small', { textContent: r.dir }),
         el('small', { className: 'doing', textContent: !r.online ? 'offline' : work.length ? hands || `working in ${work.map(({ t }) => t.title || 'untitled').join(', ')}` : 'idle' })));
   }));
@@ -313,7 +315,7 @@ function threadBox(id) {
   box.querySelector('.hands').show(t?.tools);
   const [title, dot] = box.querySelector('header').children;
   title.textContent = t?.title || 'untitled';
-  dot.className = `dot${t?.status === 'working' ? ' working' : t?.status === 'blocked' ? ' blocked' : ''}`;
+  dot.className = light(t?.status);
   // A fork says where it came from up top; a thread an agent started says it on the question it was asked.
   const origin = forkOf(t);
   const from = box.querySelector('nav.from');
@@ -375,7 +377,7 @@ let blankBox;
 function render() {
   if ($('memory').getAttribute('thread') !== String(current ?? '')) $('memory').setAttribute('thread', current ?? '');
   $('server').classList.toggle('off', !up);
-  $('server').querySelector('.dot').classList.toggle('on', up);
+  $('server').querySelector('.dot').className = light(up ? 'on' : '');
   $('server').querySelector('code').textContent = url;
   // Another machine can't reach localhost; it needs the server's name on the network.
   const reachable = /^https?:\/\/(localhost|127\.|\[::1\])/.test(url) ? url.replace(/\/\/[^:/]+/, '//yourbox') : url;
@@ -397,26 +399,25 @@ function render() {
     el('button', { className: `new${current ? '' : ' current'}`, textContent: '+ New thread', onclick: () => go(null) }),
     el('ul', {}, ...threads.filter((t) => !t.hidden && !threads.some((p) => p.id === t.parent)).map((t) => el('li', {
       className: `${t.id === current ? 'current' : familyOf.has(t.id) ? 'kin' : ''}`, title: t.title, onclick: () => go(t.id),
-    }, el('span', { className: `dot${t.status === 'working' ? ' working' : t.status === 'blocked' ? ' blocked' : t.status === 'done' ? ' on' : ''}` }),
+    }, el('span', { className: light(t.status) }),
     el('span', { textContent: t.title || 'untitled' }),
     el('button', { textContent: 'delete', title: 'Delete this thread', onclick: (e) => { e.stopPropagation(); remove(t.id); } })))), $('fleet-open'));
 
   // The phone's bar names the thread; its drawer lists the family, children indented under their parent.
   const here = threads.find((t) => t.id === current);
-  const lightOf = (t) => `dot${t?.status === 'working' ? ' working' : t?.status === 'blocked' ? ' blocked' : ''}`;
   $('pill').lastChild.textContent = current ? here?.title || 'untitled' : 'New thread';
-  $('pill').firstChild.className = lightOf(here);
+  $('pill').firstChild.className = light(here?.status);
   const depth = (id) => { let d = 0; for (let t = threads.find((x) => x.id === id); d < 20; d++) { const p = t?.parent ?? forkOf(t); if (!shown.includes(p)) break; t = threads.find((x) => x.id === p); } return d; };
   $('family').replaceChildren(...shownThreads.map((t) => el('li', { className: t.id === current ? 'current' : '', style: `--depth: ${depth(t.id)}`, onclick: () => go(t.id) },
-    el('span', { className: lightOf(t) }), el('span', { textContent: t.title || 'untitled' }))));
+    el('span', { className: light(t.status) }), el('span', { textContent: t.title || 'untitled' }))));
   // The composer names whom it asks; the sidebar counts the runners.
   const mineNow = threads.find((t) => t.id === current)?.agents ?? [];
   const busyNow = picks.some((p) => mineNow.some((a) => same(a.to, p) && a.status === 'working'));
   $pick.lastChild.textContent = picks.length ? picks.map(short).join(' + ') : 'Pick a model';
-  $pick.firstChild.className = `dot${busyNow ? ' working' : picks.length ? ' on' : ''}`;
+  $pick.firstChild.className = picks.length ? light(busyNow ? 'working' : 'on') : light();
   $pick.title = $to.value;
   const online = runners.filter((r) => r.online).length;
-  $('fleet-open').replaceChildren(...runners.map((r) => el('span', { className: `dot${r.online ? ' on' : ''}` })),
+  $('fleet-open').replaceChildren(...runners.map((r) => el('span', { className: light(r.online ? 'on' : '') })),
     el('span', { textContent: `${online} runner${online === 1 ? '' : 's'} online` }));
   if ($picker.matches(':popover-open') && !$picker.contains(document.activeElement)) pickerRows();
   if ($('fleet').matches(':popover-open')) fleetRows();
@@ -477,14 +478,12 @@ function runnerCard(r, asked) {
   const set = setting(r);
   const on = picks.some((p) => p.runner === r.name);
   const here = asked.filter((a) => a.to.runner === r.name);
-  const light = (list) => {
-    const s = list.map((a) => a.status);
-    return s.includes('working') ? 'working' : s.includes('blocked') ? 'blocked' : s.length ? 'idle' : null;
-  };
+  // The busiest agent here decides the dot: working beats blocked, and an idle agent is grey.
+  const stateOf = (list) => list.some((a) => a.status === 'working') ? 'working' : list.some((a) => a.status === 'blocked') ? 'blocked' : '';
   const row = (model, ...children) => {
-    const list = here.filter((a) => a.to.model === model), busy = light(list);
+    const list = here.filter((a) => a.to.model === model), state = stateOf(list);
     const hands = list.map((a) => handsOf(live.get(`${a.thread} ${a.name}`))).find(Boolean);
-    const li = el('li', {}, ...children, busy && el('span', { className: `dot${busy === 'idle' ? '' : ` ${busy}`}`, title: busy }),
+    const li = el('li', {}, ...children, list.length && el('span', { className: light(state), title: state || 'idle' }),
       hands && el('span', { className: 'hands', textContent: hands, title: hands }));
     li.dataset.agent = key(r.name, model);
     return li;
@@ -502,7 +501,7 @@ function runnerCard(r, asked) {
     title: on ? 'Shift-click to stop asking it' : 'Click to ask it; shift-click to ask it too',
     onclick: (e) => toggle(r, e.shiftKey || e.metaKey || e.ctrlKey),
   },
-  el('b', {}, el('span', { className: `dot${r.online ? ' on' : ''}` }), r.name),
+  el('b', {}, el('span', { className: light(r.online ? (stateOf(here) || 'on') : '') }), r.name),
   el('small', { textContent: r.dir }),
   !models.length && el('small', { textContent: 'No models here yet: run pi there and /login.' }),
   el('ul', { className: 'models' }, models.length && row(set.model, swap, knob), ...others.map((m) => row(m, el('span', { className: 'name', textContent: m })))));
