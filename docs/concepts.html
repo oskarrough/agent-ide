@@ -73,11 +73,10 @@
   <a href="#runner-life">A runner's life</a>
   <a href="#modules">Modules</a>
   <a href="#decided">Decided</a>
-  <a href="#open">Open</a>
   <a href="#where-we-are">Where we are</a>
 </nav>
 <p class="lede">The thinking happens on the server. The work happens on runners, on machines you choose. You look in through any client, from any device. Six words name everything else.</p>
-<p class="caption">This page is our scratchpad: what's settled, what's open, and where we are. It changes as we decide.</p>
+<p class="caption">This page is our scratchpad: what's settled and where we are. It changes as we decide.</p>
 
 <pre class="mermaid">
 flowchart LR
@@ -133,11 +132,11 @@ flowchart LR
     <small>What you might call a machine, a computer or a daemon. A machine is where runners run, one per folder if you like, and a cloud sandbox is just another machine. The daemon is the runner.</small></dd>
 
   <dt>Agent <span class="tag agent">built</span></dt>
-  <dd>A model, how hard it thinks, and the runner it runs on: <code>sonnet:high@laptop</code>. In each thread an agent has its own conversation. It is handed messages, posts only its final answer, and can read any agent's work: the tool calls it made and what they printed. It knows its folder the way pi does there: AGENTS.md and skills.
+  <dd>A model, how hard it thinks, and the runner it runs on: <code>sonnet:high@laptop</code>. In each thread an agent has its own conversation. It is handed messages, posts only its final answer, and can read any agent's work: the tool calls that agent made and what they printed. It knows its folder the way pi does there: AGENTS.md and skills.
     <small>Not a bot. An agent has no name of its own and no character; it is "this model, this hard, there".</small></dd>
 
   <dt>Thread <span class="tag server">built</span></dt>
-  <dd>A conversation on the server, with any number of people and agents in it. A message asks the agents in its <code>to</code>, or whoever the thread asked last. Threads fork at any message, and talk to each other: an answer comes back to the thread that asked exactly once.
+  <dd>A conversation on the server, with any number of people and agents in it. A message asks the agents in its <code>to</code>, or whoever the thread asked last. Threads fork at any message, and talk to each other: an answer comes back exactly once to the thread that asked.
     <small>Threads don't live on runners. A thread can ask an agent on the laptop and one on the vps side by side.</small></dd>
 
   <dt>Client <span class="tag client">built</span></dt>
@@ -199,7 +198,7 @@ sequenceDiagram
 <ul>
   <li>Agents are handed messages, and can look up anything. Each delivery hands an agent everything it hasn't seen yet as one input, and only its final answer comes back to the thread. Its tool calls stay in its own conversation, where any agent can read them with <code>threads</code>.</li>
   <li>A message asks the agents in its <code>to</code>. With no <code>to</code>, it asks whoever the thread asked last, and <code>to: null</code> asks nobody.</li>
-  <li>Threads talk like email. An agent asks with <code>post</code>: with no thread, a new child that holds only the question, for a side question; to a thread, whoever is there, with all they know there. The answer goes back to the asking thread, and a reply to that answer ends the exchange. Nothing else crosses: what's said in a child stays in the child.</li>
+  <li>Threads talk like email. An agent asks with <code>post</code>. With no thread, it starts a child that holds only the question, for a side question. Given a thread, it asks whoever is there, with all they know there. The answer goes back to the asking thread, and a reply to that answer ends the exchange. Nothing else crosses: what's said in a child stays in the child.</li>
   <li>Posting to a thread that asked you something answers it, so a progress note mid-work comes back once and goes no further.</li>
   <li>A name is one line of plain text and a message's later lines are indented, so nobody can forge a speaker in an agent's input. Agents are marked as agents by what they wrote, never by their name: a person's message is an instruction, an agent's is a colleague's report or request.</li>
   <li>The client watches Pi's own event streams, so replies and tool calls show live. A reconnect starts from fresh snapshots.</li>
@@ -283,9 +282,6 @@ sequenceDiagram
   <li>Any agent may read any agent's work, as any person already can through the API.</li>
   <li>Long output is cut at 4,000 characters, saying how much is left; <code>query</code> finds the part that matters.</li>
 </ul>
-
-<h2 id="open">Open</h2>
-<p>Nothing right now. Bots come here when we start on them.</p>
 
 <h2 id="where-we-are">Where we are</h2>
 <ul class="status">

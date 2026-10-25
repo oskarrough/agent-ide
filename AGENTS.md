@@ -1,6 +1,6 @@
 # AGENTS.md
 
-agent-ide proves that an agent IDE can be small. A change serves one of the promises in [docs/concepts.html](docs/concepts.html), or it doesn't land. Read it. The sixth is under exploration: a module, off by default, until its examples prove it.
+agent-ide proves that an agent IDE can be small. A change serves one of the promises in [docs/concepts.html](docs/concepts.html), or it doesn't land. Read it. The sixth, memory, is under exploration: a module, off by default, until its examples prove it.
 
 ## What every change keeps
 
@@ -11,7 +11,7 @@ agent-ide proves that an agent IDE can be small. A change serves one of the prom
 
 ## Before adding anything
 
-1. Which primitive or principle does it touch? If none can say it, it's not ready.
+1. Which primitive or principle does it touch? If none of them describes it, it's not ready.
 2. Can it be a module, off by default? Then make it one.
 3. Is there a version that deletes more than it adds? Build that one.
 
@@ -40,5 +40,5 @@ One line each, so nobody proposes them twice.
 - **Unit tests.** `examples/` is the proof, with one file per idea.
 - **TypeScript or a build step.** Plain JS that runs with bun or Node.
 - **UX polish.** Functional UI, not shiny.
-- **Rebuilding from the docs.** They're a plan, not a spec. 
+- **Rebuilding from the docs.** They're a plan, not a spec.
 - **Backwards compatibility.** No migrations, shims or old shapes; an old store can be thrown away.
