@@ -165,28 +165,13 @@ stateDiagram-v2
   <dt>Desktop</dt>
   <dd>do-computer's desktop app is three things in one program: a window, a server, and a daemon. agent-ide gets the same with <code>RUNNER=~/code bun server.js</code> and a browser tab, and you can see each part running.</dd>
   <dt>Mobile</dt>
-  <dd>The web client in your phone's browser. Reach the server over Tailscale, never the open internet: there are no accounts, so whoever can reach it can use it.</dd>
+  <dd>The web client in your phone's browser. Reach the server over Tailscale, never the open internet: there are no accounts, so whoever can reach it can use it. <code>tailscale serve --bg --https=443 http://127.0.0.1:3000</code> gives it an HTTPS address only your devices can reach.</dd>
   <dt>Workspace</dt>
   <dd>A server is the workspace. Who may use a runner is the runner's owner's call.</dd>
 </dl>
 
-<h2>Next to do-computer</h2>
-<p>do-computer is a good neighbour to think against: the same idea, a product around it. This is a working list. A row goes once we've settled it, and the section goes with the last one.</p>
-<table>
-  <tr><th>do-computer</th><th>agent-ide</th></tr>
-  <tr><td>A server, one command on Node, or deployed to Cloudflare; with accounts and teams</td><td>A server, one command; no cloud deploy, no accounts. Keep it on a trusted network.</td></tr>
-  <tr><td>Computers of five kinds, made by providers from keys on the server</td><td>Runners of one kind. Where you run them is your business.</td></tr>
-  <tr><td>A daemon, installed by <code>install.sh</code>, paired through a link</td><td>A runner, installed by <code>runner.sh</code>. No pairing; <code>--owner</code> says whose it is.</td></tr>
-  <tr><td>Model keys live on the server</td><td>Logins live on each runner. <a href="#who-pays">Open</a></td></tr>
-  <tr><td>A Dood can use several computers, and names one on each tool call</td><td>An agent has one runner. <a href="#one-runner">Open</a></td></tr>
-  <tr><td>A Dood: identity, memory, a hatching ritual</td><td>A bot, later: a name and instructions. Memory belongs to threads.</td></tr>
-  <tr><td>Desktop and phone apps</td><td>Any browser, and a CLI.</td></tr>
-  <tr><td><code>tailscale serve</code> from the desktop app, for your phone</td><td>The same, by hand: <code>tailscale serve --bg --https=443 http://127.0.0.1:3000</code> gives the server an HTTPS address only your devices can reach.</td></tr>
-</table>
-
-
 <h2>Open questions</h2>
-<p>Both are about the runner, which today is two things at once: where an agent works, and who pays for its thinking.</p>
+<p>Both are about the runner, which today is two things at once: where an agent works, and who pays for its thinking. do-computer answers both the other way, which is why they're here.</p>
 
 <h3 id="one-runner">One runner per agent, or several?</h3>
 <p>Today an agent has one runner. To work somewhere else, it asks an agent there in a thread, and the answer comes back to it.</p>
@@ -219,7 +204,7 @@ flowchart LR
   <li><b>With several people:</b> do-computer pools keys and subscriptions at the workspace, so one person's sign-in pays for everyone's Doods. Here a login stays with whoever lends the runner, and <code>--owner</code> decides who else may use it. A pool paid for by the server is a runner without an owner, next to the server. What do-computer has that we don't: signing in from the app, where here someone runs <code>pi</code> and <code>/login</code> on the runner's machine.</li>
   <li><b>The ways out:</b> keys on the server, as do-computer does, which turns the server into a keeper of secrets; or an agent that thinks with one runner and works on another, which is one optional field on an agent rather than a new design.</li>
 </ul>
-<p>My lean: the runner pays, and the split waits until the tie actually bites.</p>
+<p>It comes down to whom agent-ide is for. One person across their machines: the server should pay. Sign in once, runners are pure hands, and "brain on the server, hands on runners" becomes literally true, since today the runner is the voice too. A group: the runner should pay, so each person's login stays theirs. My lean is the first, with a runner's own logins as an extra only if a group ever needs it. Whom it's for is the open question underneath.</p>
 
 <h2>Where we are</h2>
 <ul class="status">
