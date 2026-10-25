@@ -1,4 +1,5 @@
 import { wires } from './wires.js';
+import './agent-memory.js';
 const params = new URLSearchParams(location.search);
 const url = params.get('server') || 'http://127.0.0.1:3000';
 const me = params.get('user') || 'you';
@@ -165,6 +166,51 @@ $to.oninput = () => {
 $to.onkeydown = (e) => { if (e.key === 'Enter') e.preventDefault(); };
 const choose = (next) => { picks = next; $to.value = picks.map(name).join(', '); render(); };
 
+// The model picker: whom the next message asks, chosen where you write. One row per runner that's online.
+const $pick = form.querySelector('.pick'), $picker = $('picker');
+$picker.append($to);
+const short = (p) => `${(p.model ?? '').split('/').pop()}${p.thinkingLevel ? ` · ${p.thinkingLevel}` : ''} · ${p.runner}`;
+// A popover opens next to what opened it: above it on a big screen, as a sheet from the bottom on a phone.
+function place(pop, from) {
+  if (phone.matches) return void pop.removeAttribute('style');
+  const r = from.getBoundingClientRect();
+  Object.assign(pop.style, { left: `${Math.max(8, Math.min(r.left, innerWidth - pop.offsetWidth - 8))}px`, top: 'auto', bottom: `${innerHeight - r.top + 6}px` });
+}
+$pick.onclick = () => { $picker.togglePopover(); };
+$picker.addEventListener('toggle', (e) => { if (e.newState === 'open') { pickerRows(); place($picker, $pick); } });
+function pickerRows() {
+  const online = runners.filter((r) => r.online);
+  const rows = online.map((r) => {
+    const set = setting(r), on = picks.some((p) => p.runner === r.name);
+    const models = [...new Set([set.model, r.model, ...(r.offers ?? [])].filter(Boolean))];
+    const swap = el('select', { title: 'model', onchange: () => tune(r, { model: swap.value }) }, ...models.map((o) => new Option(o.split('/').pop(), o)));
+    swap.value = set.model ?? '';
+    const think = el('select', { title: 'thinking', onchange: () => tune(r, { thinkingLevel: think.value || undefined }) }, new Option('default', ''), ...EFFORTS.map((x) => new Option(x, x)));
+    think.value = set.thinkingLevel ?? '';
+    const also = el('input', { type: 'checkbox', checked: on, title: 'Ask it too', onchange: () => toggle(r, true) });
+    return el('li', { className: on ? 'on' : '' },
+      el('button', { type: 'button', className: 'who', onclick: () => { toggle(r, false); $picker.hidePopover(); } },
+        el('span', { className: 'dot on' }), el('b', { textContent: r.name }), el('small', { textContent: r.dir })),
+      el('div', { className: 'set' }, swap, think, el('label', { title: 'Ask it too' }, also, 'also')));
+  });
+  $picker.querySelector('ul').replaceChildren(...(rows.length ? rows : [el('li', { className: 'mute', textContent: 'No runner is online.' })]));
+}
+
+// The runners connected to this server: who's there, where, and what they're doing; and how to add one.
+$('fleet-open').onclick = () => $('fleet').togglePopover();
+$('fleet').addEventListener('toggle', (e) => { if (e.newState === 'open') { fleetRows(); place($('fleet'), $('fleet-open')); } });
+function fleetRows() {
+  const busy = (r) => threads.flatMap((t) => t.agents.filter((a) => a.to.runner === r.name && a.status === 'working').map((a) => ({ t, a })));
+  $('fleet').querySelector('ul').replaceChildren(...runners.map((r) => {
+    const work = busy(r);
+    const hands = work.map(({ t, a }) => handsOf(live.get(`${t.id} ${a.name}`))).find(Boolean);
+    return el('li', {}, el('span', { className: `dot${r.online ? work.length ? ' working' : ' on' : ''}` }),
+      el('div', {}, el('b', { textContent: r.name }), el('small', { textContent: r.dir }),
+        el('small', { className: 'doing', textContent: !r.online ? 'offline' : work.length ? hands || `working in ${work.map(({ t }) => t.title || 'untitled').join(', ')}` : 'idle' })));
+  }));
+  $('fleet').querySelector('pre').textContent = $('lend').textContent;
+}
+
 // Fetches what changed; the server says when over /ws.
 let fetching = null, again = false;
 async function refresh() {
@@ -255,7 +301,7 @@ function threadBox(id) {
   let box = boxes.get(id);
   if (!box) {
     // A thread that isn't current shows a box to write in all the same; clicking it brings the composer.
-    const write = el('form', { className: 'elsewhere' }, el('div', { className: 'box' }, el('input', { placeholder: 'Write here', onfocus: () => go(id) })), el('div', { className: 'bar' }));
+    const write = el('form', { className: 'elsewhere' }, el('div', { className: 'box' }, el('input', { placeholder: 'Write here', onfocus: () => go(id) })), el('div', { className: 'bar' }, ...[...form.querySelector('.bar').children].filter((c) => c !== $to).map((c) => c.cloneNode(true)), el('span', { className: 'to' })));
     box = el('div', { className: 'thread' }, el('header', { onclick: () => current !== id ? go(id) : form.querySelector('input').focus() }, el('span'), el('span', { className: 'dot' })),
       handsControl(t?.tools, (tools) => api(`/api/threads/${id}/tools`, { tools }).then(refresh)),
       el('nav', { className: 'from' }), el('ul'), write);
@@ -276,9 +322,10 @@ function threadBox(id) {
     from.replaceChildren(...(origin ? [link(origin, `← forked from ${titleOf(origin)}`)] : []));
   }
   box.querySelector('form.elsewhere').hidden = id === current;
+  box.querySelector('form.elsewhere .to').textContent = picks.map(short).join(' + ');
   // Messages, then any reply still being written; the list keeps its place unless it was at the bottom.
   const list = box.querySelector('ul');
-  const writing = (t?.agents ?? []).map((a) => [a.name, text(live.get(`${id} ${a.name}`)?.message)]).filter(([, s]) => s);
+  const writing = (t?.agents ?? []).map((a) => { const state = live.get(`${id} ${a.name}`); return [a.name, text(state?.message), handsOf(state)]; }).filter(([, s, h]) => s || h);
   const entries = (details.get(id) ?? []).filter((x) => x.kind === 'agent-ide.message');
   // Forks made from a message, as links under it.
   const forksAt = new Map();
@@ -296,7 +343,7 @@ function threadBox(id) {
         el('small', { title: data.author }, who(data.author)), data.body,
         ...(forksAt.get(at) ?? []).map((f) => el('div', { className: 'links' }, link(f.id, `forked → ${f.title}`))),
         el('button', { className: 'fork', textContent: 'fork', title: 'A new thread from this message', onclick: () => fork(id, at) }))),
-      ...writing.map(([name, s]) => el('li', { className: `writing${!entries.at(-1)?.data.from && entries.at(-1)?.data.author === name ? ' same' : ''}` }, el('small', { textContent: `${who(name)} · writing` }), s)));
+      ...writing.map(([name, s, hands]) => el('li', { className: 'writing' }, el('small', { textContent: `${who(name)} · ${hands || 'writing'}`, title: hands }), s)));
     if (stuck) list.scrollTop = list.scrollHeight;
   }
   if (id === current && form.parentNode !== box) box.append(form);
@@ -316,6 +363,7 @@ async function fork(id, at) {
 const w = wires($('canvas'));
 let blankBox;
 function render() {
+  if ($('memory').getAttribute('thread') !== String(current ?? '')) $('memory').setAttribute('thread', current ?? '');
   $('server').classList.toggle('off', !up);
   $('server').querySelector('.dot').classList.toggle('on', up);
   $('server').querySelector('code').textContent = url;
@@ -341,7 +389,7 @@ function render() {
       className: `${t.id === current ? 'current' : familyOf.has(t.id) ? 'kin' : ''}`, title: t.title, onclick: () => go(t.id),
     }, el('span', { className: `dot${t.status === 'working' ? ' working' : t.status === 'blocked' ? ' blocked' : t.status === 'done' ? ' on' : ''}` }),
     el('span', { textContent: t.title || 'untitled' }),
-    el('button', { textContent: 'delete', title: 'Delete this thread', onclick: (e) => { e.stopPropagation(); remove(t.id); } })))));
+    el('button', { textContent: 'delete', title: 'Delete this thread', onclick: (e) => { e.stopPropagation(); remove(t.id); } })))), $('fleet-open'));
 
   // The phone's bar names the thread; its drawer lists the family, children indented under their parent.
   const here = threads.find((t) => t.id === current);
@@ -351,9 +399,17 @@ function render() {
   const depth = (id) => { let d = 0; for (let t = threads.find((x) => x.id === id); d < 20; d++) { const p = t?.parent ?? forkOf(t); if (!shown.includes(p)) break; t = threads.find((x) => x.id === p); } return d; };
   $('family').replaceChildren(...shownThreads.map((t) => el('li', { className: t.id === current ? 'current' : '', style: `--depth: ${depth(t.id)}`, onclick: () => go(t.id) },
     el('span', { className: lightOf(t) }), el('span', { textContent: t.title || 'untitled' }))));
-  // On a phone the runner cards live in that drawer; elsewhere, under the server.
-  const home = phone.matches && document.body.classList.contains('chat') ? $('side') : $('canvas');
-  if ($('runners').parentNode !== home) home.append($('runners'));
+  // The composer names whom it asks; the sidebar counts the runners.
+  const mineNow = threads.find((t) => t.id === current)?.agents ?? [];
+  const busyNow = picks.some((p) => mineNow.some((a) => same(a.to, p) && a.status === 'working'));
+  $pick.lastChild.textContent = picks.length ? picks.map(short).join(' + ') : 'Pick a model';
+  $pick.firstChild.className = `dot${busyNow ? ' working' : picks.length ? ' on' : ''}`;
+  $pick.title = $to.value;
+  const online = runners.filter((r) => r.online).length;
+  $('fleet-open').replaceChildren(...runners.map((r) => el('span', { className: `dot${r.online ? ' on' : ''}` })),
+    el('span', { textContent: `${online} runner${online === 1 ? '' : 's'} online` }));
+  if ($picker.matches(':popover-open') && !$picker.contains(document.activeElement)) pickerRows();
+  if ($('fleet').matches(':popover-open')) fleetRows();
 
   // A runner is one card: click it to ask it, shift-click to ask it too. Its model and thinking are set on the card.
   const asked = shownThreads.flatMap((t) => t.agents.map((a) => ({ ...a, thread: t.id })));
@@ -380,7 +436,7 @@ function render() {
     }
   }
   const mine = shownThreads.find((t) => t.id === current)?.agents ?? [];
-  for (const p of picks) connections.push({ ...down, from: $to, to: row(p.runner, p.model), toAt: -20, className: state(mine.find((a) => same(a.to, p))?.status) || 'route' });
+  for (const p of picks) connections.push({ ...down, from: $pick, to: row(p.runner, p.model), toAt: -20, className: state(mine.find((a) => same(a.to, p))?.status) || 'route' });
   w.draw(connections);
 }
 
@@ -488,86 +544,9 @@ for (const b of document.querySelectorAll('[data-try]')) b.onclick = () => {
   TRIES[b.dataset.try]().catch((error) => alert(error.message));
 };
 
-// Memory, when the server runs it: the current thread's lines, each opening into what it was made from.
-let modules = [];
-api('/api/server').then((info) => { modules = info.modules ?? []; $('concepts').href = `${url}/concepts`; showMemory(); }).catch(() => {});
-let memoryOf = null;
-async function showMemory() {
-  const box = $('memory');
-  if (!modules.includes('memory')) {
-    if (memoryOf !== 'off') box.replaceChildren(el('p', { className: 'mute' }, 'This server runs without memory. Start it with ', el('code', { textContent: 'MEMORY=1 MEMORY_MODEL=model@runner' }), '.'));
-    return void (memoryOf = 'off');
-  }
-  if (!current) return void box.replaceChildren(el('p', { className: 'mute', textContent: 'Load the example thread, or ask something, and its lines appear here.' }));
-  // The tree from its top: one line standing for the whole thread, opening into two, down to the messages.
-  // Redrawn while lines are still being written, unless you've opened one.
-  const T = (details.get(current) ?? []).filter((x) => x.kind === 'agent-ide.message').length;
-  const writing = box.textContent.includes('not summarized yet');
-  if (memoryOf === current && box.dataset.size === String(T) && (!writing || box.querySelector('li ul, li .whole'))) return;
-  memoryOf = current;
-  box.dataset.size = String(T);
-  if (!T) return void box.replaceChildren(el('p', { className: 'mute', textContent: 'No messages yet.' }));
-  const top = 2 ** Math.ceil(Math.log2(Math.max(T, 2)));
-  const opened = await api(`/api/threads/${current}/memory?zoom=0,${top}`).catch(() => null);
-  if (!opened?.lines) return;
-  box.replaceChildren(el('p', { className: 'mute', textContent: `${T} messages. Each line below stands for half of them; click to open it.` }), zoomable(opened.lines));
-}
-// What an agent with that much room reads: one line per stretch of the thread, coarse for old messages, fine for new.
-// The slider runs from a few lines' worth to the room every message's own line takes, so its whole length matters.
-let least = 400, full = 64 * 1024, fullOf = '';
-const roomOf = (v) => Math.round(least * (full / least) ** (v / 100));
-const sizeOf = (lines) => lines.reduce((s, x) => s + new TextEncoder().encode(`${x.id}+${x.n}|${x.text}`).length + 1, 0);
-let readsKey = '';
-async function showReads(force) {
-  if (current && fullOf !== `${current} ${$('memory').dataset.size}`) {
-    fullOf = `${current} ${$('memory').dataset.size}`;
-    const [all, top] = await Promise.all(['', '?budget=1'].map((q) => api(`/api/threads/${current}/memory${q}`).catch(() => ({ lines: [] }))));
-    least = Math.max(100, sizeOf(top.lines));
-    full = Math.max(least * 2, sizeOf(all.lines));
-  }
-  const room = roomOf(Number($('room').value));
-  $('room-size').textContent = room < 1024 ? `${room} B` : `${(room / 1024).toFixed(room < 10240 ? 1 : 0)} KB`;
-  const T = Number($('memory').dataset.size) || 0;
-  if (!modules.includes('memory') || !current || !T) return void $('reads').classList.add('empty');
-  $('reads').classList.remove('empty');
-  const key = `${current} ${T} ${room}`;
-  if (!force && key === readsKey && !$('reads-lines').textContent.includes('being written')) return;
-  readsKey = key;
-  const { lines } = await api(`/api/threads/${current}/memory?budget=${room}`).catch(() => ({ lines: [] }));
-  const used = sizeOf(lines);
-  $('reads-bar').replaceChildren(...lines.map((x) => {
-    const shade = Math.min(1, Math.log2(x.n) / 5);
-    const seg = el('span', { title: `${x.id}+${x.n}: ${x.n > 1 ? `${x.n} messages in one line` : 'one message'}`, style: `flex-grow:${x.n};background:hsl(215 60% ${88 - shade * 50}%)` });
-    seg.onclick = () => $('reads-lines').querySelectorAll(':scope > ul > li')[lines.indexOf(x)]?.click();
-    return seg;
-  }));
-  $('reads-note').textContent = `${lines.length} lines for ${T} messages, ${used.toLocaleString()} of ${room.toLocaleString()} bytes. `
-    + (lines.length === T ? 'Room for every message\'s own line.' : lines.length <= 2 ? 'As squeezed as it gets: zoom to read more.' : 'Old messages share lines; the latest have one each.');
-  $('reads-lines').replaceChildren(zoomable(lines));
-}
-$('room').oninput = () => showReads(true);
-setInterval(() => showReads(false), 3000);
-
-// Lines that open on click: two lines below, or at n = 1 the message itself, word for word.
-function zoomable(lines) {
-  return el('ul', {}, ...lines.map(({ id, n, text }) => {
-    // A line whose messages haven't all arrived is written once they have; until then it opens like any other.
-    const T = Number($('memory').dataset.size);
-    // Lines are written in the background, from the messages up: a pair merges once both halves are written.
-    const unwritten = text.startsWith('(not summarized');
-    const label = !unwritten ? text : id + n > T ? `the last ${T - id} messages, waiting for more before they merge` : 'being written, from the messages up';
-    const li = el('li', { className: unwritten ? 'pending' : '', title: n > 1 ? `messages ${id} to ${id + n - 1}` : `message ${id}` }, el('small', { textContent: `${id}+${n}` }), label);
-    li.onclick = async (e) => {
-      e.stopPropagation();
-      if (li.querySelector('ul, .whole')) return li.querySelector('ul, .whole').remove();
-      li.classList.add('opening');
-      const opened = await api(`/api/threads/${current}/memory?zoom=${id},${n}`).finally(() => li.classList.remove('opening'));
-      li.append(opened.message !== undefined ? el('div', { className: 'whole', textContent: opened.message }) : zoomable(opened.lines));
-    };
-    return li;
-  }));
-}
-setInterval(showMemory, 3000);
+// Memory follows the current thread on its own; the page only says which.
+$('concepts').href = `${url}/concepts`;
+$('memory').setAttribute('server', url);
 
 pulse();
 setInterval(refresh, 5000);

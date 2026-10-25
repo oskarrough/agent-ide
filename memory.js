@@ -84,7 +84,8 @@ export function server(core) {
     for (let n = 0; n < RETRIES; n++) {
       const reply = await retryAssistantCall(() => core.models.completeSimple(model, { messages }, { signal }), RETRY, signal);
       if (reply.stopReason === 'error' || reply.stopReason === 'aborted') throw new Error(reply.errorMessage ?? reply.stopReason);
-      const text = messageText(reply).trim();
+      // A writer sometimes copies the `id+n|` marks of the lines it was shown; a line carries none of its own.
+      const text = messageText(reply).replace(/(^|\s)\d+\+\d+\|/g, '$1').trim();
       if (best === undefined || bytes(text) < bytes(best)) best = text;
       if (bytes(text) <= LINE) break;
       messages.push(reply, { role: 'user', timestamp: Date.now(), content: `Too long: your line is ${bytes(text)} bytes, over the ${LINE}-byte limit. Write the whole line again for the same <input>, cutting just enough of the least valuable items to fit before this cut:\n${cut(text)}| ← LIMIT` });
