@@ -338,10 +338,11 @@ function threadBox(id) {
     const stuck = grew || list.scrollTop + list.clientHeight >= list.scrollHeight - 4;
     list.replaceChildren(
       // A message from another thread is a card: an answer to a post comes back as a reply, a post arrives as a question.
-      ...entries.map(({ id: at, data }, i) => el('li', { className: data.from && data.from !== id ? `elsewhere${data.re ? ' reply' : ''}`
-        : data.author === me ? 'mine' : !entries[i - 1]?.data.from && entries[i - 1]?.data.author === data.author ? 'same' : '' },
+      ...entries.map(({ id: at, data }, i) => el('li', { className: (data.from && data.from !== id ? `elsewhere${data.re ? ' reply' : ''}`
+        : data.author === me ? 'mine' : !entries[i - 1]?.data.from && entries[i - 1]?.data.author === data.author ? 'same' : '') + (folded(id, at, data) ? ' folded' : ''),
+        onclick: (e) => { if (e.currentTarget.classList.contains('folded') && !e.target.closest('a, button')) fold(id, at, data); } },
         data.from && data.from !== id && el('div', { className: 'links' }, link(data.from, `${data.re ? '↩ answer from' : '→ asked from'} ${titleOf(data.from)}`)),
-        el('small', { title: data.author }, who(data.author)), data.body,
+        el('small', { title: `${data.author} · click to fold`, onclick: () => fold(id, at, data) }, who(data.author)), el('span', { className: 'body' }, data.body),
         ...(forksAt.get(at) ?? []).map((f) => el('div', { className: 'links' }, link(f.id, `forked → ${f.title}`))),
         el('button', { className: 'fork', textContent: 'fork', title: 'A new thread from this message', onclick: () => fork(id, at) }))),
       ...writing.map(([name, s, hands]) => el('li', { className: 'writing' }, el('small', { textContent: `${who(name)} · ${hands || 'writing'}`, title: hands }), s)));
@@ -349,6 +350,14 @@ function threadBox(id) {
   }
   if (id === current && form.parentNode !== box) box.append(form);
   return box;
+}
+// A message folds to one line: answers from other threads start folded, since the agent says what it took from them.
+const folds = new Map();
+const folded = (id, at, data) => folds.get(`${id} ${at}`) ?? Boolean(data.re && data.from && data.from !== id);
+function fold(id, at, data) {
+  folds.set(`${id} ${at}`, !folded(id, at, data));
+  for (const box of document.querySelectorAll('.thread ul')) delete box.dataset.sig;
+  render();
 }
 // An agent goes by its model's own name and where it runs; the full id is on hover.
 const who = (author) => author?.replace(/^(?:[^@]*\/)?([^/@:]+)(?::[^@]*)?@(.+)$/, '$1 · $2') ?? '';
