@@ -325,8 +325,8 @@ async function restore(tx, agent, held) {
   home.unseen = [...new Set([...home.unseen, ...held])].sort((a, b) => a - b);
 }
 
-// What a settled input posts, and where. Inputs sharing one answer post it once, by the first; posts get it back,
-// else a child thread tells its parent. Reads the thread after settling, for steers that joined.
+// What a settled input posts, and where. Inputs sharing one answer post it once, by the first; posts from other
+// threads get it back. Reads the thread after settling, for steers that joined.
 async function outcome(threadId, agent, settled, mine) {
   const done = settled.status === 'done';
   if (!done && settled.reason === 'aborted') return [];
@@ -344,9 +344,6 @@ async function outcome(threadId, agent, settled, mine) {
   const told = [{ thread: threadId, data: { author: name, body, ...(re.length ? { re } : {}), ...result } }];
   const posts = held.filter((e) => e.data.from && !e.data.re);
   if (posts.length && reply) return [...told, ...(await reply(posts, threadId, name, body)).map((r) => ({ ...r, steer: true }))];
-  const { parent } = await thread(threadId);
-  // An answer to replies alone ends the exchange: it stays here.
-  if (parent && !held.every((e) => e.data.re)) told.push({ thread: parent, data: { author: name, body: body.split('\n').find(Boolean)?.slice(0, 160) ?? '', from: threadId } });
   return told;
 }
 

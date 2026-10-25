@@ -68,11 +68,12 @@ await api('POST', `/api/threads/${parent}/entries`, { body: `post to own thread 
 check(Boolean(await until(async () => (await results()).find((t) => t.includes('your own thread')))), 'posting to its own thread is refused');
 await idle();
 
-// The human hand-off still works: a human posts in a child, and the answer is reported in the parent.
+// A human writing in a child gets the answer there; the parent hears nothing of it.
 const { json: { id: human } } = await api('POST', '/api/threads', { title: 'by hand', parent });
 await api('POST', `/api/threads/${human}/entries`, { body: 'hello there', to });
-const report = await until(async () => (await view(parent)).entries.find((e) => e.data.from === human && e.data.body === 'heard: oskar: hello there'));
-check(Boolean(report), 'a human\'s hand-off still reports to the parent');
+check(Boolean(await until(async () => (await view(human)).entries.find((e) => e.data.answer))), 'a human in a child gets the answer there');
+await sleep(500);
+check(!(await view(parent)).entries.some((e) => e.data.from === human), 'and the parent hears nothing of it');
 
 // A note that asks nobody, then a restart. Nothing asks the agent again, so nobody answers the note.
 const settledParent = await view(parent);
