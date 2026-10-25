@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux';
-import { ModelRuntime, resolveCliModel, resolveModelScopeWithDiagnostics, SettingsManager } from '@earendil-works/pi-coding-agent';
+import { createAgentSessionServices, resolveCliModel, resolveModelScopeWithDiagnostics, SettingsManager } from '@earendil-works/pi-coding-agent';
 import { load } from './modules.js';
 import { runnerBundle, serveRunner } from './remote.js';
 
@@ -19,8 +19,10 @@ const dir = path.resolve(args.dir);
 const server = new URL(args.server).origin;
 const name = args.name;
 
-// pi's own models and logins, as pi reads them; the logins never leave this machine.
-const models = await ModelRuntime.create();
+// pi's own models and logins, as pi reads them, with the providers its extensions add, such as claude-code; the
+// logins never leave this machine.
+const { modelRuntime: models, diagnostics } = await createAgentSessionServices({ cwd: dir });
+for (const d of diagnostics) if (d.type === 'error') console.log(`pi: ${d.message}`);
 const echo = fauxProvider({ provider: 'echo', models: [{ id: 'echo' }] });
 models.registerNativeProvider(echo.provider);
 

@@ -19,7 +19,7 @@ export const db = path.join(tmp, 'store.sqlite');
 export const dir = path.join(tmp, 'folder');
 mkdirSync(dir);
 // Runners get a home of their own, so no pi logins; 11-real-model lends them the real one.
-const home = path.join(tmp, 'home');
+export const home = path.join(tmp, 'home');
 mkdirSync(home);
 
 const procs = new Set();
