@@ -389,6 +389,12 @@ const TRIES = {
     open(link, '_blank');
   },
   two: () => { fresh(); choose(defaults()); return ask('What machine are you on, and in which folder? One line.'); },
+  slow: () => { fresh(); choose(defaults().slice(0, 1)); return ask('Count from 1 to 20 in your shell, one number a second: run `for i in $(seq 1 20); do echo $i; sleep 1; done`. Then say how far you got, in one line.'); },
+  fork: async () => {
+    const first = (details.get(current) ?? []).find((e) => e.data.answer);
+    if (!first) throw new Error('Ask something first: a fork starts from a message.');
+    return fork(current, first.id);
+  },
   talk: () => {
     fresh();
     const [first, second = first] = defaults();
@@ -400,6 +406,38 @@ for (const b of document.querySelectorAll('[data-try]')) b.onclick = () => {
   if (matchMedia('(max-width: 1000px)').matches) $('stage').scrollIntoView({ behavior: 'smooth' });
   TRIES[b.dataset.try]().catch((error) => alert(error.message));
 };
+
+// Memory, when the server runs it: the current thread's lines, each opening into what it was made from.
+let modules = [];
+api('/api/server').then((info) => { modules = info.modules ?? []; $('concepts').href = `${url}/concepts`; showMemory(); }).catch(() => {});
+let memoryOf = null;
+async function showMemory() {
+  const box = $('memory');
+  if (!modules.includes('memory')) {
+    if (memoryOf !== 'off') box.replaceChildren(el('p', { className: 'mute' }, 'This server runs without memory. Start it with ', el('code', { textContent: 'MEMORY=1 MEMORY_MODEL=model@runner' }), '.'));
+    return void (memoryOf = 'off');
+  }
+  if (!current) return void box.replaceChildren(el('p', { className: 'mute', textContent: 'Ask something, and its lines appear here.' }));
+  if (memoryOf === current && box.dataset.size === String(details.get(current)?.length)) return;
+  memoryOf = current;
+  box.dataset.size = String(details.get(current)?.length);
+  const { lines } = await api(`/api/threads/${current}/memory`).catch(() => ({ lines: [] }));
+  box.replaceChildren(lines.length ? zoomable(lines) : el('p', { className: 'mute', textContent: 'No lines yet: they\'re written as messages land.' }));
+}
+// Lines that open on click: two lines below, or at n = 1 the message itself, word for word.
+function zoomable(lines) {
+  return el('ul', {}, ...lines.map(({ id, n, text }) => {
+    const li = el('li', { title: n > 1 ? `messages ${id} to ${id + n - 1}` : `message ${id}` }, el('small', { textContent: `${id}+${n}` }), text);
+    li.onclick = async (e) => {
+      e.stopPropagation();
+      if (li.querySelector('ul, .whole')) return li.querySelector('ul, .whole').remove();
+      const opened = await api(`/api/threads/${memoryOf}/memory?zoom=${id},${n}`);
+      li.append(opened.message !== undefined ? el('div', { className: 'whole', textContent: opened.message }) : zoomable(opened.lines));
+    };
+    return li;
+  }));
+}
+setInterval(showMemory, 3000);
 
 pulse();
 setInterval(refresh, 5000);

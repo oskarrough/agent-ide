@@ -34,6 +34,13 @@
   }
   /* Sections not yet read with Oskar say so. */
   section.draft > h2::after { content: 'not reviewed yet'; font: 600 11px system-ui, sans-serif; text-transform: uppercase; letter-spacing: .04em; color: #fff; background: var(--draft); border-radius: 99px; padding: .1rem .5rem; margin-left: .5rem; vertical-align: .15em; }
+  .memory { font-size: 14px; }
+  .memory ul { list-style: none; margin: .5rem 0; padding: 0; }
+  .memory li { padding: .3rem .5rem; border-left: 2px solid var(--line); margin: .2rem 0; cursor: pointer; }
+  .memory li:hover { border-left-color: var(--pick); background: var(--tint); }
+  .memory li small { color: var(--mute); font-family: ui-monospace, monospace; margin-right: .4rem; }
+  .memory ul ul { margin-left: 1rem; }
+  .memory .whole { cursor: default; white-space: pre-wrap; background: var(--tint); }
   .try { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0; }
 
   /* Where the four pieces live, per product. The chips move between the places. */
@@ -157,8 +164,8 @@
   </section>
 
   <section class="draft" data-focus="hands">
-    <h2>Watch its hands</h2>
-    <p>The thinking happens on the server. Every tool call travels down the wire and runs on the runner, in its folder.</p>
+    <h2>Where the work happens</h2>
+    <p>The thinking happens on the server, the work on the runner. Each tool the agent calls travels down its wire and runs in the runner's folder, with the runner's logins. While it works, the line under the agent shows what its hands are doing.</p>
     <div class="try"><button data-try="hands">Ask which file here is biggest</button></div>
   </section>
 
@@ -177,24 +184,33 @@
 
   <section class="draft" data-focus="thread">
     <h2>Agents talk to each other</h2>
-    <p>An agent can start a thread of its own and ask someone else. The answer comes back to it once, and only then does it answer you.</p>
+    <p>An agent asks another with its <code>post</code> tool. With no thread, it starts a child that holds just the question. Given a thread, it asks whoever is there, with everything they already know there.</p>
+    <p>The answer comes back once, as a card, and wakes whoever asked. Nothing else crosses: what's said in a child stays in the child. And an agent's words reach others marked as an agent's, so none can pass for yours.</p>
     <div class="try"><button data-try="talk">Have one agent ask another</button></div>
   </section>
 
   <section class="draft" data-focus="server">
     <h2>Pull the plug</h2>
-    <p>Ask something slow, and while the wire is green, stop the server: <code>Ctrl-C</code> where it runs. Start it again. The answer lands, once.</p>
-    <p>Nothing here keeps state. Close this tab, or the laptop, and nothing is lost either.</p>
+    <p>Ask something slow. While its wire is green, stop the server where it runs, with <code>Ctrl-C</code>, and start it again. The server goes dashed, then green, and the answer lands, once. A command that was running when the plug came out is cut off, and the agent says so: it picks up where Pi left it, not where the shell was.</p>
+    <div class="try"><button data-try="slow">Ask something slow</button></div>
+    <p>This page keeps nothing itself. Close the tab, or the laptop, and nothing is lost either.</p>
   </section>
 
   <section class="draft" data-focus="thread">
     <h2>Fork</h2>
-    <p>Wish you'd asked differently? Every message has a <b>fork</b>. A new thread starts from there, with the same agents, who remember only what came before it.</p>
+    <p>Wish you'd asked differently? Hover any message for its <b>fork</b>. A new thread starts from there, with the same agents, each remembering only what came before it. The two sit side by side, linked both ways.</p>
+    <div class="try"><button data-try="fork">Fork this thread at its first answer</button></div>
   </section>
 
   <section class="draft" data-focus="memory">
     <h2>Memory</h2>
-    <p class="mute">Placeholder. A thread that never has to end, and anything said in it found again word for word. Still being explored, behind <code>MEMORY=1</code>.</p>
+    <p>A thread that never has to end. Each message gets one short line, pairs of lines merge into one going up, and an agent reads those lines instead of every word. When it needs the words, it zooms back down. Click a line to do the same.</p>
+    <div id="memory" class="memory"></div>
+  </section>
+
+  <section data-focus="all">
+    <h2>Under it all</h2>
+    <p>Six words and five promises: <a id="concepts" href="/concepts">what agent-ide is made of</a>. The code is small enough to read in an evening.</p>
   </section>
 
   <aside id="stage">
