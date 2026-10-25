@@ -7,7 +7,7 @@ import { load } from './modules.js';
 import { serveRunner } from './remote.js';
 
 const { values: args } = parseArgs({ options: {
-  server: { type: 'string', default: 'http://localhost:3000' },
+  server: { type: 'string', default: process.env.AGENT_IDE_SERVER || 'http://localhost:3000' },
   name: { type: 'string', default: os.hostname() },
   alias: { type: 'string', default: '' },
   dir: { type: 'string', default: process.cwd() },

@@ -101,7 +101,7 @@ bun runner.js --server http://127.0.0.1:3000 --name laptop [--alias "Oskar's lap
 
 bun cli.js send "hello" --to sonnet@laptop --to desk --effort high   # a new thread; answers print as they land
 bun cli.js send "and you?" --thread 3                               # asks whom thread 3 last asked
-bun cli.js threads | runners | read 3 [--last 5] | stop 3          # AGENT_IDE_SERVER=url, or --server, picks the server
+bun cli.js threads | runners | read 3 [--last 5] | stop 3          # runner.js and cli.js both read AGENT_IDE_SERVER=url, or --server
 ```
 
 The client is served at `/`, or by `bun client.html` with live reload; [cli.js](cli.js) is the same API from a terminal. It can hold several servers. `?user=ana` posts as someone else. There is no authentication: anyone who can reach the server can claim any name, so keep it on a trusted network. A runner's owner keeps out agents on other runners, which can't pick their name, but not a person who claims to be the owner.
