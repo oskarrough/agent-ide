@@ -13,9 +13,9 @@ const light = (state) => `dot${state === 'on' ? ' on' : state === 'working' ? ' 
 // Where the four pieces live, per product. The chips move between the places; hovering one lights it up on the stage.
 const PIECES = { model: 'Claude, GPT, Gemini', loop: 'Pi, Claude Code, Codex', hands: 'where tools run', memory: 'the chat history' };
 const PRODUCTS = {
-  chatgpt: { model: 'lab', loop: 'lab', hands: 'lab', memory: 'lab', caption: 'All four at OpenAI. Nothing to set up, and none of it yours.' },
-  'claude-code': { model: 'lab', loop: 'laptop', hands: 'laptop', memory: 'laptop', caption: 'Yours, on one laptop. Close the lid and it stops.' },
-  'agent-ide': { model: 'lab', loop: 'server', hands: 'anywhere', memory: 'server', caption: 'The loop and the memory on a box that stays on. The hands on any computer you lend it.' },
+  chatgpt: { model: 'lab', loop: 'lab', hands: 'lab', memory: 'lab', caption: "All of it runs at OpenAI, so there's nothing to set up and none of it is yours." },
+  'claude-code': { model: 'lab', loop: 'laptop', hands: 'laptop', memory: 'laptop', caption: 'Everything but the model runs on your laptop, so it stops when you close the lid.' },
+  'agent-ide': { model: 'lab', loop: 'server', hands: 'anywhere', memory: 'server', caption: 'The loop and the memory live on a box that stays on, and the hands on whichever computer you lend it.' },
 };
 const chips = Object.fromEntries(Object.entries(PIECES).map(([piece, hint]) => [piece, el('span', { className: 'chip', title: hint, textContent: piece[0].toUpperCase() + piece.slice(1) })]));
 for (const [piece, chip] of Object.entries(chips)) {
@@ -93,7 +93,7 @@ setMode(params.has('chat'));
 const phone = matchMedia('(max-width: 700px)');
 const sheet = (name) => { document.body.classList.toggle('list', name === 'list'); document.body.classList.toggle('side', name === 'side'); };
 $('back').onclick = () => sheet('list');
-$('pill').onclick = $('aside').onclick = () => sheet('side');
+$('pill').onclick = () => sheet('side');
 $('scrim').onclick = () => sheet(null);
 addEventListener('keydown', (e) => { if (e.key === 'Escape') sheet(null); });
 phone.addEventListener('change', () => { sheet(null); render(); });
@@ -139,6 +139,14 @@ function handsControl(tools, set) {
   show(tools);
   return box;
 }
+// The thread's sheet holds its hands, for the thread on screen or the one about to start.
+const sideHands = handsControl(null, async (tools) => {
+  if (current) return api(`/api/threads/${current}/tools`, { tools }).then(refresh);
+  fresh_tools = tools; blankBox?.classList.toggle('hands-off', Boolean(tools)); sideHands.show(tools);
+});
+$('side').append(el('h3', { textContent: 'Tools' }), sideHands);
+// A thread's name opens its sheet in the chat, and writes in it on the page with the story.
+const header = (id) => () => current !== id ? go(id) : document.body.classList.contains('chat') ? sheet('side') : form.querySelector('input').focus();
 
 async function ask(body, to = picks) {
   if (!to.length) return;
@@ -180,21 +188,24 @@ function place(pop, from) {
   Object.assign(pop.style, { left: `${Math.max(8, Math.min(r.left, innerWidth - pop.offsetWidth - 8))}px`, top: 'auto', bottom: `${innerHeight - r.top + 6}px` });
 }
 $pick.onclick = () => { $picker.togglePopover(); };
-$picker.addEventListener('toggle', (e) => { if (e.newState === 'open') { pickerRows(); place($picker, $pick); } });
+$picker.addEventListener('toggle', (e) => { $pick.ariaExpanded = String(e.newState === 'open'); if (e.newState === 'open') { pickerRows(); place($picker, $pick); } });
 function pickerRows() {
-  const online = runners.filter((r) => r.online);
+  const online = runners.filter((r) => r.online), several = online.length > 1;
   const rows = online.map((r) => {
     const set = setting(r), on = picks.some((p) => p.runner === r.name);
     const models = [...new Set([set.model, r.model, ...(r.offers ?? [])].filter(Boolean))];
-    const swap = el('select', { title: 'model', onchange: () => tune(r, { model: swap.value }) }, ...models.map((o) => new Option(o.split('/').pop(), o)));
-    swap.value = set.model ?? '';
-    const think = el('select', { title: 'thinking', onchange: () => tune(r, { thinkingLevel: think.value || undefined }) }, new Option('default', ''), ...EFFORTS.map((x) => new Option(x, x)));
-    think.value = set.thinkingLevel ?? '';
-    const also = el('input', { type: 'checkbox', checked: on, title: 'Ask it too', onchange: () => toggle(r, true) });
+    // A model is a row: click to ask it here, shift-click to ask it too. Thinking is a row of steps; the lit one again goes back to default.
+    const model = (o) => el('button', { type: 'button', className: `model${on && o === set.model ? ' on' : ''}`, onclick: (e) => {
+      tune(r, { model: o });
+      if (!on || !(e.shiftKey || picks.length > 1)) toggle(r, e.shiftKey);
+      if (!e.shiftKey) $picker.hidePopover();
+    } }, el('span', { textContent: o.split('/').pop() }), el('small', { textContent: o.includes('/') ? o.split('/')[0] : '' }));
+    const step = (x) => el('button', { type: 'button', textContent: { minimal: 'min', medium: 'med' }[x] ?? x, title: x, ariaPressed: String(set.thinkingLevel === x), onclick: () => tune(r, { thinkingLevel: set.thinkingLevel === x ? undefined : x }) });
     return el('li', { className: on ? 'on' : '' },
-      el('button', { type: 'button', className: 'who', onclick: () => { toggle(r, false); $picker.hidePopover(); } },
-        el('span', { className: light('on') }), el('b', { textContent: r.name }), el('small', { textContent: r.dir })),
-      el('div', { className: 'set' }, swap, think, el('label', { title: 'Ask it too' }, also, 'also')));
+      el('div', { className: 'who' }, el('span', { className: light('on') }), el('b', { textContent: r.name }), el('small', { textContent: r.dir, title: r.dir }),
+        several && el('button', { type: 'button', className: 'also', textContent: on ? 'asked' : 'ask too', ariaPressed: String(on), title: 'Ask it too', onclick: () => toggle(r, true) })),
+      el('div', { className: 'models' }, ...models.map(model)),
+      el('h4', { textContent: 'Thinking' }), el('div', { className: 'steps' }, ...EFFORTS.map(step)));
   });
   $picker.querySelector('ul').replaceChildren(...(rows.length ? rows : [el('li', { className: 'mute', textContent: 'No runner is online.' })]));
 }
@@ -209,7 +220,7 @@ function fleetRows() {
     const hands = work.map(({ t, a }) => handsOf(live.get(`${t.id} ${a.name}`))).find(Boolean);
     return el('li', {}, el('span', { className: light(r.online ? (work.length ? 'working' : 'on') : '') }),
       el('div', {}, el('b', { textContent: r.name }), el('small', { textContent: r.dir }),
-        el('small', { className: 'doing', textContent: !r.online ? 'offline' : work.length ? hands || `working in ${work.map(({ t }) => t.title || 'untitled').join(', ')}` : 'idle' })));
+        (!r.online || work.length > 0) && el('small', { className: r.online ? 'doing' : '', textContent: !r.online ? 'offline' : hands || `working in ${work.map(({ t }) => t.title || 'untitled').join(', ')}` })));
   }));
   $('fleet').querySelector('pre').textContent = $('lend').textContent;
 }
@@ -303,9 +314,10 @@ function threadBox(id) {
   const t = threads.find((x) => x.id === id);
   let box = boxes.get(id);
   if (!box) {
-    // A thread that isn't current shows a box to write in all the same; clicking it brings the composer.
-    const write = el('form', { className: 'elsewhere' }, el('div', { className: 'box' }, el('input', { placeholder: 'Write here', onfocus: () => go(id) })), el('div', { className: 'bar' }, ...[...form.querySelector('.bar').children].filter((c) => c !== $to).map((c) => c.cloneNode(true)), el('span', { className: 'to' })));
-    box = el('div', { className: 'thread' }, el('header', { onclick: () => current !== id ? go(id) : form.querySelector('input').focus() }, el('span'), el('span', { className: 'dot' })),
+    // A thread that isn't current shows a box to write in all the same; clicking it brings the composer, and its model the picker.
+    const write = el('form', { className: 'elsewhere' }, el('div', { className: 'box' }, el('input', { placeholder: 'Write here', onfocus: () => go(id) })), el('div', { className: 'bar' }, ...[...form.querySelector('.bar').children].filter((c) => c !== $to).map((c) => c.cloneNode(true))));
+    write.querySelector('.pick').onclick = () => { go(id); render(); $picker.showPopover(); };
+    box = el('div', { className: 'thread' }, el('header', { onclick: header(id) }, el('span'), el('span', { className: 'dot' })),
       handsControl(t?.tools, (tools) => api(`/api/threads/${id}/tools`, { tools }).then(refresh)),
       el('nav', { className: 'from' }), el('ul'), write);
     boxes.set(id, box);
@@ -325,7 +337,7 @@ function threadBox(id) {
     from.replaceChildren(...(origin ? [link(origin, `← forked from ${titleOf(origin)}`)] : []));
   }
   box.querySelector('form.elsewhere').hidden = id === current;
-  box.querySelector('form.elsewhere .to').textContent = picks.map(short).join(' + ');
+  box.querySelector('form.elsewhere .pick').replaceChildren(...$pick.cloneNode(true).childNodes);
   // Messages, then any reply still being written; the list keeps its place unless it was at the bottom.
   const list = box.querySelector('ul');
   const writing = (t?.agents ?? []).map((a) => { const state = live.get(`${id} ${a.name}`); return [a.name, text(state?.message), handsOf(state)]; }).filter(([, s, h]) => s || h);
@@ -341,10 +353,9 @@ function threadBox(id) {
     list.replaceChildren(
       // A message from another thread is a card: an answer to a post comes back as a reply, a post arrives as a question.
       ...entries.map(({ id: at, data }, i) => el('li', { className: (data.from && data.from !== id ? `elsewhere${data.re ? ' reply' : ''}`
-        : data.author === me ? 'mine' : !entries[i - 1]?.data.from && entries[i - 1]?.data.author === data.author ? 'same' : '') + (folded(id, at, data) ? ' folded' : ''),
-        onclick: (e) => { if (e.currentTarget.classList.contains('folded') && !e.target.closest('a, button')) fold(id, at, data); } },
+        : data.author === me ? 'mine' : !entries[i - 1]?.data.from && entries[i - 1]?.data.author === data.author ? 'same' : '') },
         data.from && data.from !== id && el('div', { className: 'links' }, link(data.from, `${data.re ? '↩ answer from' : '→ asked from'} ${titleOf(data.from)}`)),
-        el('small', { title: `${data.author} · click to fold`, onclick: () => fold(id, at, data) }, who(data.author)), el('span', { className: 'body' }, data.body),
+        el('small', { title: data.author }, who(data.author)), el('span', { className: 'body' }, data.body),
         ...(forksAt.get(at) ?? []).map((f) => el('div', { className: 'links' }, link(f.id, `forked → ${f.title}`))),
         el('button', { className: 'fork', textContent: 'fork', title: 'A new thread from this message', onclick: () => fork(id, at) }))),
       ...writing.map(([name, s, hands]) => el('li', { className: 'writing' }, el('small', { textContent: `${who(name)} · ${hands || 'writing'}`, title: hands }), s)));
@@ -353,14 +364,10 @@ function threadBox(id) {
   if (id === current && form.parentNode !== box) box.append(form);
   return box;
 }
-// A message folds to one line: answers from other threads start folded, since the agent says what it took from them.
-const folds = new Map();
-const folded = (id, at, data) => folds.get(`${id} ${at}`) ?? Boolean(data.re && data.from && data.from !== id);
-function fold(id, at, data) {
-  folds.set(`${id} ${at}`, !folded(id, at, data));
-  for (const box of document.querySelectorAll('.thread ul')) delete box.dataset.sig;
-  render();
-}
+// A thread as a row, the same in the list of all threads and in a thread's family: its light, its name, delete on hover.
+const threadRow = (t, depth = 0) => el('li', { className: t.id === current ? 'current' : '', title: t.title, style: `--depth: ${depth}`, onclick: () => go(t.id) },
+  el('span', { className: light(t.status) }), el('span', { textContent: t.title || 'untitled' }),
+  el('button', { textContent: 'delete', title: 'Delete this thread', onclick: (e) => { e.stopPropagation(); remove(t.id); } }));
 // An agent goes by its model's own name and where it runs; the full id is on hover.
 const who = (author) => author?.replace(/^(?:[^@]*\/)?([^/@:]+)(?::[^@]*)?@(.+)$/, '$1 · $2') ?? '';
 const titleOf = (id) => threads.find((t) => t.id === id)?.title || `thread ${id}`;
@@ -385,7 +392,7 @@ function render() {
 
   const shown = family();
   const shownThreads = shown.map((id) => threads.find((t) => t.id === id)).filter(Boolean);
-  blankBox ??= el('div', { className: 'thread current' }, el('header', {}, el('span', { textContent: 'a new thread' })),
+  blankBox ??= el('div', { className: 'thread current' }, el('header', { onclick: header(null) }, el('span', { textContent: 'a new thread' })),
     handsControl(null, async (tools) => { fresh_tools = tools; blankBox.classList.toggle('hands-off', Boolean(tools)); blankBox.querySelector('.hands').show(tools); }));
   const blank = !current && blankBox;
   if (blank && form.parentNode !== blank) blank.append(form);
@@ -394,26 +401,22 @@ function render() {
   if (next.length !== $('threads').children.length || next.some((b, i) => $('threads').children[i] !== b)) $('threads').replaceChildren(...next);
   if (focus && (!current || details.has(current))) { focus = false; form.querySelector('input').focus(); }
   // Every thread on the server, newest first; a new one always on top.
-  const familyOf = new Set(shown);
   $('list').replaceChildren(
     el('button', { className: `new${current ? '' : ' current'}`, textContent: '+ New thread', onclick: () => go(null) }),
-    el('ul', {}, ...threads.filter((t) => !t.hidden && !threads.some((p) => p.id === t.parent)).map((t) => el('li', {
-      className: `${t.id === current ? 'current' : familyOf.has(t.id) ? 'kin' : ''}`, title: t.title, onclick: () => go(t.id),
-    }, el('span', { className: light(t.status) }),
-    el('span', { textContent: t.title || 'untitled' }),
-    el('button', { textContent: 'delete', title: 'Delete this thread', onclick: (e) => { e.stopPropagation(); remove(t.id); } })))), $('fleet-open'));
+    el('ul', {}, ...threads.filter((t) => !t.hidden && !threads.some((p) => p.id === t.parent)).map((t) => threadRow(t))), $('fleet-open'));
 
   // The phone's bar names the thread; its drawer lists the family, children indented under their parent.
   const here = threads.find((t) => t.id === current);
   $('pill').lastChild.textContent = current ? here?.title || 'untitled' : 'New thread';
   $('pill').firstChild.className = light(here?.status);
+  $('pill').classList.toggle('hands-off', Boolean(current ? here?.tools : fresh_tools));
+  if (!sideHands.contains(document.activeElement)) sideHands.show(current ? here?.tools : fresh_tools);
   const depth = (id) => { let d = 0; for (let t = threads.find((x) => x.id === id); d < 20; d++) { const p = t?.parent ?? forkOf(t); if (!shown.includes(p)) break; t = threads.find((x) => x.id === p); } return d; };
-  $('family').replaceChildren(...shownThreads.map((t) => el('li', { className: t.id === current ? 'current' : '', style: `--depth: ${depth(t.id)}`, onclick: () => go(t.id) },
-    el('span', { className: light(t.status) }), el('span', { textContent: t.title || 'untitled' }))));
+  $('family').replaceChildren(...shownThreads.map((t) => threadRow(t, depth(t.id))));
   // The composer names whom it asks; the sidebar counts the runners.
   const mineNow = threads.find((t) => t.id === current)?.agents ?? [];
   const busyNow = picks.some((p) => mineNow.some((a) => same(a.to, p) && a.status === 'working'));
-  $pick.lastChild.textContent = picks.length ? picks.map(short).join(' + ') : 'Pick a model';
+  $pick.children[1].textContent = picks.length ? picks.map(short).join(' + ') : 'Pick a model';
   $pick.firstChild.className = picks.length ? light(busyNow ? 'working' : 'on') : light();
   $pick.title = $to.value;
   const online = runners.filter((r) => r.online).length;

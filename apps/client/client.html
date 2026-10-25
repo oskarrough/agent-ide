@@ -91,17 +91,16 @@
 
   <aside id="stage">
     <button id="mode" type="button" aria-pressed="false">Just the chat</button>
-    <!-- On a phone: back to every thread, the thread's name, and its family with the runners. -->
+    <!-- On a phone: back to every thread, and the thread's name, which opens its sheet. -->
     <header id="bar">
-      <button id="back" class="round" type="button" aria-label="All threads"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <button id="back" class="round" type="button" aria-label="All threads"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
       <button id="pill" type="button"><span class="dot"></span><span></span></button>
-      <button id="aside" class="round" type="button" aria-label="This thread's family and runners"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M8 12h12M8 18h12M4 12h.01M4 18h.01"/></svg></button>
     </header>
     <div id="scrim"></div>
     <div id="side"><h3>In this thread</h3><ul id="family"></ul></div>
     <button id="fleet-open" type="button"></button>
-    <div id="picker" popover><h3>Ask</h3><ul></ul></div>
-    <div id="fleet" popover><h3>Runners on this server</h3><ul></ul><h3>Add a runner</h3><p>Run this on the computer you want to lend:</p><pre></pre></div>
+    <div id="picker" popover><ul></ul></div>
+    <div id="fleet" popover><ul></ul><p>To add a runner, run this on the computer you want to lend.</p><pre></pre></div>
     <div id="canvas">
       <div class="node" id="client"><b>Client</b></div>
       <div class="node off" id="server">
