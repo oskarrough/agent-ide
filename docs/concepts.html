@@ -135,11 +135,11 @@ flowchart LR
   <dt>Machine <span class="tag unused">not ours</span></dt>
   <dd>Plain English for where a runner runs: a laptop, a VPS, a container. It isn't a concept in agent-ide; the runner records its host, and that's all.</dd>
   <dt>Computer <span class="tag unused">not ours</span></dt>
-  <dd>do-computer's word for where a Dood works, which bundles three ideas: where the files are, where commands run, and which provider made the box (a virtual shell, Daytona, Modal, Cloudflare, or your own paired machine). agent-ide has one kind: anywhere you can run the curl line. A cloud sandbox is just a machine you run it on.</dd>
+  <dd>A word that bundles three ideas: where the files are, where commands run, and which provider made the box. agent-ide has one kind of place to work: anywhere you can run the curl line. A cloud sandbox is just a machine you run it on.</dd>
   <dt>Daemon <span class="tag unused">not ours</span></dt>
   <dd>The runner is the daemon. One word is enough.</dd>
   <dt>Desktop <span class="tag unused">not ours</span></dt>
-  <dd>do-computer's desktop app is three things in one program: a window, a server, and a daemon. agent-ide gets the same with <code>RUNNER=~/code bun server.js</code> and a browser tab, and you can see each part running.</dd>
+  <dd>A desktop app would be three things in one program: a window, a server and a runner. agent-ide gets the same with <code>RUNNER=~/code bun server.js</code> and a browser tab, and you can see each part running.</dd>
   <dt>Mobile <span class="tag unused">not ours</span></dt>
   <dd>The web client in your phone's browser. Reach the server over Tailscale, never the open internet: there are no accounts, so whoever can reach it can use it. <code>tailscale serve --bg --https=443 http://127.0.0.1:3000</code> gives it an HTTPS address only your devices can reach.</dd>
   <dt>Workspace <span class="tag unused">not ours</span></dt>
@@ -202,9 +202,9 @@ flowchart LR
   <li><b>Just you:</b> every runner is yours, with your logins. Nothing to decide.</li>
   <li><b>A team:</b> Ana's runners pay for the agents on them, and <code>--owner</code> and <code>--allow</code> say who else may use them. Nobody's subscription quietly becomes everyone's, and someone who leaves takes their logins along by stopping their runner.</li>
   <li><b>A pool</b>, if a team wants one: a runner without an owner, next to the server, with a key in its environment. pi's enabled models there are the list, and pi's default there is the default.</li>
-  <li><b>The server holds no secrets.</b> do-computer keeps keys and subscriptions on its server, pooled per workspace, and says itself that with one key and no per-user limits, sign-up has to be by invitation.</li>
+  <li><b>The server holds no secrets.</b> Keys kept on the server would be pooled: one key, everyone spending it, and no way to say whose share was whose.</li>
 </ul>
-<p>Two costs we accept. A machine with no login can't think: give it a key in its environment. And someone has to run <code>pi</code> and <code>/login</code> on a machine once, where do-computer signs in from the app. If thinking on the laptop while working on the vps is ever needed, it's one optional field on an agent.</p>
+<p>Two costs we accept. A machine with no login can't think: give it a key in its environment. And someone has to run <code>pi</code> and <code>/login</code> on a machine once, rather than signing in from the web client. If thinking on the laptop while working on the vps is ever needed, it's one optional field on an agent.</p>
 
 <h2 id="one-runner">Open: one runner per agent, or several?</h2>
 <p>Today an agent has one runner. The question is what happens when a task spans machines. Take one: the site on the vps throws errors, and the code that causes them is on the laptop.</p>
@@ -225,7 +225,7 @@ sequenceDiagram
 </pre>
 
 <h3>Several runners, one agent</h3>
-<p>One agent reaches both machines. Every file and shell tool gains a <code>runner</code> argument, and the model fills it on each call, as do-computer's Doods do.</p>
+<p>One agent reaches both machines. Every file and shell tool gains a <code>runner</code> argument, and the model fills it on each call.</p>
 <pre class="mermaid">
 sequenceDiagram
   participant You
