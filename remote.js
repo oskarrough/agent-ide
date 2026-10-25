@@ -99,7 +99,7 @@ export function runnerProvider(runners, name, resolved = {}) {
   const models = Object.entries(resolved).map(([ref, m]) => ({ ...m, provider: id, id: ref, name: `${m.name} on ${name}` }));
   const stream = (model, context, options = {}) => {
     const events = createAssistantMessageEventStream();
-    const { signal, apiKey, env, fetch, onPayload, onResponse, onProviderStreamEvent, ...rest } = options;
+    const { signal, apiKey, env, fetch, onPayload, onResponse, onProviderStreamEvent, telemetry, ...rest } = options;
     let partial;
     runners.call(name, { op: 'stream', model: model.id, context: { messages: context.messages }, options: rest }, {
       signal,
