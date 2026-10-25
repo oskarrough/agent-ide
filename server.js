@@ -596,12 +596,12 @@ async function upgrade(req, raw, head) {
   sockets.set(name, socket);
   const q = (param) => url.searchParams.get(param) || '';
   const resolved = (await known())[name]?.models ?? {};
-  const runner = { alias: q('alias'), owner: q('owner') && speaker(q('owner')), allow: url.searchParams.getAll('allow').map(speaker), host: q('host'), dir: q('dir') || '/', model: q('model'), modelError: q('modelError'), offers: url.searchParams.getAll('offer'), models: resolved };
+  const runner = { alias: q('alias'), owner: q('owner') && speaker(q('owner')), allow: url.searchParams.getAll('allow').map(speaker), host: q('host'), dir: q('dir') || '/', readOnly: q('readOnly') === '1', model: q('model'), modelError: q('modelError'), offers: url.searchParams.getAll('offer'), models: resolved };
   await commit(async (tx) => { (await tx.doc(Runners))[name] = runner; });
   if (!models.getProvider(`runner:${name}`)) models.setProvider(runnerProvider(runners, name, resolved));
   socket.on('message', (data) => runners.receive(data.toString()));
   runners.connect(name, (text) => socket.send(text));
-  console.log(`runner ${name} online: ${runner.dir}, default model ${runner.model || `none (${runner.modelError || 'not set'})`}${runner.owner ? `, work from ${[runner.owner, ...runner.allow].join(', ')}` : ''}`);
+  console.log(`runner ${name} online: ${runner.dir}${runner.readOnly ? ' (read-only)' : ''}, default model ${runner.model || `none (${runner.modelError || 'not set'})`}${runner.owner ? `, work from ${[runner.owner, ...runner.allow].join(', ')}` : ''}`);
 }
 
 // RUNNER=~/code lends this machine too: its own runner.js, one more process, which stops with the server.

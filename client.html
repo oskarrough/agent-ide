@@ -303,7 +303,7 @@
     const threads = server.threads.filter((t) => t.agents.some((a) => a.status !== 'idle' && a.to?.runner === runner.name));
     return build('li', {}, [
       build('span', { className: `dot ${runner.online ? 'on' : ''}` }), runner.name, ' ',
-      build('small', { textContent: `${runner.alias ? `${runner.alias} · ` : ''}${runner.owner ? `${runner.owner}'s · ` : ''}${runner.dir} · ${runner.model || `no default model${runner.modelError ? `: ${runner.modelError}` : ''}`}` }),
+      build('small', { textContent: `${runner.alias ? `${runner.alias} · ` : ''}${runner.owner ? `${runner.owner}'s · ` : ''}${runner.dir}${runner.readOnly ? ' · read-only' : ''} · ${runner.model || `no default model${runner.modelError ? `: ${runner.modelError}` : ''}`}` }),
       ...threads.map((t) => build('div', {}, [build('small', { className: 'status' }, [`${t.status} in `, threadLink(server, t.id)])])),
       ...runner.calls.map((c) => build('div', {}, [build('small', { className: 'mute', textContent: `${c.op} ${c.what}` })])),
       raw(runner),

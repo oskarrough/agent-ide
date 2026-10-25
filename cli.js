@@ -85,7 +85,7 @@ const commands = {
   },
   async runners() {
     for (const r of await api('GET', '/api/runners')) {
-      console.log(`${r.name} ${r.online ? 'online' : 'offline'}  ${r.dir}  default ${r.model || `none${r.modelError ? `: ${r.modelError}` : ''}`}`);
+      console.log(`${r.name} ${r.online ? 'online' : 'offline'}  ${r.dir}${r.readOnly ? ' (read-only)' : ''}  default ${r.model || `none${r.modelError ? `: ${r.modelError}` : ''}`}`);
       for (const m of r.offers) console.log(`  ${m}@${r.name}`);
     }
   },

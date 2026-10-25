@@ -28,6 +28,7 @@ const READERS = {
   openBinaryReader: ['info', 'read', 'scanLines', 'close'],
   openDirReader: ['next', 'close'],
 };
+const CHANGES = ['writeFile', 'appendFile', 'truncateFile', 'renameFile', 'createDir', 'remove', 'exec'];
 const FS = ['absolutePath', 'joinPath', 'readTextFile', 'readTextLines', 'readBinaryFile', 'writeFile', 'appendFile', 'truncateFile', 'flushFile',
   'renameFile', 'fileInfo', 'listDir', 'canonicalPath', 'exists', 'createDir', 'remove', 'createTempDir', 'createTempFile', ...Object.keys(READERS)];
 
@@ -151,8 +152,8 @@ export function remoteEnv(runners, name, cwd) {
 }
 
 // `resolve(pattern)` is pi's `--model pattern`: { model, thinkingLevel? }. `echo/echo` answers from a queue, one per request.
-// `ops` are the modules' own; an op nobody serves answers null.
-export function serveRunner({ name, dir, models, resolve, echo, ops: more = {}, send, onTell }) {
+// `ops` are the modules' own; an op nobody serves answers null. A read-only runner reads its folder and changes nothing.
+export function serveRunner({ name, dir, models, resolve, echo, ops: more = {}, readOnly = false, send, onTell }) {
   const running = new Map();
   const handles = new Map();
   let nextHandle = 0;
@@ -188,6 +189,10 @@ export function serveRunner({ name, dir, models, resolve, echo, ops: more = {}, 
 
   async function env({ id, cwd, method, args }, context) {
     const root = inside(cwd);
+    if (readOnly && CHANGES.includes(method)) {
+      const message = `${name} is read-only: it reads its folder but changes nothing and runs no commands`;
+      return { ok: false, error: method === 'exec' ? new ExecutionError('spawn_error', message) : new FileError('permission_denied', message, args[0]) };
+    }
     const local = new NodeExecutionEnv({ cwd: root });
     if (method === 'exec') {
       const [command, options = {}] = args;

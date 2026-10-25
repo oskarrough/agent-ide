@@ -12,6 +12,7 @@ const { values: args } = parseArgs({ options: {
   alias: { type: 'string', default: '' },
   dir: { type: 'string', default: process.cwd() },
   owner: { type: 'string', default: '' },
+  'read-only': { type: 'boolean', default: false },
   allow: { type: 'string', multiple: true, default: [] },
 } });
 const dir = path.resolve(args.dir);
@@ -44,16 +45,16 @@ const modules = await load('runner', { status: true, context: true }, { name, se
 
 async function connect() {
   const { model, error } = defaultModel();
-  const query = new URLSearchParams({ runner: name, alias: args.alias, owner: args.owner, host: os.hostname(), dir, model: model ?? '', modelError: error ?? '' });
+  const query = new URLSearchParams({ runner: name, alias: args.alias, owner: args.owner, host: os.hostname(), dir, model: model ?? '', modelError: error ?? '', ...(args['read-only'] ? { readOnly: '1' } : {}) });
   if (error) console.log(`pi's default model doesn't resolve: ${error}`);
   for (const ref of await offers().catch(() => [])) query.append('offer', ref);
   for (const who of args.allow) query.append('allow', who);
   const socket = new WebSocket(`${server.replace(/^http/, 'ws')}/ws?${query}`);
-  const runner = serveRunner({ name, dir, models, resolve, echo, ops: Object.assign({}, ...modules.map((m) => m.ops)),
+  const runner = serveRunner({ name, dir, models, resolve, echo, ops: Object.assign({}, ...modules.map((m) => m.ops)), readOnly: args['read-only'],
     send: (text) => socket.readyState === WebSocket.OPEN && socket.send(text),
     onTell: (message) => { for (const m of modules) m.told?.(message); } });
   const from = args.owner ? `, to ${[args.owner, ...args.allow].join(', ')}` : '';
-  socket.onopen = () => console.log(`${name} online at ${server}, lending pi's logins and ${dir}${from}`);
+  socket.onopen = () => console.log(`${name} online at ${server}, lending pi's logins and ${dir}${args['read-only'] ? ' to read only' : ''}${from}`);
   socket.onmessage = ({ data }) => runner.receive(data);
   socket.onclose = () => {
     runner.stopAll();
