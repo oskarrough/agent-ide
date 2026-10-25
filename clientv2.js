@@ -85,9 +85,18 @@ const setMode = (chat) => {
 };
 $('mode').onclick = () => setMode(!document.body.classList.contains('chat'));
 setMode(params.has('chat'));
+// On a phone: one drawer open at a time, all threads on the left or this thread's family on the right.
+const phone = matchMedia('(max-width: 700px)');
+const sheet = (name) => { document.body.classList.toggle('list', name === 'list'); document.body.classList.toggle('side', name === 'side'); };
+$('back').onclick = () => sheet('list');
+$('pill').onclick = $('aside').onclick = () => sheet('side');
+$('scrim').onclick = () => sheet(null);
+addEventListener('keydown', (e) => { if (e.key === 'Escape') sheet(null); });
+phone.addEventListener('change', () => { sheet(null); render(); });
 const forkOf = (t) => t?.conversation?.parent?.conversationId;
 const go = (id) => {
   current = id;
+  sheet(null);
   const next = new URL(location.href);
   if (id) next.searchParams.set('thread', id); else next.searchParams.delete('thread');
   history.replaceState(null, '', next);
@@ -246,7 +255,7 @@ function threadBox(id) {
   let box = boxes.get(id);
   if (!box) {
     // A thread that isn't current shows a box to write in all the same; clicking it brings the composer.
-    const write = el('form', { className: 'elsewhere' }, el('input', { placeholder: 'Write here', onfocus: () => go(id) }));
+    const write = el('form', { className: 'elsewhere' }, el('div', { className: 'box' }, el('input', { placeholder: 'Write here', onfocus: () => go(id) })), el('div', { className: 'bar' }));
     box = el('div', { className: 'thread' }, el('header', { onclick: () => current !== id ? go(id) : form.querySelector('input').focus() }, el('span'), el('span', { className: 'dot' })),
       handsControl(t?.tools, (tools) => api(`/api/threads/${id}/tools`, { tools }).then(refresh)),
       el('nav', { className: 'from' }), el('ul'), write);
@@ -333,6 +342,18 @@ function render() {
     }, el('span', { className: `dot${t.status === 'working' ? ' working' : t.status === 'blocked' ? ' blocked' : t.status === 'done' ? ' on' : ''}` }),
     el('span', { textContent: t.title || 'untitled' }),
     el('button', { textContent: 'delete', title: 'Delete this thread', onclick: (e) => { e.stopPropagation(); remove(t.id); } })))));
+
+  // The phone's bar names the thread; its drawer lists the family, children indented under their parent.
+  const here = threads.find((t) => t.id === current);
+  const lightOf = (t) => `dot${t?.status === 'working' ? ' working' : t?.status === 'blocked' ? ' blocked' : ''}`;
+  $('pill').lastChild.textContent = current ? here?.title || 'untitled' : 'New thread';
+  $('pill').firstChild.className = lightOf(here);
+  const depth = (id) => { let d = 0; for (let t = threads.find((x) => x.id === id); d < 20; d++) { const p = t?.parent ?? forkOf(t); if (!shown.includes(p)) break; t = threads.find((x) => x.id === p); } return d; };
+  $('family').replaceChildren(...shownThreads.map((t) => el('li', { className: t.id === current ? 'current' : '', style: `--depth: ${depth(t.id)}`, onclick: () => go(t.id) },
+    el('span', { className: lightOf(t) }), el('span', { textContent: t.title || 'untitled' }))));
+  // On a phone the runner cards live in that drawer; elsewhere, under the server.
+  const home = phone.matches && document.body.classList.contains('chat') ? $('side') : $('canvas');
+  if ($('runners').parentNode !== home) home.append($('runners'));
 
   // A runner is one card: click it to ask it, shift-click to ask it too. Its model and thinking are set on the card.
   const asked = shownThreads.flatMap((t) => t.agents.map((a) => ({ ...a, thread: t.id })));
@@ -491,6 +512,42 @@ async function showMemory() {
   if (!opened?.lines) return;
   box.replaceChildren(el('p', { className: 'mute', textContent: `${T} messages. Each line below stands for half of them; click to open it.` }), zoomable(opened.lines));
 }
+// What an agent with that much room reads: one line per stretch of the thread, coarse for old messages, fine for new.
+// The slider runs from a few lines' worth to the room every message's own line takes, so its whole length matters.
+let least = 400, full = 64 * 1024, fullOf = '';
+const roomOf = (v) => Math.round(least * (full / least) ** (v / 100));
+const sizeOf = (lines) => lines.reduce((s, x) => s + new TextEncoder().encode(`${x.id}+${x.n}|${x.text}`).length + 1, 0);
+let readsKey = '';
+async function showReads(force) {
+  if (current && fullOf !== `${current} ${$('memory').dataset.size}`) {
+    fullOf = `${current} ${$('memory').dataset.size}`;
+    const [all, top] = await Promise.all(['', '?budget=1'].map((q) => api(`/api/threads/${current}/memory${q}`).catch(() => ({ lines: [] }))));
+    least = Math.max(100, sizeOf(top.lines));
+    full = Math.max(least * 2, sizeOf(all.lines));
+  }
+  const room = roomOf(Number($('room').value));
+  $('room-size').textContent = room < 1024 ? `${room} B` : `${(room / 1024).toFixed(room < 10240 ? 1 : 0)} KB`;
+  const T = Number($('memory').dataset.size) || 0;
+  if (!modules.includes('memory') || !current || !T) return void $('reads').classList.add('empty');
+  $('reads').classList.remove('empty');
+  const key = `${current} ${T} ${room}`;
+  if (!force && key === readsKey && !$('reads-lines').textContent.includes('being written')) return;
+  readsKey = key;
+  const { lines } = await api(`/api/threads/${current}/memory?budget=${room}`).catch(() => ({ lines: [] }));
+  const used = sizeOf(lines);
+  $('reads-bar').replaceChildren(...lines.map((x) => {
+    const shade = Math.min(1, Math.log2(x.n) / 5);
+    const seg = el('span', { title: `${x.id}+${x.n}: ${x.n > 1 ? `${x.n} messages in one line` : 'one message'}`, style: `flex-grow:${x.n};background:hsl(215 60% ${88 - shade * 50}%)` });
+    seg.onclick = () => $('reads-lines').querySelectorAll(':scope > ul > li')[lines.indexOf(x)]?.click();
+    return seg;
+  }));
+  $('reads-note').textContent = `${lines.length} lines for ${T} messages, ${used.toLocaleString()} of ${room.toLocaleString()} bytes. `
+    + (lines.length === T ? 'Room for every message\'s own line.' : lines.length <= 2 ? 'As squeezed as it gets: zoom to read more.' : 'Old messages share lines; the latest have one each.');
+  $('reads-lines').replaceChildren(zoomable(lines));
+}
+$('room').oninput = () => showReads(true);
+setInterval(() => showReads(false), 3000);
+
 // Lines that open on click: two lines below, or at n = 1 the message itself, word for word.
 function zoomable(lines) {
   return el('ul', {}, ...lines.map(({ id, n, text }) => {
@@ -504,7 +561,7 @@ function zoomable(lines) {
       e.stopPropagation();
       if (li.querySelector('ul, .whole')) return li.querySelector('ul, .whole').remove();
       li.classList.add('opening');
-      const opened = await api(`/api/threads/${memoryOf}/memory?zoom=${id},${n}`).finally(() => li.classList.remove('opening'));
+      const opened = await api(`/api/threads/${current}/memory?zoom=${id},${n}`).finally(() => li.classList.remove('opening'));
       li.append(opened.message !== undefined ? el('div', { className: 'whole', textContent: opened.message }) : zoomable(opened.lines));
     };
     return li;

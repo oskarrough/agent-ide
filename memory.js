@@ -191,8 +191,10 @@ export function server(core) {
       const opened = await open(thread, ...query.get('zoom').split(',').map(Number));
       return typeof opened === 'string' ? { message: opened } : { lines: opened.map(span) };
     }
+    // `?budget=bytes` is what an agent with that much room would read: old messages coarse, the latest fine.
     const T = (await core.messages(thread)).length;
-    return { lines: memory(await core.commit((tx) => lines(tx, thread)), T, PANEL).map(span) };
+    const budget = Math.min(Number(query.get('budget')) || PANEL, PANEL);
+    return { lines: memory(await core.commit((tx) => lines(tx, thread)), T, budget).map(span) };
   }
 
   return {

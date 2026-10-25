@@ -75,7 +75,7 @@ Send `x-user: name` to say who you are. The two POSTs that make something, a thr
 - `POST /api/threads/:id/read`: marks it read for you, so its last answer stops counting as done.
 - `POST /api/threads/:id/stop`: stops its agents, deliveries and commands, and withdraws their queued inputs.
 - `DELETE /api/threads/:id`: hides it; Pi Durable keeps everything.
-- `GET /api/threads/:id/memory?zoom=id,n`: with memory, the thread's memory as `{lines: [{id, n, text}]}`, or with `zoom` what a line was made from.
+- `GET /api/threads/:id/memory?zoom=id,n&budget=bytes`: with memory, the thread's memory as `{lines: [{id, n, text}]}`, the lines an agent with `budget` bytes of room reads, or with `zoom` what a line was made from.
 - `GET /api/conversations/:id`: any Pi conversation's view as Pi gives it, such as an agent's: its entries and docs.
 - `GET /api/runners`: each runner, its `owner` and whom it `allow`s, its default model or `modelError` when pi's default doesn't resolve, the models it `offers` from pi's enabled models, the models it has resolved, and the calls it's answering.
 - Agents' tools, with talk: `post {"thread"?, "title"?, "body", "to"?}`, where no thread starts a child and `to` is `model@runner`, a runner, or `nobody`; and `threads {"thread"?, "agent"?, "last"?, "query"?}`, where `agent` reads that agent's own work in the thread, its tool calls and what they printed; with memory, `zoom {"id","n","at"?}`, where a long message comes in pages from character `at`.

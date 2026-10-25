@@ -4,10 +4,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>agent-ide</title>
 <style>
+  /* iA Writer Quattro S, the same face as the oskar bb theme. */
+  @font-face { font-family: 'iA Writer Quattro S'; src: url('https://cdn.jsdelivr.net/gh/iaolo/iA-Fonts@master/iA%20Writer%20Quattro/Webfonts/iAWriterQuattroS-Regular.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
+  @font-face { font-family: 'iA Writer Quattro S'; src: url('https://cdn.jsdelivr.net/gh/iaolo/iA-Fonts@master/iA%20Writer%20Quattro/Webfonts/iAWriterQuattroS-Italic.woff2') format('woff2'); font-weight: 400; font-style: italic; font-display: swap; }
+  @font-face { font-family: 'iA Writer Quattro S'; src: url('https://cdn.jsdelivr.net/gh/iaolo/iA-Fonts@master/iA%20Writer%20Quattro/Webfonts/iAWriterQuattroS-Bold.woff2') format('woff2'); font-weight: 700; font-style: normal; font-display: swap; }
+  @font-face { font-family: 'iA Writer Quattro S'; src: url('https://cdn.jsdelivr.net/gh/iaolo/iA-Fonts@master/iA%20Writer%20Quattro/Webfonts/iAWriterQuattroS-BoldItalic.woff2') format('woff2'); font-weight: 700; font-style: italic; font-display: swap; }
+
   /* Every size, space and colour comes from here. */
   :root { --s: .25rem; --m: .5rem; --l: 1rem; --xl: 1.5rem; --small: 13px; --ink: #1f2328; --mute: #6a737d; --line: #d8dce0; --tint: #f3f4f6; --accent: #d7e9ff; --ok: #2f9e62; --warn: #8a5a00; --bad: #ad1b1b; --radius: 4px; }
   * { box-sizing: border-box; }
-  body { font: 14px/1.5 system-ui, sans-serif; max-width: 1100px; margin: 0 auto; padding: var(--l); color: var(--ink); background: #fff; }
+  body { font: 14px/1.5 'iA Writer Quattro S', system-ui, sans-serif; max-width: 1100px; margin: 0 auto; padding: var(--l); color: var(--ink); background: #fff; }
   h2 { font-size: 16px; margin: 0 0 var(--s); }
   h3 { font-size: inherit; margin: var(--l) 0 var(--s); display: flex; justify-content: space-between; align-items: center; }
   h3 button { font-weight: normal; }
