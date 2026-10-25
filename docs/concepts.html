@@ -129,7 +129,7 @@ flowchart LR
     <small>What you might call a workspace, or the cloud. A server is the workspace: one server is one world; run another for another.</small></dd>
 
   <dt>Runner <span class="tag runner">built</span></dt>
-  <dd>A program on a machine that lends the server two things: a folder and the model logins pi has there. Started by hand, or installed with one line, <code>curl -fsSL &lt;server&gt;/runner.sh | sh</code>, after which it keeps itself up to date. It can be read-only, and it can have an owner.
+  <dd>A program on a machine that lends the server two things: a folder and the model logins pi has there. Started by hand, or installed with one line, <code>curl -fsSL &lt;server&gt;/connect-runner | sh</code>, after which it keeps itself up to date. It can be read-only, and it can have an owner.
     <small>What you might call a machine, a computer or a daemon. A machine is where runners run, one per folder if you like, and a cloud sandbox is just another machine. The daemon is the runner.</small></dd>
 
   <dt>Agent <span class="tag agent">built</span></dt>
@@ -220,7 +220,7 @@ sequenceDiagram
 <pre class="mermaid">
 stateDiagram-v2
   direction LR
-  [*] --> Online: curl …/runner.sh | sh
+  [*] --> Online: curl …/connect-runner | sh
   Online --> Offline: machine sleeps, network drops
   Offline --> Online: dials back by itself
   Online --> Updating: new runner on the server, and it's idle

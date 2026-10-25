@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { spawn } from 'node:child_process';
 import http from 'node:http';
 import os from 'node:os';
@@ -127,9 +128,9 @@ const shells = new Map();
 const page = await readFile(new URL('./client.html', import.meta.url));
 // What agent-ide promises, its words and principles: docs/concepts.html, at /concepts.
 const concepts = await readFile(new URL('./docs/concepts.html', import.meta.url));
-// The runner this server ships, and the launcher that fetches it: `curl -fsSL <server>/runner.sh | sh -s -- --dir ~/code`.
+// The runner this server ships, and the updater that fetches it: `curl -fsSL <server>/connect-runner | sh -s -- --dir ~/code`.
 const bundle = await runnerBundle(import.meta.dirname);
-const launcher = await readFile(new URL('./launcher.js', import.meta.url));
+const updater = await readFile(new URL('./runner-updater.js', import.meta.url));
 
 const models = createModels();
 const registry = createRegistry();
@@ -410,7 +411,6 @@ async function postEntry(id, author, input) {
 async function startThread(tx, author, title, parent) {
   const { id } = await tx.createConversation(ownerless);
   Object.assign(await tx.doc(Thread, id), { title, parent, createdAt: now() });
-  if (parent) await post(tx, parent, { author, body: `handed off → thread:${id}` });
   return id;
 }
 
@@ -531,11 +531,11 @@ async function handleRequest(req, res) {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     return res.end(url.pathname === '/' ? page : concepts);
   }
-  if (req.method === 'GET' && url.pathname === '/runner/launcher.js') {
+  if (req.method === 'GET' && url.pathname === '/runner/updater.js') {
     res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
-    return res.end(launcher);
+    return res.end(updater);
   }
-  if (req.method === 'GET' && url.pathname === '/runner.sh') {
+  if (req.method === 'GET' && url.pathname === '/connect-runner') {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
     return res.end(runnerScript(`${req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http'}://${String(req.headers.host).replace(/[^\w.:\[\]-]/g, '')}`));
   }
@@ -553,18 +553,18 @@ async function handleRequest(req, res) {
   send(res, 404, { error: 'Not found' });
 }
 
-// Finds bun or Node, then hands over to the launcher, which keeps the runner up to date with this server.
+// Finds bun or Node, then hands over to the updater, which keeps the runner up to date with this server.
 const runnerScript = (server) => `#!/bin/sh
 # Lends this machine to the agent-ide server at ${server}:
-#   curl -fsSL ${server}/runner.sh | sh -s -- --dir ~/code [--name laptop] [--read-only] [--no-update]
+#   curl -fsSL ${server}/connect-runner | sh -s -- --dir ~/code [--name laptop] [--read-only] [--no-update]
 set -e
 if command -v bun >/dev/null 2>&1; then run=bun; elif command -v node >/dev/null 2>&1; then run=node; else
   echo "agent-ide's runner needs bun (curl -fsSL https://bun.sh/install | bash) or Node.js 24 or newer"; exit 1
 fi
 mkdir -p "$HOME/.agent-ide"
-curl -fsSL "${server}/runner/launcher.js" -o "$HOME/.agent-ide/launcher.js"
-echo "Next time, without curl: $run ~/.agent-ide/launcher.js ${server} $*"
-exec "$run" "$HOME/.agent-ide/launcher.js" "${server}" "$@"
+curl -fsSL "${server}/runner/updater.js" -o "$HOME/.agent-ide/runner-updater.js"
+echo "Next time, without curl: $run ~/.agent-ide/runner-updater.js ${server} $*"
+exec "$run" "$HOME/.agent-ide/runner-updater.js" "${server}" "$@"
 `;
 
 // A launched runner whose version differs is asked to update once per connection, when it has no calls open, so
@@ -662,11 +662,13 @@ async function upgrade(req, raw, head) {
   console.log(`runner ${name} online: ${runner.dir}${runner.readOnly ? ' (read-only)' : ''}, default model ${runner.model || `none (${runner.modelError || 'not set'})`}${runner.owner ? `, work from ${[runner.owner, ...runner.allow].join(', ')}` : ''}`);
 }
 
-// RUNNER=~/code lends this machine too: its own runner.js, one more process, which stops with the server.
+// The server lends this machine too, the folder it starts in or RUNNER=~/code: its own runner.js, one more process,
+// which stops with the server. RUNNER=0 lends nothing.
 let lent;
 function lend(url) {
-  if (!process.env.RUNNER || lent) return;
-  lent = spawn(process.execPath, [new URL('./runner.js', import.meta.url).pathname, '--server', url, '--dir', process.env.RUNNER], { stdio: 'inherit' });
+  const dir = process.env.RUNNER ?? process.cwd();
+  if (dir === '0' || lent) return;
+  lent = spawn(process.execPath, [new URL('./runner.js', import.meta.url).pathname, '--server', url, '--dir', dir], { stdio: 'inherit' });
   for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => lent.kill(signal));
 }
 

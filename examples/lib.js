@@ -39,7 +39,7 @@ function start(file, args = [], env = {}) {
 }
 
 export async function server(env = {}) {
-  const p = start('server.js', [], env);
+  const p = start('server.js', [], { RUNNER: '0', ...env });
   if (!port) {
     p.stdout.on('data', (d) => { port ||= Number(/http:\/\/127\.0\.0\.1:(\d+)/.exec(d)?.[1]); });
     await until(async () => port);

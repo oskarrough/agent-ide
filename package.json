@@ -2,6 +2,9 @@
   "name": "agent-ide",
   "private": true,
   "type": "module",
+  "bin": {
+    "agent-ide": "server.js"
+  },
   "scripts": {
     "start": "node server.js",
     "runner": "node runner.js",

@@ -41,7 +41,7 @@ async function offers() {
   return [...new Set(scopedModels.map(({ model }) => `${model.provider}/${model.id}`))];
 }
 
-// Sent to the server, which asks a runner its launcher started to update when the server's differs.
+// Sent to the server, which asks a runner its updater started to update when the server's differs.
 const { version } = await runnerBundle(import.meta.dirname).catch(() => ({ version: '' }));
 const launched = process.env.AGENT_IDE_LAUNCHER === '1';
 
@@ -69,7 +69,7 @@ async function connect() {
   socket.onerror = () => {};
 }
 
-// The server runs a newer runner. Its launcher fetches it when this one exits with 75; one started by hand carries on.
+// The server runs a newer runner. Its updater fetches it when this one exits with 75; one started by hand carries on.
 let warned = false;
 function update() {
   if (launched) {

@@ -1,4 +1,4 @@
-// The runner's launcher, which `curl -fsSL <server>/runner.sh | sh` downloads and starts. It fetches the runner from
+// The runner's updater, which `curl -fsSL <server>/connect-runner | sh` downloads and starts. It fetches the runner from
 // the server into ~/.agent-ide/runner, installs its packages, runs it, and fetches it again whenever the runner exits
 // to update. Built-ins only: nothing is installed when it starts. `--no-update` keeps the runner as it is.
 import { spawn, spawnSync } from 'node:child_process';
@@ -11,7 +11,7 @@ const updates = !given.includes('--no-update');
 const args = given.filter((a) => a !== '--no-update');
 const home = process.env.AGENT_IDE_HOME || path.join(os.homedir(), '.agent-ide', 'runner');
 const bun = Boolean(process.versions.bun);
-if (!server) throw new Error('usage: launcher.js <server> [runner options]');
+if (!server) throw new Error('usage: runner-updater.js <server> [runner options]');
 if (!bun && Number(process.versions.node.split('.')[0]) < 24) throw new Error('agent-ide\'s runner needs bun or Node.js 24 or newer');
 
 const read = (file) => existsSync(path.join(home, file)) ? readFileSync(path.join(home, file), 'utf8') : '';

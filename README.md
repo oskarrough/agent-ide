@@ -4,25 +4,27 @@ A small agent IDE on [Pi Durable](https://www.npmjs.com/package/@earendil-works/
 
 What it promises, the words it uses, how it fits together, its principles and what's decided: [docs/concepts.html](docs/concepts.html), which every server also serves at `/concepts`. The code is the truth, and [examples/](examples) shows each idea working.
 
+## What you get
+
+- One server that keeps every thread and every agent's conversation in one SQLite file. A restart or a stop loses nothing.
+- Runners that lend it a folder on a machine and the model logins pi has there. Read-only if you like, or owned by one person.
+- Agents named `model:thinking@runner`, each knowing its folder's AGENTS.md and skills.
+- Threads where people and agents talk together. Fork one at any message; start a child thread and its answer comes back once.
+- Clients that store nothing: the web page, the CLI, Matrix rooms. [apps/matrix-sync](apps/matrix-sync) files GitHub issues from a Matrix mention, without anyone opening the IDE.
+- Modules, one file each: agents that post to and read other threads, web search, memory, and more below.
+
 ## Try it
 
-In two terminals:
-
 ```sh
-bun install
-bun server.js
+npx github:oskarrough/agent-ide
 ```
 
-```sh
-bun runner.js --name laptop --dir ~/code
-```
-
-On another machine, nothing to clone: `curl -fsSL http://yourbox:3000/runner.sh | sh -s -- --name desk --dir ~/code`.
+It lends the folder it starts in to its agents, as a runner named after this machine. From a clone, `bun install && bun server.js` does the same. On another machine, nothing to clone: `curl -fsSL http://yourbox:3000/connect-runner | sh -s -- --name desk --dir ~/code`.
 
 Open http://127.0.0.1:3000 and:
 
 1. Click **New thread**.
-2. Pick `laptop` and the model `echo/echo`. Send `hello`. Echo answers at once, which proves the loop works.
+2. Pick this machine's runner and the model `echo/echo`. Send `hello`. Echo answers at once, which proves the loop works.
 3. Pick the default model, pi's own on that runner, and ask something real. Run `pi` and `/login` on the runner once if you haven't. **+ agent** asks a second one.
 4. Send `$ ls` to run a command in the runner's folder.
 5. Tick **Show structure** to see the JSON behind it all.
@@ -34,7 +36,7 @@ Or read [examples/](examples): one file per idea, each starting its own server a
 ```sh
 bun server.js                          # http://127.0.0.1:3000, stored in agent-ide-3000.sqlite
 HOST=0.0.0.0 PORT=3001 bun server.js   # reachable from other machines
-RUNNER=~/code bun server.js            # lends this machine too: its own runner, which stops with the server
+RUNNER=~/code bun server.js            # lends this machine another folder than the one it starts in; RUNNER=0 lends none
 TALK=0 STATUS=0 CONTEXT=0 bun server.js   # the core alone, without the modules on by default:
 #   talk.js: agents' post and threads tools · status.js: runners report to their terminal
 #   context.js: each agent gets its folder's AGENTS.md and skills, as pi reads them
@@ -46,7 +48,7 @@ bun scripts/replay-pi.js ~/.pi/agent/sessions/FOLDER   # pi sessions, or one .js
 DB_PATH=other.sqlite bun server.js     # another store; only one server may use a file
 
 bun runner.js --server http://127.0.0.1:3000 --name laptop [--alias "Oskar's laptop"] --dir ~/code [--owner oskar [--allow ana --allow @desktop]] [--read-only]
-curl -fsSL http://127.0.0.1:3000/runner.sh | sh -s -- [the same options] [--no-update]   # into ~/.agent-ide, kept up to date
+curl -fsSL http://127.0.0.1:3000/connect-runner | sh -s -- [the same options] [--no-update]   # into ~/.agent-ide, kept up to date
 
 bun cli.js send "hello" --to sonnet@laptop --to desk --effort high   # a new thread; answers print as they land
 bun cli.js send "and you?" --thread 3                               # asks whom thread 3 last asked

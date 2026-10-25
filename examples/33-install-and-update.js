@@ -1,4 +1,4 @@
-// `curl -fsSL <server>/runner.sh | sh` installs a runner from the server and starts it. When the server is deployed
+// `curl -fsSL <server>/connect-runner | sh` installs a runner from the server and starts it. When the server is deployed
 // with a different runner, the installed one updates itself once it's idle, and answers again. A runner started from
 // a checkout is told it's outdated, and carries on.
 import { spawn } from 'node:child_process';
@@ -28,7 +28,7 @@ const ask = async (id, n) => {
 
 let srv = await server();
 const port = new URL(base).port;
-start('sh', ['-c', `curl -fsSL ${base}/runner.sh | sh -s -- --dir ${dir} --name fresh`], { env: { ...process.env, HOME } });
+start('sh', ['-c', `curl -fsSL ${base}/connect-runner | sh -s -- --dir ${dir} --name fresh`], { env: { ...process.env, HOME } });
 check(await until(async () => (await runnerOf('fresh'))?.online, 60000), 'the curl line installs a runner and connects it');
 const before = readFileSync(path.join(installed, 'version'), 'utf8');
 check(!(await runnerOf('fresh')).outdated, 'it runs the server\'s own runner');

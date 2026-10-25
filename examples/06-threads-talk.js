@@ -49,7 +49,7 @@ check(replies[0]?.data.re?.[0] === asks[0]?.id && replies[0]?.data.body.startsWi
 await sleep(1500);
 check((await view(child.id)).entries.filter((e) => e.data.from === parent).length === 1, 'the parent\'s answer to the reply stays in the parent: no ping-pong');
 check(!p.entries.some((e) => e.data.from === child.id && !e.data.re), 'no report on top of the reply');
-check(p.entries.some((e) => e.data.body.includes('handed off')), 'hand-off message in the parent');
+check(!p.entries.some((e) => e.data.body.includes('handed off')), 'no hand-off message in the parent: the child\'s parent says it');
 
 // The tools run in the parent agent's own conversation, so their results are there.
 const results = async () => (await conversationOf(await view(parent), 'echo/echo@bot')).entries.filter((e) => e.kind === 'pi.tool-result').map((e) => text(e.model[0]));

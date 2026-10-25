@@ -287,7 +287,7 @@
       raw(info),
       build('h3', { textContent: 'Runners' }),
       build('ul', {}, server.runners.length ? server.runners.map((runner) => runnerView(server, runner))
-        : [build('li', { className: 'hint' }, [`None yet. On ${/^https?:\/\/(localhost|127\.|\[::1\])/.test(server.url) ? 'this machine' : 'any machine that can reach this address'}, with bun or Node 24:`, build('code', { textContent: `curl -fsSL ${server.url}/runner.sh | sh -s -- --dir ~/code` })])]),
+        : [build('li', { className: 'hint' }, [`None yet. On ${/^https?:\/\/(localhost|127\.|\[::1\])/.test(server.url) ? 'this machine' : 'any machine that can reach this address'}, with bun or Node 24:`, build('code', { textContent: `curl -fsSL ${server.url}/connect-runner | sh -s -- --dir ~/code` })])]),
       build('h3', {}, ['Threads', build('button', { textContent: 'New thread', onclick: () => select({ url: server.url, id: null }) })]),
       build('ul', {}, server.threads.length ? nested(server.threads).map(({ thread, depth }) => build('li', { className: 'thread-row', style: `margin-left: ${depth}rem` }, [build('button', {
         className: `thread ${selected?.url === server.url && selected.id === thread.id ? 'active' : ''}`,
