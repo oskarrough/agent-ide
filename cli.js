@@ -1,5 +1,7 @@
 // The API from a terminal: post to any agents in any thread, and print what comes back.
 import { parseArgs } from 'node:util';
+import { on, once } from 'node:events';
+import WebSocket from 'ws';
 
 const usage = `bun cli.js [--server url] [--as name] <command>
 
@@ -54,23 +56,31 @@ async function post() {
   if (!o.thread) console.error(`thread ${id}`);
   const seen = (await api('GET', `/api/threads/${id}`)).entries.at(-1)?.id ?? 0;
   const to = o.to && (o.to.includes('nobody') ? null : o.to.map(agent));
-  const posted = await api('POST', `/api/threads/${id}/entries`, { body, ...(o.to ? { to } : {}), ...(o.steer ? { steer: true } : {}), requestId: crypto.randomUUID() });
-  if (o['no-wait'] || !(posted.command || posted.to?.length)) return;
-  // Poll until something new from someone else has landed and nobody is still working on it.
-  let last = posted.entry ?? seen;
-  let heard = false;
-  let waiting = '';
-  for (;;) {
-    const view = await api('GET', `/api/threads/${id}`);
-    for (const e of view.entries.filter((e) => e.id > last)) {
-      if (e.id !== posted.entry) show(e);
-      heard ||= e.id !== posted.entry;
-      last = e.id;
+  // Listen before posting so even an immediate answer can't slip between the read and the wait.
+  const socket = o['no-wait'] ? null : new WebSocket(o.server.replace(/^http/, 'ws') + '/ws');
+  const changes = socket && on(socket, 'message', { close: ['close'] });
+  try {
+    if (socket) await once(socket, 'open');
+    const posted = await api('POST', `/api/threads/${id}/entries`, { body, ...(o.to ? { to } : {}), ...(o.steer ? { steer: true } : {}), requestId: crypto.randomUUID() });
+    if (o['no-wait'] || !(posted.command || posted.to?.length)) return;
+    let last = posted.entry ?? seen;
+    let heard = false;
+    let waiting = '';
+    for (;;) {
+      const view = await api('GET', `/api/threads/${id}`);
+      for (const e of view.entries.filter((e) => e.id > last)) {
+        if (e.id !== posted.entry) show(e);
+        heard ||= e.id !== posted.entry;
+        last = e.id;
+      }
+      const blocked = view.agents.filter((a) => a.status === 'blocked').map((a) => a.to?.runner);
+      if (blocked.join() !== waiting && (waiting = blocked.join())) console.error(`waiting for ${waiting}, offline…`);
+      if (heard && !['working', 'blocked'].includes(view.status)) return;
+      if ((await changes.next()).done) throw new Error('Server disconnected while waiting for the answer');
     }
-    const blocked = view.agents.filter((a) => a.status === 'blocked').map((a) => a.to?.runner);
-    if (blocked.join() !== waiting && (waiting = blocked.join())) console.error(`waiting for ${waiting}, offline…`);
-    if (heard && !['working', 'blocked'].includes(view.status)) return;
-    await new Promise((r) => setTimeout(r, 500));
+  } finally {
+    await changes?.return();
+    socket?.close();
   }
 }
 
