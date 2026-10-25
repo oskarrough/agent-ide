@@ -624,8 +624,12 @@ async function upgrade(req, raw, head) {
   };
   socket.on('close', close);
   socket.on('error', close);
+  // A frame that doesn't parse is dropped, so one bad client never stops the server.
+  const listen = (handle) => socket.on('message', (data) => {
+    try { handle(data.toString()); } catch (error) { console.error(`dropped a frame from ${name ?? 'a browser'}: ${error.message}`); }
+  });
   if (!name) {
-    socket.on('message', (data) => watch(socket, JSON.parse(data).watch));
+    listen((text) => watch(socket, JSON.parse(text).watch));
     return clients.add(socket);
   }
   // A reconnecting runner replaces its old socket, whose calls fail.
@@ -639,7 +643,7 @@ async function upgrade(req, raw, head) {
   const runner = { alias: q('alias'), owner: q('owner') && speaker(q('owner')), allow: url.searchParams.getAll('allow').map(speaker), host: q('host'), dir: q('dir') || '/', readOnly: q('readOnly') === '1', version: q('version'), model: q('model'), modelError: q('modelError'), offers: url.searchParams.getAll('offer'), models: resolved };
   await commit(async (tx) => { (await tx.doc(Runners))[name] = runner; });
   if (!models.getProvider(`runner:${name}`)) models.setProvider(runnerProvider(runners, name, resolved));
-  socket.on('message', (data) => runners.receive(data.toString()));
+  listen(runners.receive);
   runners.connect(name, (text) => socket.send(text));
   if (runner.version && runner.version !== bundle.version) {
     outdated.set(name, socket);
