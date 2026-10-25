@@ -34,6 +34,8 @@ const file = process.env.DB_PATH || `agent-ide-${port}.sqlite`;
 const KIND = 'agent-ide.message';
 // An agent's input in its conversation; `held` names the thread messages it gave.
 const DELIVERY = 'agent-ide.delivery';
+// How much of a `$ cmd`'s stdout and of its stderr is kept, from the end.
+const TAIL = 20000;
 // Our docs are small, so every change stores the whole doc and a read replays nothing.
 const base = () => true;
 // Every runner that ever connected, with the models pi resolved on it.
@@ -98,7 +100,7 @@ const Shell = defineTask({
       shells.set(id, run);
       notify();
       const env = remoteEnv(runners, input.to.runner, folder((await known())[input.to.runner], input.to));
-      const result = await env.exec(input.command, { onOutput: (text, _context, info) => { run[info.stream] += text; notify(); } }, ctx);
+      const result = await env.exec(input.command, { onOutput: (text, _context, info) => { run[info.stream] = (run[info.stream] + text).slice(-TAIL); notify(); } }, ctx);
       const output = result.ok ? { code: result.value.exitCode } : { error: result.error.message };
       await rt.commit(async (tx) => (await printed(tx, threadId, input, { ...run, ...output }), finished()), ctx);
       shells.delete(id);
@@ -114,7 +116,7 @@ const Shell = defineTask({
 
 /** @param {Command} command */
 function printed(tx, threadId, { author, command, to }, { code = null, stdout = '', stderr = '', error }) {
-  const shell = { runner: to.runner, code, stdout: stdout.slice(-20000), stderr: stderr.slice(-20000), ...(error ? { error } : {}) };
+  const shell = { runner: to.runner, code, stdout: stdout.slice(-TAIL), stderr: stderr.slice(-TAIL), ...(error ? { error } : {}) };
   return post(tx, threadId, { author, body: `$ ${command}`, shell });
 }
 
