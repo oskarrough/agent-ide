@@ -60,6 +60,11 @@
   .reads .bar span:hover { outline: 2px solid var(--pick); }
   .memory li.pending { color: var(--mute); font-style: italic; }
   .memory li.pending > small::after, .memory li.opening > small::after { content: ' ●'; color: var(--ok); animation: blink 1s ease-in-out infinite; }
+  /* The cut an agent reads is lit; lines above it fade to one line, lines opened below it are fainter. */
+  .memory li.cut { border-left-color: var(--pick); background: color-mix(in srgb, var(--pick) 7%, Canvas); }
+  .memory li.above { cursor: default; color: var(--mute); }
+  .memory li.above > span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: .6; }
+  .memory li.below { color: var(--mute); }
   .memory .whole { cursor: default; white-space: pre-wrap; background: var(--tint); }
   .try { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0; }
 
@@ -193,6 +198,8 @@
   body.chat .thread > header { padding-right: 7rem; }
   body.chat .thread ul { flex: 1; max-height: none; }
   body.chat .thread form { width: calc(100% - 1.2rem); max-width: 42rem; margin-inline: auto; }
+  /* The composer sits at the bottom, even in a new thread with no messages above it. */
+  body.chat .thread form.compose { margin-top: auto; flex: none; }
   body.chat #runners { flex-wrap: nowrap; overflow-x: auto; gap: .5rem; padding: .5rem .6rem; border-top: 1px solid var(--line); }
   body.chat #runners .node { flex: none; width: 15rem; }
   @media (max-width: 700px) {
@@ -232,7 +239,6 @@
     body.chat .thread:not(.current) { display: none; }
     body.chat #server { z-index: auto; }
     body.chat .thread { border: 0; display: flex; flex-direction: column; height: 100%; }
-    body.chat .thread form.compose { margin-top: auto !important; }
     body.chat .thread > header { display: none; }
     body.chat .thread .hands { padding: calc(4rem + env(safe-area-inset-top)) .9rem 0; }
     body.chat .thread ul { padding: .5rem 1rem 1rem; overscroll-behavior: contain; }
@@ -241,7 +247,7 @@
 
     /* The composer as one pill: attach, write, talk, send. */
     body.chat .thread form.compose { display: flex; align-items: center; gap: .3rem; width: auto; max-width: none;
-      margin: 0 .6rem calc(.6rem + env(safe-area-inset-bottom)); padding: .3rem; border: 1px solid var(--line); border-radius: 999px; background: var(--tint); }
+      margin: auto .6rem calc(.6rem + env(safe-area-inset-bottom)); padding: .3rem; border: 1px solid var(--line); border-radius: 999px; background: var(--tint); }
     body.chat form.compose:focus-within { border-color: var(--edge); }
     body.chat form.compose .box, body.chat form.compose .bar { display: contents; }
     body.chat form.compose #to { display: none; }
