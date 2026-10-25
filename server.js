@@ -253,9 +253,14 @@ async function agentsIn(row, live) {
 const liveTasks = async () => (await harness.inspect(context)).tasks.map((t) => t.record);
 
 /** @returns {Promise<Entry[]>} */
+// Any conversation's entries, oldest first: a thread's, or an agent's own.
+async function entries(id) {
+  const handle = await harness.conversation(id, context);
+  return handle ? collect((cursor) => handle.entries({ order: 'ascending' }, 500, cursor, context)) : [];
+}
 async function messages(id) {
-  const handle = await conversation(id);
-  return (await collect((cursor) => handle.entries({ order: 'ascending' }, 500, cursor, context))).filter((e) => e.kind === KIND);
+  await conversation(id);
+  return (await entries(id)).filter((e) => e.kind === KIND);
 }
 const lastAsked = async (id) => (await messages(id)).findLast((e) => e.data.to)?.data.to ?? [];
 
@@ -450,7 +455,7 @@ async function forkThread(id, { at, title }) {
   return { id: fork.id };
 }
 
-const core = { speaker, models, runners, known, address, reach, agentName, agentTo, agentOf, conversation, thread, home, threadList, messages, lastAsked, field, startThread, post, said, seenBy, commit, collect, once };
+const core = { speaker, models, runners, known, address, reach, agentName, agentTo, agentOf, conversation, thread, home, threadList, entries, messages, lastAsked, field, startThread, post, said, seenBy, commit, collect, once };
 const modules = await load('server', { director: false, talk: true, status: true, memory: false, matrix: false, context: true, search: false }, core);
 for (const m of modules) if (m.extension) registry.install(m.extension);
 const hook = (name) => modules.find((m) => m[name])?.[name];

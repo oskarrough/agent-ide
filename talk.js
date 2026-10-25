@@ -1,6 +1,7 @@
 // A `post` call does everything in one commit, with a receipt keyed by its task id, so a replay finds it.
 import { Type } from '@earendil-works/pi-ai';
 import { defineExtension, defineTool } from '@earendil-works/pi-durable';
+import { messageText } from './remote.js';
 
 export function server(core) {
   const { agentName, agentOf, home } = core;
@@ -39,9 +40,12 @@ export function server(core) {
   // Not `read`: a tool of that name would replace Pi's own.
   const threads = defineTool({
     name: 'threads',
-    description: 'Read a thread\'s latest entries, or those that contain `query`, or list every thread by leaving out both. Answers to your own posts come to you; no need to read for them.',
+    description: 'Read a thread\'s latest entries, or those that contain `query`, or list every thread by leaving out both. '
+      + 'With `agent`, read that agent\'s own work in the thread instead: what it was handed, the tool calls it made and what they printed, word for word. '
+      + 'Answers to your own posts come to you; no need to read for them.',
     parameters: Type.Object({
-      thread: Type.Optional(Type.Number({ description: 'With `query`, your own thread by default' })),
+      thread: Type.Optional(Type.Number({ description: 'With `query` or `agent`, your own thread by default' })),
+      agent: Type.Optional(Type.String({ description: 'An agent in that thread, as model@runner or any unique part of it' })),
       last: Type.Optional(Type.Number({ description: 'How many entries, 20 by default' })),
       query: Type.Optional(Type.String({ description: 'Only entries containing this text, ignoring case' })),
     }),
@@ -49,6 +53,7 @@ export function server(core) {
     execute: async (args, api) => {
       const { thread: mine, name } = await home(api.conversationId);
       const lines = [];
+      if (args.agent !== undefined) return { output: [{ type: 'text', text: await work(args.thread ?? mine, args) }] };
       if (args.thread === undefined && args.query === undefined) {
         for (const row of await core.threadList(name)) {
           const parts = [`#${row.id} ${row.title}`, row.parent && `child of #${row.parent}`, row.agents.map((a) => a.name).join(' '), row.status, row.id === mine && '(yours)'];
@@ -64,6 +69,28 @@ export function server(core) {
       return { output: [{ type: 'text', text: lines.join('\n') || (args.query ? 'No entry contains it.' : 'Nothing yet.') }] };
     },
   });
+
+  // An agent's own conversation as lines: what it was handed, what it said, each call and what it printed.
+  async function work(threadId, { agent, query, last = 20 }) {
+    const { agents } = await core.thread(threadId);
+    const names = Object.keys(agents);
+    const found = names.includes(agent) ? [agent] : names.filter((n) => n.includes(agent));
+    if (found.length !== 1) throw new Error(`${found.length ? 'Several' : 'No'} agents in thread ${threadId} match ${agent}: ${(found.length ? found : names).join(', ') || 'none'}`);
+    const lines = [];
+    for (const { id, model = [] } of await core.entries(agents[found[0]])) {
+      for (const m of model) {
+        if (m.role === 'user') lines.push(`#${id} handed: ${messageText(m)}`);
+        if (m.role === 'toolResult') lines.push(`#${id} ${m.toolName}${m.isError ? ' failed' : ''}: ${messageText(m)}`);
+        if (m.role === 'assistant') for (const part of m.content) {
+          if (part.type === 'text' && part.text) lines.push(`#${id} said: ${part.text}`);
+          if (part.type === 'toolCall') lines.push(`#${id} called ${part.name} ${JSON.stringify(part.arguments)}`);
+        }
+      }
+    }
+    const shown = lines.filter((l) => !query || l.toLowerCase().includes(query.toLowerCase())).slice(-last)
+      .map((l) => l.length > 4000 ? `${l.slice(0, 4000)}… (${l.length - 4000} more characters; narrow it with query)` : l);
+    return shown.join('\n') || (query ? 'Nothing in its work contains it.' : `${found[0]} has done nothing here yet.`);
+  }
 
   const section = {
     key: 'talk',

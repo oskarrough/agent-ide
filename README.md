@@ -73,7 +73,7 @@ Pi Durable does the heavy lifting: storage, tasks, ordering, retries, restarts, 
 
 And a few principles:
 
-- Agents only see messages. Each delivery hands an agent everything it hasn't seen yet as one input, and only its final answer comes back to the thread. Its tool calls stay in its own conversation.
+- Agents are handed messages, and can look up anything. Each delivery hands an agent everything it hasn't seen yet as one input, and only its final answer comes back to the thread. Its tool calls stay in its own conversation, where any agent can read them with `threads`: when work spans machines, the whole picture lives in the thread.
 - A message asks the agents in its `to`. With no `to`, it asks whoever the thread asked last, and `to: null` asks nobody.
 - Every write lands in the commit that ends or advances a Pi task, so a restart repeats nothing. A retried request with the same `requestId` gets the first result back.
 - A stop posts nothing, and messages that were never delivered wait for the next delivery.
@@ -131,5 +131,5 @@ Send `x-user: name` to say who you are. The two POSTs that make something, a thr
 - `GET /api/threads/:id/memory?zoom=id,n`: with memory, the thread's memory within 64 KB as `{lines: [{id, n, text}]}`, or with `zoom` the two lines that line was made from, or `{message}` whole when `n` is 1; the client shows it as a panel.
 - `GET /api/conversations/:id`: any Pi conversation's view as Pi gives it, such as an agent's: its entries and docs.
 - `GET /api/runners`: each runner, its `owner` and whom it `allow`s, its default model or `modelError` when pi's default doesn't resolve, the models it `offers` from pi's enabled models, the models it has resolved, and the calls it's answering.
-- Agents' tools, with talk: `post {"thread"?, "title"?, "body", "to"?}`, where no thread starts a child and `to` is `model@runner`, a runner, or `nobody`; and `threads {"thread"?, "last"?, "query"?}`; with memory, `zoom {"id","n","at"?}`, where a long message comes in pages from character `at`.
+- Agents' tools, with talk: `post {"thread"?, "title"?, "body", "to"?}`, where no thread starts a child and `to` is `model@runner`, a runner, or `nobody`; and `threads {"thread"?, "agent"?, "last"?, "query"?}`, where `agent` reads that agent's own work in the thread, its tool calls and what they printed; with memory, `zoom {"id","n","at"?}`, where a long message comes in pages from character `at`.
 - `/ws`: pushes `{}` whenever something changes. Send `{"watch": threadId}` (or `null`) to watch one: `{thread, events}` for its conversation and `{thread, agent, events}` for each agent's, Pi's `watchEvents` stream, snapshot first. Runners connect here too and speak the protocol in [remote.js](remote.js).
