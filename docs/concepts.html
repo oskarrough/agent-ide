@@ -31,7 +31,7 @@
   dl.words dd small { display: block; color: var(--muted); font-size: 0.9rem; margin-top: 0.15rem; }
   .tag { display: inline-block; font: 600 0.7rem ui-sans-serif, system-ui, sans-serif; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.15em 0.5em; border-radius: 99px; color: #fff; vertical-align: 0.15em; margin-left: 0.4em; }
   .server { background: var(--server); } .runner { background: var(--runner); } .client { background: var(--client); }
-  .agent { background: var(--agent); } .later { background: var(--later); }
+  .agent { background: var(--agent); } .later { background: var(--later); } .unused { background: transparent; color: var(--muted); border: 1px solid var(--line); }
   .name { font: 600 clamp(1.4rem, 5vw, 2.4rem) ui-monospace, 'SF Mono', Menlo, monospace; display: flex; flex-wrap: wrap; justify-content: center; gap: 0; margin: 2rem 0 0.4rem; }
   .name span { display: flex; flex-direction: column; align-items: center; }
   .name span i { font: 500 0.78rem ui-sans-serif, system-ui, sans-serif; color: var(--muted); margin-top: 0.5rem; padding-top: 0.35rem; border-top: 3px solid; width: 100%; text-align: center; }
@@ -87,7 +87,7 @@ flowchart LR
 <p class="caption">Everything that must survive lives in the middle box. A runner or a client can vanish at any moment and nothing is lost: threads wait for a runner to come back.</p>
 
 <h2>The words</h2>
-<p>One word per thing. The test for a word: it names something you can point at in the code or the API, and nothing else in the list overlaps it.</p>
+<p>One word per thing. The test for a word: it names something you can point at in the code or the API, and nothing else in the list overlaps it. After ours come the words we leave out, and why.</p>
 
 <dl class="words">
   <dt>Server <span class="tag server">built</span></dt>
@@ -113,6 +113,19 @@ flowchart LR
   <dt>Bot <span class="tag later">later</span></dt>
   <dd>A who: a name and instructions, running as some agent. <code>ada</code> might be <code>sonnet:high@laptop</code> plus her character; move her to the vps and she's still ada. It belongs on the server, because it's part of the thinking, not the doing.
     <small>Waits until everything above is rock solid.</small></dd>
+
+  <dt>Machine <span class="tag unused">not ours</span></dt>
+  <dd>Plain English for where a runner runs: a laptop, a VPS, a container. It isn't a concept in agent-ide; the runner records its host, and that's all.</dd>
+  <dt>Computer <span class="tag unused">not ours</span></dt>
+  <dd>do-computer's word for where a Dood works, which bundles three ideas: where the files are, where commands run, and which provider made the box (a virtual shell, Daytona, Modal, Cloudflare, or your own paired machine). agent-ide has one kind: anywhere you can run the curl line. A cloud sandbox is just a machine you run it on.</dd>
+  <dt>Daemon <span class="tag unused">not ours</span></dt>
+  <dd>The runner is the daemon. One word is enough.</dd>
+  <dt>Desktop <span class="tag unused">not ours</span></dt>
+  <dd>do-computer's desktop app is three things in one program: a window, a server, and a daemon. agent-ide gets the same with <code>RUNNER=~/code bun server.js</code> and a browser tab, and you can see each part running.</dd>
+  <dt>Mobile <span class="tag unused">not ours</span></dt>
+  <dd>The web client in your phone's browser. Reach the server over Tailscale, never the open internet: there are no accounts, so whoever can reach it can use it. <code>tailscale serve --bg --https=443 http://127.0.0.1:3000</code> gives it an HTTPS address only your devices can reach.</dd>
+  <dt>Workspace <span class="tag unused">not ours</span></dt>
+  <dd>A server is the workspace. Who may use a runner is the runner's owner's call.</dd>
 </dl>
 
 <h3>How an agent is named</h3>
@@ -153,22 +166,6 @@ stateDiagram-v2
   Updating --> Online: fetched, installed, restarted
 </pre>
 <p class="caption">The server ships its own runner, so a runner always matches its server. It never updates mid-answer: the server asks only when it has nothing open.</p>
-
-<h2>Words we don't use, and why</h2>
-<dl class="words">
-  <dt>Machine</dt>
-  <dd>Plain English for where a runner runs: a laptop, a VPS, a container. It isn't a concept in agent-ide; the runner records its host, and that's all.</dd>
-  <dt>Computer</dt>
-  <dd>do-computer's word for where a Dood works, which bundles three ideas: where the files are, where commands run, and which provider made the box (a virtual shell, Daytona, Modal, Cloudflare, or your own paired machine). agent-ide has one kind: anywhere you can run the curl line. A cloud sandbox is just a machine you run it on.</dd>
-  <dt>Daemon</dt>
-  <dd>The runner is the daemon. One word is enough.</dd>
-  <dt>Desktop</dt>
-  <dd>do-computer's desktop app is three things in one program: a window, a server, and a daemon. agent-ide gets the same with <code>RUNNER=~/code bun server.js</code> and a browser tab, and you can see each part running.</dd>
-  <dt>Mobile</dt>
-  <dd>The web client in your phone's browser. Reach the server over Tailscale, never the open internet: there are no accounts, so whoever can reach it can use it. <code>tailscale serve --bg --https=443 http://127.0.0.1:3000</code> gives it an HTTPS address only your devices can reach.</dd>
-  <dt>Workspace</dt>
-  <dd>A server is the workspace. Who may use a runner is the runner's owner's call.</dd>
-</dl>
 
 <h2 id="who-pays">Who pays: the runner</h2>
 <p>An agent's model calls go out through the pi logins on its runner, so whoever lends a runner pays for the thinking on it. agent-ide is for one person and for teams alike, and this answer holds for both.</p>
