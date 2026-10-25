@@ -55,7 +55,7 @@ bun cli.js post "and you?" --thread 3                               # asks whom 
 bun cli.js threads | runners | read 3 [--last 5] | stop 3          # runner.js and cli.js both read AGENT_IDE_SERVER=url, or --server
 ```
 
-The client is served at `/`, or by `bun client.html` with live reload; [cli.js](cli.js) is the same API from a terminal. It can hold several servers. `?user=ana` posts as someone else. There is no authentication: anyone who can reach the server can claim any name, so keep it on a trusted network.
+The client is served at `/`, or by `bun client.html` with live reload and `?server=http://…` pointing at a server; [cli.js](cli.js) is the same API from a terminal. `?user=ana` posts as someone else. There is no authentication: anyone who can reach the server can claim any name, so keep it on a trusted network.
 
 ## API
 

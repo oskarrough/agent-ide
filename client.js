@@ -1,7 +1,8 @@
 import { wires } from './wires.js';
 import './agent-memory.js';
 const params = new URLSearchParams(location.search);
-const url = params.get('server') || 'http://127.0.0.1:3000';
+// The server that served this page, or another with ?server=.
+const url = params.get('server') || (location.protocol === 'file:' ? 'http://127.0.0.1:3000' : location.origin);
 const me = params.get('user') || 'you';
 const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, ...children) => { const e = Object.assign(document.createElement(tag), props); e.append(...children.filter((c) => c != null && c !== false)); return e; };
