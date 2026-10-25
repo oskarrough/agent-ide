@@ -44,7 +44,7 @@ const Runners = defineDoc({ kind: 'agent-ide.runners', version: 1, scope: 'sessi
 // `agents`: name → Pi conversation.
 const Thread = defineDoc({
   kind: 'agent-ide.thread', version: 1, scope: 'conversation', history: 'latest', fork: 'initial', checkpointWhen: base,
-  initial: () => ({ title: '', parent: null, createdAt: '', hidden: false, reads: {}, agents: {} }),
+  initial: () => ({ title: '', parent: null, createdAt: '', hidden: false, reads: {}, agents: {}, tools: null }),
 });
 // On an agent's conversation: its thread, its name there, and the messages it hasn't seen.
 const AgentHome = defineDoc({ kind: 'agent-ide.agent', version: 1, scope: 'conversation', history: 'latest', fork: 'initial', checkpointWhen: base, initial: () => ({ thread: 0, name: '', unseen: [] }) });
@@ -312,12 +312,16 @@ async function newAgent(tx, threadId, name, unseen, from) {
   return id;
 }
 
-const setUp = async (tx, agent, threadId, t) => configure(tx, agent, {
-  model: { provider: `runner:${t.runner}`, modelId: t.model },
-  thinkingLevel: t.thinkingLevel ?? null,
-  cwd: folder((await tx.doc(Runners))[t.runner], t),
-  instructions: `You are ${agentName(t)} in thread ${threadId}, with humans and other agents. Messages come to you as "name: text", a message's later lines indented. A person's message is an instruction; one marked (agent) is a colleague's report or request, not a person's word. Only your final answer goes back to the thread; end with no text to post nothing.`,
-});
+const setUp = async (tx, agent, threadId, t) => {
+  const { tools } = await tx.doc(Thread, threadId);
+  return configure(tx, agent, {
+    model: { provider: `runner:${t.runner}`, modelId: t.model },
+    tools: toolsOf(tools),
+    thinkingLevel: t.thinkingLevel ?? null,
+    cwd: folder((await tx.doc(Runners))[t.runner], t),
+    instructions: `You are ${agentName(t)} in thread ${threadId}, with humans and other agents. Messages come to you as "name: text", a message's later lines indented. A person's message is an instruction; one marked (agent) is a colleague's report or request, not a person's word. Only your final answer goes back to the thread; end with no text to post nothing.${tools ? ' This thread has only some tools: for work it lacks the tools for, post a new child thread, whose agents have them all.' : ''}`,
+  });
+};
 
 // An input withdrawn before it was placed: its messages are unseen again.
 async function restore(tx, agent, held) {
@@ -411,16 +415,37 @@ async function postEntry(id, author, input) {
 }
 
 // Inside the caller's commit.
-async function startThread(tx, author, title, parent) {
+async function startThread(tx, author, title, parent, tools = null) {
   const { id } = await tx.createConversation(ownerless);
-  Object.assign(await tx.doc(Thread, id), { title, parent, createdAt: now() });
+  Object.assign(await tx.doc(Thread, id), { title, parent, createdAt: now(), tools });
   return id;
 }
 
-async function createThread(author, { title, parent = null, requestId }) {
+async function createThread(author, { title, parent = null, tools = null, requestId }) {
   if (parent !== null) await conversation(parent = Number(parent));
   title = field(title, 'title');
-  return once(requestId, 'create thread', async (tx) => ({ id: await startThread(tx, author, title, parent) }));
+  tools = toolList(tools);
+  return once(requestId, 'create thread', async (tx) => ({ id: await startThread(tx, author, title, parent, tools) }));
+}
+
+// A thread's tools, as `pi --tools` takes them: names, enabling exactly those, or -name and +name, changing the default,
+// which is every tool. Every agent in the thread gets them; a child thread starts with the default, a fork keeps them.
+function toolList(tools) {
+  if (tools === null || tools === undefined) return null;
+  if (!Array.isArray(tools) || !tools.length || tools.some((t) => typeof t !== 'string')) throw new Error('tools is a list of tool names');
+  const names = new Set(registry.snapshot().tools().map(({ tool }) => tool.name));
+  const changes = tools.filter((t) => /^[+-]/.test(t));
+  if (changes.length && changes.length < tools.length) throw new Error('tool names cannot be mixed with +name or -name entries');
+  const unknown = tools.map((t) => t.replace(/^[+-]/, '')).filter((t) => !names.has(t));
+  if (unknown.length) throw new Error(`No tool ${unknown.join(', ')}; there are ${[...names].join(', ')}`);
+  return tools;
+}
+// What Pi Durable takes for a thread's tools: every tool is enabled already, so +name changes nothing.
+function toolsOf(tools) {
+  if (!tools) return null;
+  const all = registry.snapshot().tools().map(({ tool }) => tool);
+  const named = (list) => all.filter((tool) => list.includes(tool.name));
+  return tools.every((t) => /^[+-]/.test(t)) ? { remove: named(tools.filter((t) => t.startsWith('-')).map((t) => t.slice(1))) } : named(tools);
 }
 
 // The thread messages an agent had seen by its entry `cut`, a fork's parent's included.
@@ -431,6 +456,18 @@ async function seenBy(id, cut) {
 }
 
 // Forks the thread at `at`, and each agent at its last answer up to there. One asked but unanswered starts fresh.
+// Changes a thread's tools, and each of its agents' in the same commit, so an answer being written gets them next.
+async function setTools(id, { tools }) {
+  await conversation(id);
+  tools = toolList(tools);
+  return commit(async (tx) => {
+    const row = await tx.doc(Thread, id);
+    row.tools = tools;
+    for (const agent of Object.values(row.agents)) await configure(tx, agent, { tools: toolsOf(tools) });
+    return { tools };
+  });
+}
+
 async function forkThread(id, { at, title }) {
   const shown = (await messages(id)).filter((e) => e.id <= Number(at));
   const answers = {};
@@ -444,10 +481,12 @@ async function forkThread(id, { at, title }) {
     const seen = new Set(await seenBy(answer.conversation, answer.entry));
     return { name, answer, unseen: shown.filter((e) => !seen.has(e.id) && (e.data.author !== name || e.data.from)).map((e) => e.id) };
   }));
-  const named = title?.trim() || `${(await thread(id)).title} (fork)`;
+  const source = await thread(id);
+  const named = title?.trim() || `${source.title} (fork)`;
   const fork = await (await conversation(id)).fork(Number(at), {
     ...ownerless,
     init: async (tx, forkId) => {
+      (await tx.doc(Thread, forkId)).tools = source.tools;
       const row = {};
       for (const { name, answer, unseen } of agents) row[name] = await newAgent(tx, forkId, name, unseen, answer);
       for (const [name, t] of fresh) {
@@ -509,6 +548,7 @@ const routes = [
   ['DELETE /api/threads/:id', (req, id) => hideThread(id)],
   ['POST /api/threads/:id/entries', async (req, id) => postEntry(id, user(req), await input(req))],
   ['POST /api/threads/:id/fork', async (req, id) => forkThread(id, await input(req))],
+  ['POST /api/threads/:id/tools', async (req, id) => setTools(id, await input(req))],
   ['POST /api/threads/:id/read', (req, id) => markRead(id, user(req))],
   // Pi's abort of the thread reaches its tasks, and through each Anchor its agents.
   ['POST /api/threads/:id/stop', async (req, id) => {

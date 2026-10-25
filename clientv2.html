@@ -116,6 +116,13 @@
   .thread li.elsewhere { padding: .7rem .9rem; border: 1px solid var(--line); border-radius: 12px; }
   .thread li .fork { position: absolute; right: 0; top: -.2rem; font-size: 11px; padding: 0 .35rem; opacity: 0; }
   .thread li:hover .fork { opacity: 1; }
+  /* Hands off: a toggle, and the tools it stands for. A hands-off thread's box is dashed: its agents touch nothing. */
+  .thread .hands { display: flex; gap: .4rem; align-items: center; padding: .25rem .6rem; font-size: 12px; }
+  .thread .hands button { padding: 0 .4rem; font-size: 12px; }
+  .thread .hands input { flex: 1; min-width: 0; border: 0; padding: 0; font: 12px ui-monospace, monospace; color: var(--mute); background: none; }
+  .thread .hands input.bad { color: var(--wait); }
+  .thread:not(.hands-off) .hands input:not(:focus) { opacity: .5; }
+  .thread.hands-off { border-style: dashed; }
   .thread nav.from:not(:empty) { font-size: 12px; padding: .2rem 1.2rem 0; }
   .thread .links { font-size: 12px; padding: 0 0 .35rem; }
   .thread li > .links:not(:first-child) { padding: .4rem 0 0; }
@@ -164,6 +171,7 @@
   body.chat .thread { display: flex; flex-direction: column; height: 100%; border: 0; border-right: 1px solid var(--line); border-radius: 0; flex: 1 0 min(100%, 26rem); }
   body.chat .thread > header { padding-right: 7rem; }
   body.chat .thread ul { flex: 1; max-height: none; }
+  body.chat .thread form { width: calc(100% - 1.2rem); max-width: 42rem; margin-inline: auto; }
   body.chat #runners { flex-wrap: nowrap; overflow-x: auto; gap: .5rem; padding: .5rem .6rem; border-top: 1px solid var(--line); }
   body.chat #runners .node { flex: none; width: 15rem; }
   @media (max-width: 700px) {

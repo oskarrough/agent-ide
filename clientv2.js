@@ -101,10 +101,37 @@ async function remove(id) {
   if (family().includes(id)) go(null); else refresh();
 }
 
+// A thread's tools, as `pi --tools` takes them. Hands off is the common case: its agents read and ask others.
+const HANDS_OFF = ['-write', '-edit', '-bash'];
+let fresh_tools = null; // what a new thread starts with
+const parseTools = (text) => text.split(/[\s,]+/).filter(Boolean);
+// A toggle and the tools it stands for, kept in step; either one sets them.
+function handsControl(tools, set) {
+  const box = el('div', { className: 'hands' });
+  const toggle = el('button', { type: 'button', textContent: 'hands off', title: 'Its agents read and ask others, and change nothing themselves' });
+  const field = el('input', { placeholder: 'every tool', spellcheck: false, title: 'tools, as pi --tools takes them: read,post or -write,-edit,-bash' });
+  const show = (list) => {
+    toggle.setAttribute('aria-pressed', Boolean(list));
+    if (document.activeElement !== field) field.value = (list ?? []).join(',');
+  };
+  const apply = async (list) => {
+    field.classList.remove('bad');
+    try { await set(list?.length ? list : null); } catch (error) { field.classList.add('bad'); field.title = error.message; }
+  };
+  toggle.onclick = (e) => { e.stopPropagation(); apply(toggle.getAttribute('aria-pressed') === 'true' ? null : HANDS_OFF); };
+  field.onchange = () => apply(parseTools(field.value));
+  field.onkeydown = (e) => { if (e.key === 'Enter') field.blur(); };
+  box.append(toggle, field);
+  box.show = show;
+  show(tools);
+  return box;
+}
+
 async function ask(body, to = picks) {
   if (!to.length) return;
   if (!current) {
-    const { id } = await api('/api/threads', { title: body.slice(0, 60) });
+    const { id } = await api('/api/threads', { title: body.slice(0, 60), ...(fresh_tools ? { tools: fresh_tools } : {}) });
+    fresh_tools = null;
     go(id);
   }
   await api(`/api/threads/${current}/entries`, { body, to });
@@ -221,10 +248,13 @@ function threadBox(id) {
     // A thread that isn't current shows a box to write in all the same; clicking it brings the composer.
     const write = el('form', { className: 'elsewhere' }, el('input', { placeholder: 'Write here', onfocus: () => go(id) }));
     box = el('div', { className: 'thread' }, el('header', { onclick: () => current !== id ? go(id) : form.querySelector('input').focus() }, el('span'), el('span', { className: 'dot' })),
+      handsControl(t?.tools, (tools) => api(`/api/threads/${id}/tools`, { tools }).then(refresh)),
       el('nav', { className: 'from' }), el('ul'), write);
     boxes.set(id, box);
   }
   box.classList.toggle('current', id === current);
+  box.classList.toggle('hands-off', Boolean(t?.tools));
+  box.querySelector('.hands').show(t?.tools);
   const [title, dot] = box.querySelector('header').children;
   title.textContent = t?.title || 'untitled';
   dot.className = `dot${t?.status === 'working' ? ' working' : t?.status === 'blocked' ? ' blocked' : ''}`;
@@ -286,7 +316,8 @@ function render() {
 
   const shown = family();
   const shownThreads = shown.map((id) => threads.find((t) => t.id === id)).filter(Boolean);
-  blankBox ??= el('div', { className: 'thread current' }, el('header', {}, el('span', { textContent: 'a new thread' })));
+  blankBox ??= el('div', { className: 'thread current' }, el('header', {}, el('span', { textContent: 'a new thread' })),
+    handsControl(null, async (tools) => { fresh_tools = tools; blankBox.classList.toggle('hands-off', Boolean(tools)); blankBox.querySelector('.hands').show(tools); }));
   const blank = !current && blankBox;
   if (blank && form.parentNode !== blank) blank.append(form);
   // Moved only when they change: taking a box out and back would lose the cursor in it.

@@ -67,9 +67,10 @@ Send `x-user: name` to say who you are. The two POSTs that make something, a thr
 ```
 
 - `GET /api/server`: the server's options, its modules, and what Pi is running.
-- `GET|POST /api/threads` `{"title","parent"?,"requestId"?}`: each thread with its agents, status, running commands and Pi conversation record.
+- `GET|POST /api/threads` `{"title","parent"?,"tools"?,"requestId"?}`: each thread with its agents, status, running commands and Pi conversation record.
 - `GET /api/threads/:id`: the thread's row, its `agents` as `{name, conversation, to, status}`, and every entry.
 - `POST /api/threads/:id/entries` `{"body","to"?: agent | [agent] | null, "steer"?: true, "requestId"?}`, an agent being `{"runner","model"?,"thinkingLevel"?,"dir"?}` and its model anything `pi --model` takes: a steer joins the answer being written. A runner that doesn't take work from you answers 403.
+- `POST /api/threads/:id/tools` `{"tools"}`: the tools of every agent in the thread, as `pi --tools` takes them: names enable exactly those, `-name` and `+name` change the default, every tool; `null` is the default. `["-write","-edit","-bash"]` makes a thread hands off: its agents read and ask others, whose child threads do the work. A fork keeps them, a child doesn't.
 - `POST /api/threads/:id/fork` `{"at": entryId, "title"?}`: a new thread from that entry.
 - `POST /api/threads/:id/read`: marks it read for you, so its last answer stops counting as done.
 - `POST /api/threads/:id/stop`: stops its agents, deliveries and commands, and withdraws their queued inputs.
