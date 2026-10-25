@@ -12,17 +12,17 @@ await server();
 await runner('laptop');
 await runner('desk');
 
-const first = await cli('send', '--to', 'echo/echo@laptop', 'hello');
+const first = await cli('post', '--to', 'echo/echo@laptop', 'hello');
 const id = /thread (\d+)/.exec(first)?.[1];
-check(id && first.includes('echo/echo@laptop') && first.includes('echo@laptop heard: oskar: hello'), 'send starts a thread and prints the answer', first);
+check(id && first.includes('echo/echo@laptop') && first.includes('echo@laptop heard: oskar: hello'), 'post starts a thread and prints the answer', first);
 
-const both = await cli('send', '--thread', id, '--to', 'echo/echo@laptop', '--to', 'echo/echo@desk', 'both of you');
+const both = await cli('post', '--thread', id, '--to', 'echo/echo@laptop', '--to', 'echo/echo@desk', 'both of you');
 check(both.includes('echo@laptop heard') && both.includes('echo@desk heard'), 'two agents on two runners, one message, both answers', both);
 
-const again = await cli('send', '--thread', id, 'and again');
+const again = await cli('post', '--thread', id, 'and again');
 check(/#\d+ echo\/echo@laptop\n/.test(again) && /#\d+ echo\/echo@desk\n/.test(again), 'no --to asks whom the thread last asked', again);
 
-const shell = await cli('send', '--thread', id, '--to', 'echo/echo@desk', '$ echo from-desk');
+const shell = await cli('post', '--thread', id, '--to', 'echo/echo@desk', '$ echo from-desk');
 check(shell.includes('from-desk'), 'a $ command runs on the runner named and prints its output', shell);
 
 const threads = await cli('threads');

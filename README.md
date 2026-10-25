@@ -50,8 +50,8 @@ DB_PATH=other.sqlite bun server.js     # another store; only one server may use 
 bun runner.js --server http://127.0.0.1:3000 --name laptop [--alias "Oskar's laptop"] --dir ~/code [--owner oskar [--allow ana --allow @desktop]] [--read-only]
 curl -fsSL http://127.0.0.1:3000/connect-runner | sh -s -- [the same options] [--no-update]   # into ~/.agent-ide, kept up to date
 
-bun cli.js send "hello" --to sonnet@laptop --to desk --effort high   # a new thread; answers print as they land
-bun cli.js send "and you?" --thread 3                               # asks whom thread 3 last asked
+bun cli.js post "hello" --to sonnet@laptop --to desk --effort high   # a new thread; answers print as they land
+bun cli.js post "and you?" --thread 3                               # asks whom thread 3 last asked
 bun cli.js threads | runners | read 3 [--last 5] | stop 3          # runner.js and cli.js both read AGENT_IDE_SERVER=url, or --server
 ```
 

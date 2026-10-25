@@ -199,7 +199,8 @@ sequenceDiagram
 <ul>
   <li>Agents are handed messages, and can look up anything. Each delivery hands an agent everything it hasn't seen yet as one input, and only its final answer comes back to the thread. Its tool calls stay in its own conversation, where any agent can read them with <code>threads</code>.</li>
   <li>A message asks the agents in its <code>to</code>. With no <code>to</code>, it asks whoever the thread asked last, and <code>to: null</code> asks nobody.</li>
-  <li>Threads talk like email. A child reports its answers to its parent. When an agent answers another thread's post, the answer goes back to that thread, and a reply to that answer ends the exchange.</li>
+  <li>Threads talk like email. An agent asks with <code>post</code>: with no thread, a new child that holds only the question, for a side question; to a thread, whoever is there, with all they know there. The answer goes back to the asking thread, and a reply to that answer ends the exchange.</li>
+  <li>Posting to a thread that asked you something answers it, so a progress note mid-work comes back once and goes no further.</li>
   <li>A name is one line of plain text, so nobody can forge a speaker in an agent's input.</li>
   <li>The client watches Pi's own event streams, so replies and tool calls show live. A reconnect starts from fresh snapshots.</li>
 </ul>

@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agent-ide: how agents ask each other</title>
+<style>
+  :root { --ink: #1f2328; --mute: #6a737d; --line: #d8dce0; --tint: #f3f4f6; --human: #ad8301; --a1: #2f6fd6; --a2: #a02f6f; --new: #fff6d6; --code: #f6f8fa; --todo: #d39a00; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 system-ui, sans-serif; color: var(--ink); background: #fff; }
+  header { padding: 1.5rem 2rem .5rem; }
+  h1 { font-size: 1.4rem; margin: 0 0 .3rem; }
+  header p { margin: 0 0 .4rem; color: var(--mute); max-width: 60rem; }
+  header p.legend { color: var(--ink); }
+  nav { display: flex; flex-wrap: wrap; gap: .4rem; padding: .75rem 2rem; position: sticky; top: 0; background: #fff; z-index: 2; border-bottom: 1px solid var(--line); align-items: center; }
+  button { font: inherit; padding: .3rem .6rem; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); cursor: pointer; }
+  button:hover, button[aria-pressed=true] { border-color: var(--ink); }
+  .tag { font: 600 10px system-ui; text-transform: uppercase; letter-spacing: .04em; color: #fff; background: var(--todo); border-radius: 99px; padding: .05rem .4rem; margin-left: .3rem; vertical-align: .1em; }
+  .stepper { margin-left: auto; display: flex; gap: .4rem; align-items: center; }
+  .stepper span { color: var(--mute); min-width: 4.5rem; text-align: center; }
+  #caption { padding: .75rem 2rem; font-size: 1.05rem; max-width: 70rem; min-height: 3.5rem; }
+  #caption b { font-weight: 600; }
+
+  main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(22rem, 34rem); gap: 1.5rem; padding: 0 2rem 3rem; align-items: start; }
+  #board { display: grid; gap: .75rem; grid-auto-flow: column; grid-auto-columns: minmax(13rem, 1fr); align-items: start; }
+  .col { border: 1px solid var(--line); border-radius: 8px; background: var(--tint); min-width: 0; }
+  .col > h2 { font-size: 13px; margin: 0; padding: .5rem .7rem; border-bottom: 1px solid var(--line); }
+  .col > h2 small { display: block; font-weight: 400; color: var(--mute); }
+  .col.agent { background: #fff; border-style: dashed; }
+  .col ol { list-style: none; margin: 0; padding: .4rem; display: flex; flex-direction: column; gap: .4rem; min-height: 3rem; }
+  .item { background: #fff; border: 1px solid var(--line); border-left: 3px solid var(--line); border-radius: 6px; padding: .35rem .5rem; font-size: 13px; transition: background .4s; }
+  .item.fresh { background: var(--new); }
+  .item.human { border-left-color: var(--human); }
+  .item.agent1 { border-left-color: var(--a1); }
+  .item.agent2 { border-left-color: var(--a2); }
+  .item .meta { font: 11px ui-monospace, monospace; color: var(--mute); display: flex; flex-wrap: wrap; gap: .3rem; }
+  .item .meta b { color: var(--ink); font-weight: 600; }
+  .item .kind { font: 600 10px system-ui; text-transform: uppercase; letter-spacing: .04em; color: var(--mute); }
+  .item.handed { border-left-color: var(--human); }
+  .item.system { border-left-color: var(--mute); background: var(--tint); }
+  .item.ghost { opacity: .45; border-style: dashed; }
+  .item.bad { outline: 2px solid var(--todo); }
+
+  #code { position: sticky; top: 4rem; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  #code h3 { margin: 0; font: 600 12px ui-monospace, monospace; padding: .45rem .7rem; background: var(--tint); border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: .5rem; }
+  #code h3 a { color: var(--mute); font-weight: 400; }
+  #code pre { margin: 0; padding: .6rem .8rem; background: var(--code); font: 12px/1.5 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; border-bottom: 1px solid var(--line); }
+  #code pre:last-child { border-bottom: 0; }
+  #code .k { color: #a02f6f; } #code .c { color: var(--mute); } #code .s { color: #205ea6; }
+  details.types { margin: 0 2rem 3rem; max-width: 70rem; }
+  details.types summary { cursor: pointer; color: var(--mute); }
+  details.types pre { background: var(--code); border: 1px solid var(--line); border-radius: 8px; padding: .8rem; font: 12px/1.5 ui-monospace, monospace; overflow-x: auto; }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr; } #code { position: static; } #board { grid-auto-flow: row; grid-auto-columns: auto; } }
+</style>
+
+<header>
+  <h1>How agents ask each other</h1>
+  <p>You and agent1 are talking in thread 1. You say "ask agent2 what time it is". Step through what lands where, with the arrow keys.</p>
+  <p class="legend"><b>Solid columns</b> are threads: a group chat everyone reads, which never talks to a model. <b>Dashed columns</b> are each agent's own conversation, exactly the turns its model provider sees. Providers only take <code>system</code>, <code>user</code>, <code>assistant</code> and <code>tool result</code>, so everyone else in the thread, humans and agents, reaches an agent as a <code>user</code> turn with a name in front. Its <code>assistant</code> turns are only ever its own words and tool calls.</p>
+</header>
+<nav>
+  <span id="scenarios"></span>
+  <div class="stepper"><button id="prev">←</button><span id="count"></span><button id="next">→</button></div>
+</nav>
+<p id="caption"></p>
+<main>
+  <div id="board"></div>
+  <aside id="code"></aside>
+</main>
+<details class="types">
+  <summary>The types, from server.js</summary>
+  <pre>/** @typedef {{ runner: string, model: string, effort?: string, dir?: string }} To   An agent, model@runner.
+ *  @typedef {object} Message   The data of every thread entry.
+ *  @property {string} author   A human's name, or an agent's.
+ *  @property {string} body
+ *  @property {To[]} [to]       The agents it asks.
+ *  @property {number} [from]   The thread it came from.
+ *  @property {number[]} [re]   What it answers: messages here, or with `from`, posts there.
+ *  @property {{ conversation: number, entry: number }} [answer]   The agent's entry it copies.
+ *  @typedef {{ id: number, kind: 'agent-ide.message', data: Message }} Entry
+ *  @typedef {{ agent: number, held: number[], steer: boolean }} Delivery   What one input to an agent holds.
+ */
+Thread    doc on a thread:       { title, parent, createdAt, hidden, reads, agents: { name → conversation id } }
+AgentHome doc on an agent's own: { thread, name, unseen: entryId[] }   the thread messages it hasn't seen
+
+post tool (talk.js): { thread?: number, title?: string, body: string, to?: 'model@runner' | runner | 'nobody' }
+  no thread → a new child thread of yours; your own thread → refused ("That is your own thread; just answer")</pre>
+</details>
+
+<script>
+// Columns, in order. Threads are Pi conversations that never run a model; an agent's own conversation is where it thinks.
+const COLS = {
+  t1: { title: 'Thread 1', sub: 'you and agent1; everyone reads this' },
+  c1: { title: 'agent1 in thread 1', sub: 'what its model sees', agent: true },
+  t2: { title: 'Thread 2', sub: 'child of 1, started by agent1' },
+  c2: { title: 'agent2 in thread 2', sub: 'what its model sees', agent: true },
+  c2b: { title: 'agent2 in thread 1', sub: 'what its model sees', agent: true },
+};
+const A1 = 'agent1', A2 = 'agent2';
+const msg = (id, data, extra = {}) => ({ type: 'entry', id, data, ...extra });
+const said = (text) => ({ type: 'said', text });
+const handed = (text) => ({ type: 'handed', text });
+const call = (text) => ({ type: 'call', text });
+const result = (text) => ({ type: 'result', text });
+
+// A step: what it says, what it adds to which column, and the code that did it.
+const SCENARIOS = {
+  child: {
+    label: 'Ask in a child thread',
+    cols: ['t1', 'c1', 't2', 'c2'],
+    steps: [
+      { say: 'You post in thread 1, to agent1. <b>post()</b> appends the entry, adds it to agent1\'s <code>unseen</code>, and starts a <b>Deliver</b> task with everything agent1 hasn\'t seen.',
+        add: { t1: [msg(10, { author: 'you', body: 'ask agent2 what time it is', to: [A1] })] },
+        code: [['POST /api/threads/1/entries', 'server.js', `{ "body": "ask agent2 what time it is", "to": { "runner": "oskar", "model": "…" } }`],
+          ['post(tx, 1, data)', 'server.js:281', `appendEntry(1, { kind: 'agent-ide.message', data })   <span class="c">// → #10</span>
+AgentHome(agent1).unseen = []                         <span class="c">// it took them all</span>
+createTask(Deliver, { agent: c1, held: [10], steer: false })`]] },
+      { say: 'Deliver hands agent1 the held messages as one input, each as <code>name: text</code>. agent1\'s own conversation records it as a delivery.',
+        add: { c1: [handed('you: ask agent2 what time it is')] },
+        code: [['Deliver.ask', 'server.js:69', `content = mine.map(said).join('\\n\\n')   <span class="c">// "you: ask agent2 what time it is"</span>
+handle.submit({ type: 'input', content,
+  entry: { kind: 'agent-ide.delivery', data: { held: [10] } },
+  requestId: String(taskId), whenBusy: 'followUp' })`]] },
+      { say: 'agent1 calls <b>post</b> with no <code>thread</code>, so it starts a child thread. In one commit: thread 2 with <code>parent: 1</code>, the question in it with <code>from: 1</code>, a new conversation for agent2, and a Deliver for it.',
+        add: { c1: [call('post { title: "Time", body: "What time is it?", to: "agent2" }')], t2: [msg(20, { author: A1, body: 'What time is it?', to: [A2], from: 1 })] },
+        code: [['post tool', 'talk.js:20', `id = startThread(tx, 'agent1', 'Time', 1)          <span class="c">// Thread doc { parent: 1 }</span>
+core.post(tx, 2, { author: 'agent1', body, to: [agent2], from: 1 }, { empty: true })
+  <span class="c">// empty: a new thread has nothing for agent2 to catch up on</span>
+newAgent(tx, 2, 'agent2', [20])                       <span class="c">// unseen: just the question</span>
+createTask(Deliver, { agent: c2, held: [20] })`]] },
+      { say: 'The tool tells agent1 the answer will come by itself. agent1 ends its turn <b>with no text</b>, so <b>outcome()</b> posts nothing in thread 1.',
+        add: { c1: [result('Posted to thread 2 for agent2. The answer will come to you here on its own; carry on, or end your turn with no text.'), said('')] },
+        code: [['outcome()', 'server.js:327', `body = messageText(answer)                <span class="c">// ''</span>
+if (done && !body.trim()) return []       <span class="c">// nothing to say: nothing posted</span>`]] },
+      { say: 'agent2 is handed <b>only the question</b>. It knows nothing of thread 1 unless it reads it with <code>threads</code>. The name says where it came from.',
+        add: { c2: [handed('agent1, writing from thread 1: What time is it?')] },
+        code: [['said(entry)', 'server.js:270', `who = m.from ? \`\${m.author}, \${m.re ? 'answering' : 'writing'} from thread \${m.from}\` : m.author
+<span class="c">// "agent1, writing from thread 1: What time is it?"</span>`]] },
+      { say: 'agent2 runs <code>date</code> on its runner and answers.',
+        add: { c2: [call('bash date +%H:%M'), result('14:32'), said('14:32')] }, code: [] },
+      { say: 'outcome() posts the answer in thread 2, <code>re</code> the question. The question was a <b>post</b> (it has <code>from</code>, no <code>re</code>), so <b>reply()</b> also copies the answer to thread 1, to whoever posted: agent1. As a steer, so it joins a running turn.',
+        add: { t2: [msg(22, { author: A2, body: '14:32', re: [20], answer: { conversation: 'c2', entry: '…' } })], t1: [msg(23, { author: A2, body: '14:32', to: [A1], from: 2, re: [20] })] },
+        code: [['outcome()', 'server.js:327', `told = [{ thread: 2, data: { author: 'agent2', body: '14:32', re: [20], answer } }]
+posts = held.filter((e) => e.data.from && !e.data.re)   <span class="c">// [#20]: a question</span>
+reply(posts, 2, 'agent2', body)                           <span class="c">// → thread 1, steer: true</span>`],
+          ['reply()', 'talk.js:103', `{ thread: 1, data: { author: 'agent2', body: '14:32',
+  to: [agent1],            <span class="c">// whoever posted #20</span>
+  from: 2, re: [20] } }    <span class="c">// re with from: posts there</span>`]] },
+      { say: 'The copy wakes agent1, who tells you. Its answer stays in thread 1: <code>#23</code> has <code>re</code>, so it\'s a reply, and nothing goes back. One question, one answer.',
+        add: { c1: [handed('agent2, answering from thread 2: 14:32'), said('It\'s 14:32.')], t1: [msg(24, { author: A1, body: 'It\'s 14:32.', re: [10, 23] })] },
+        code: [['outcome()', 'server.js:327', `posts = held.filter((e) => e.data.from && !e.data.re)   <span class="c">// []: #23 is a reply</span>
+<span class="c">// thread 1 has no parent: done</span>`]] },
+    ],
+  },
+  pingFix: {
+    label: 'agent2 pings mid-work',
+    cols: ['t1', 'c1', 't2', 'c2'],
+    steps: [
+      { say: 'agent1 asks for a ping after step one. A post <b>to the thread that asked you</b> answers that question, so it goes no further. Same start as before.',
+        add: { t1: [msg(10, { author: 'you', body: 'have agent2 run hostname, ping me, then ls', to: [A1] })], c1: [handed('you: have agent2 …'), call('post { … to: "agent2" }')],
+          t2: [msg(20, { author: A1, body: 'run hostname, post it to thread 1 right away, then ls', to: [A2], from: 1 })], c2: [handed('agent1, writing from thread 1: …')] }, code: [] },
+      { say: 'agent2\'s post to thread 1 carries <code>re: [20]</code>, the question it\'s working on, because thread 2\'s parent is thread 1 and #20 came from there.',
+        add: { c2: [call('bash hostname'), call('post { thread: 1, body: "hostname: oskar" }')], t1: [msg(30, { author: A2, body: 'hostname: oskar', to: [A1], from: 2, re: [20] })] },
+        code: [['post tool', 'talk.js:28', `<span class="c">// Posting to a thread that asked you something answers it</span>
+asked = (await core.messages(2)).findLast((e) => e.data.from === 1 &amp;&amp; !e.data.re)   <span class="c">// #20</span>
+to = [agentOf(thread(1).agents[asked.data.author])]                                  <span class="c">// agent1</span>
+core.post(tx, 1, { author: 'agent2', body, to, from: 2, re: [20] })`]] },
+      { say: 'agent1 wakes, says nothing or notes it. #30 is a reply, so its answer <b>stays in thread 1</b>. No bounce.',
+        add: { c1: [handed('agent2, answering from thread 2: hostname: oskar'), said('')] }, code: [] },
+      { say: 'agent2 finishes. Its final answer goes back for #20 as today, and agent1 sums up.',
+        add: { c2: [call('bash ls'), said('ls: todo.txt')], t2: [msg(33, { author: A2, body: 'ls: todo.txt', re: [20] })],
+          t1: [msg(34, { author: A2, body: 'ls: todo.txt', to: [A1], from: 2, re: [20] })], c1: [handed('agent2, answering from thread 2: ls: todo.txt'), said('hostname oskar; ls: todo.txt')] }, code: [] },
+    ],
+  },
+  same: {
+    label: 'Ask in the same thread', todo: true,
+    cols: ['t1', 'c1', 'c2b'],
+    steps: [
+      { say: 'Not built: agent1 asks agent2 in thread 1 itself. Today <b>post</b> refuses that ("That is your own thread; just answer").',
+        add: { t1: [msg(10, { author: 'you', body: 'ask agent2 what time it is', to: [A1] })], c1: [handed('you: ask agent2 what time it is'), call('post { thread: 1, body: "What time is it?", to: "agent2" }')] },
+        code: [['post tool, today', 'talk.js:22', `if (args.thread === from) throw new Error('That is your own thread; just answer')`]] },
+      { say: 'If allowed, the question lands in thread 1. agent2 is new here, so <code>post()</code> hands it <b>every message so far</b>, not just the question.',
+        add: { t1: [msg(11, { author: A1, body: 'What time is it?', to: [A2] })], c2b: [handed('you: ask agent2 what time it is\n\nagent1: What time is it?')] },
+        code: [['post(tx, 1, data)', 'server.js:284', `prior = to.some((t) => !row.agents[agentName(t)])
+  ? all of thread 1's messages     <span class="c">// a new agent reads the thread</span>
+  : []
+newAgent(tx, 1, 'agent2', [...prior, entry.id])`]] },
+      { say: 'agent2 answers in thread 1, for everyone. It knew why it was asked, and paid for reading all of it. In a long thread that\'s the whole history, every time someone new is asked.',
+        add: { c2b: [call('bash date +%H:%M'), said('14:32')], t1: [msg(12, { author: A2, body: '14:32', re: [11] })] }, code: [] },
+      { say: 'Who wakes agent1? Today an answer only travels between threads, so in the same thread nobody does. This needs a rule of its own: an answer to an agent\'s question wakes it.',
+        add: { c1: [said('(not woken today)')] }, code: [] },
+    ],
+  },
+};
+
+let scenario = 'child', step = 0;
+const $ = (id) => document.getElementById(id);
+const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids.filter((k) => k != null && k !== false)); return e; };
+const who = (author) => author === 'you' ? 'human' : author;
+
+function item(x, fresh, col) {
+  const cls = `item${fresh ? ' fresh' : ''}${x.bad ? ' bad' : ''}`;
+  if (x.type === 'entry') {
+    const d = x.data;
+    const meta = [el('b', { textContent: `#${x.id}` }), el('b', { textContent: d.author }),
+      d.to && `to: ${d.to.join(', ')}`, d.from && `from: ${d.from}`, d.re && `re: [${d.re.join(', ')}]`, d.answer && 'answer: {…}'];
+    return el('li', { className: `${cls} ${who(d.author)}` }, el('div', { className: 'meta' }, ...meta.map((m) => typeof m === 'string' ? el('span', { textContent: m }) : m)), d.body);
+  }
+  const a = col === 'c1' ? 'agent1' : 'agent2';
+  // The roles the model's provider sees: everyone else arrives as user, tool calls are part of the agent's own turn.
+  const label = { handed: 'user', said: 'assistant', call: 'assistant · tool call', result: 'tool result', system: 'system' }[x.type];
+  return el('li', { className: `${cls} ${x.type === 'handed' || x.type === 'system' ? x.type : a}${x.type === 'said' && !x.text ? ' ghost' : ''}` },
+    el('div', { className: 'kind', textContent: label }), x.type === 'said' && !x.text ? '(no text, so nothing is posted to the thread)' : x.text);
+}
+
+function render() {
+  const s = SCENARIOS[scenario];
+  $('scenarios').replaceChildren(...Object.entries(SCENARIOS).map(([k, v]) => el('button', { 'aria-pressed': k === scenario, onclick: () => { scenario = k; step = 0; render(); } },
+    v.label, v.todo && el('span', { className: 'tag', textContent: 'not built' }))));
+  for (const b of $('scenarios').children) b.setAttribute('aria-pressed', b.textContent.startsWith(s.label));
+  $('count').textContent = `${step + 1} / ${s.steps.length}`;
+  $('caption').innerHTML = s.steps[step].say;
+  $('board').replaceChildren(...s.cols.map((c) => {
+    const items = s.steps.slice(0, step + 1).flatMap((st, i) => (st.add[c] ?? []).map((x) => item(x, i === step, c)));
+    const name = c === 'c1' ? 'agent1' : 'agent2', where = c === 'c2' ? 2 : 1;
+    if (COLS[c].agent && items.length) items.unshift(item({ type: 'system', text: `You are ${name} in thread ${where}, with humans and other agents. Messages come to you as "name: text". Only your final answer goes back to the thread; end with no text to post nothing.` }, false, c));
+    return el('section', { className: `col${COLS[c].agent ? ' agent' : ''}` }, el('h2', {}, COLS[c].title, el('small', { textContent: COLS[c].sub })), el('ol', {}, ...items));
+  }));
+  const code = s.steps[step].code;
+  $('code').replaceChildren(...(code.length ? code : [['nothing new in the code', '', 'The model is thinking and calling tools; Pi runs the loop.']]).flatMap(([title, where, body]) => {
+    const pre = el('pre');
+    pre.innerHTML = body;
+    return [el('h3', {}, title, where && el('a', { textContent: where })), pre];
+  }));
+}
+const move = (d) => { step = Math.max(0, Math.min(SCENARIOS[scenario].steps.length - 1, step + d)); render(); };
+$('prev').onclick = () => move(-1);
+$('next').onclick = () => move(1);
+addEventListener('keydown', (e) => { if (e.key === 'ArrowRight') move(1); if (e.key === 'ArrowLeft') move(-1); });
+render();
+</script>
+</html>

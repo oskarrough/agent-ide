@@ -1,9 +1,9 @@
-// The API from a terminal: send to any agents in any thread, and print what comes back.
+// The API from a terminal: post to any agents in any thread, and print what comes back.
 import { parseArgs } from 'node:util';
 
 const usage = `bun cli.js [--server url] [--as name] <command>
 
-  send <message>   post to a new thread, or --thread N, and print the answers as they land
+  post <message>   post to a new thread, or --thread N, and print the answers as they land
                    --to agent    model@runner, a runner for its default model, or nobody; repeat for more
                                  (left out: whom the thread last asked)
                    --effort e    how hard they think: off, minimal, low, medium, high, xhigh, max
@@ -47,9 +47,9 @@ function show({ id, data: m }) {
   console.log(`#${id} ${m.author}${m.to ? ` → ${m.to.map((t) => `${t.model}@${t.runner}`).join(', ')}` : ''}${m.from ? ` (from thread ${m.from})` : ''}\n${m.body}${shell ? `\n${shell}` : ''}\n`);
 }
 
-async function send() {
+async function post() {
   const body = rest.join(' ');
-  if (!body) throw new Error('send what?');
+  if (!body) throw new Error('post what?');
   const id = o.thread ? Number(o.thread) : (await api('POST', '/api/threads', { title: o.title ?? body.slice(0, 60) })).id;
   if (!o.thread) console.error(`thread ${id}`);
   const seen = (await api('GET', `/api/threads/${id}`)).entries.at(-1)?.id ?? 0;
@@ -75,7 +75,7 @@ async function send() {
 }
 
 const commands = {
-  send,
+  post,
   async threads() {
     for (const t of await api('GET', '/api/threads')) console.log(`#${t.id} ${t.title}  ${t.status}${t.agents.length ? `  ${t.agents.map((a) => a.name).join(', ')}` : ''}${t.parent ? `  child of #${t.parent}` : ''}`);
   },

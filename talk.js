@@ -8,7 +8,8 @@ export function server(core) {
 
   const post = defineTool({
     name: 'post',
-    description: 'Post to another thread, or start a new child thread of this one by leaving out `thread`. '
+    description: 'Ask someone. Leave out `thread` for a side question: a new child thread that holds only what you write. '
+      + 'Give a `thread` to ask whoever is there, with all they already know there. Posting to a thread that asked you something answers it. '
       + 'Whoever answers, their answer comes to you here as a message, even mid-turn; don\'t read the thread to check for it.',
     parameters: Type.Object({
       thread: Type.Optional(Type.Number({ description: 'The thread to post to. Leave out to start a new one.' })),
@@ -24,15 +25,19 @@ export function server(core) {
       if (/^\$\s/.test(args.body)) throw new Error('Run commands with your own bash tool, not as a post');
       const title = args.thread === undefined ? core.field(args.title, 'title') : '';
       if (args.thread !== undefined) await core.conversation(args.thread);
+      // Posting to a thread that asked you something answers it, so the answer to that ends the exchange.
+      const asked = args.thread === undefined ? undefined : (await core.messages(from)).findLast((e) => e.data.from === args.thread && !e.data.re);
+      const asker = asked && await agentOf((await core.thread(args.thread)).agents[asked.data.author]);
       const to = args.to === 'nobody' ? [] : args.to !== undefined ? [await core.address(core.agentTo(args.to))]
-        : args.thread === undefined ? [await agentOf(api.conversationId)] : await core.lastAsked(args.thread);
+        : args.thread === undefined ? [await agentOf(api.conversationId)] : asker ? [asker] : await core.lastAsked(args.thread);
       await core.reach(to, `@${core.agentTo(name).runner}`);
       const id = await core.once(`post ${api.taskId}`, 'post', async (tx) => {
         const id = args.thread ?? await core.startThread(tx, name, title, from);
-        await core.post(tx, id, { author: name, body: args.body, ...(to.length ? { to } : {}), from }, { empty: args.thread === undefined });
+        await core.post(tx, id, { author: name, body: args.body, ...(to.length ? { to } : {}), from, ...(asked ? { re: [asked.id] } : {}) }, { empty: args.thread === undefined });
         return id;
       });
       const who = to.map(agentName).join(', ') || 'nobody';
+      if (asked) return { output: [{ type: 'text', text: `Answered thread ${id}'s question, for ${who}.` }], details: { thread: id } };
       return { output: [{ type: 'text', text: `Posted to thread ${id} for ${who}.${to.length ? ' The answer will come to you here on its own; carry on, or end your turn with no text: any text you end with is posted.' : ''}` }], details: { thread: id } };
     },
   });
