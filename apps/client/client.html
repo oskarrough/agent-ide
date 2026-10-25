@@ -10,7 +10,7 @@
 	<title>agent-ide</title>
 	<link rel="stylesheet" href="./client.css" />
 
-	<div class="page">
+	<main class="page">
 		<section data-focus="all">
 			<h1>agent-ide</h1>
 			<p>Every AI product decides where these four live.</p>
@@ -142,10 +142,12 @@
 			</p>
 		</section>
 
-		<aside id="stage">
-			<button id="mode" type="button" aria-pressed="false">Just the chat</button>
+		<aside class="stage" id="stage">
+			<button class="mode-toggle" id="mode" type="button" aria-pressed="false">
+				Just the chat
+			</button>
 			<!-- On a phone: back to every thread, and the thread's name, which opens its sheet. -->
-			<header id="bar">
+			<header class="app-bar" id="bar">
 				<button id="back" class="round" type="button" aria-label="All threads">
 					<svg
 						width="16"
@@ -160,33 +162,35 @@
 						<path d="M15 5l-7 7 7 7" />
 					</svg>
 				</button>
-				<button id="pill" type="button"><span class="dot"></span><span></span></button>
+				<button class="thread-pill" id="pill" type="button">
+					<span class="dot"></span><span></span>
+				</button>
 			</header>
-			<div id="scrim"></div>
-			<div id="side">
+			<div class="scrim" id="scrim"></div>
+			<section class="thread-details" id="side" aria-label="Thread details">
 				<h3>In this thread</h3>
-				<ul id="family"></ul>
-			</div>
-			<button id="fleet-open" type="button"></button>
-			<div id="picker" popover><ul></ul></div>
-			<div id="fleet" popover>
+				<ul class="thread-family" id="family"></ul>
+			</section>
+			<button class="runner-toggle" id="fleet-open" type="button"></button>
+			<div class="model-picker" id="picker" popover><ul></ul></div>
+			<div class="runner-list" id="fleet" popover>
 				<ul></ul>
 				<p>To add a runner, run this on the computer you want to lend.</p>
 				<pre></pre>
 			</div>
-			<div id="canvas">
-				<div class="node" id="client"><b>Client</b></div>
-				<div class="node off" id="server">
+			<div class="system" id="canvas">
+				<div class="node client" id="client"><b>Client</b></div>
+				<div class="node off server" id="server">
 					<b><span class="dot"></span>Server</b><small><code></code></small>
 					<div class="body">
-						<nav id="list"></nav>
-						<div id="threads"></div>
+						<nav class="thread-list" id="list"></nav>
+						<div class="threads" id="threads"></div>
 					</div>
 				</div>
-				<div id="runners"></div>
+				<div class="runners" id="runners"></div>
 			</div>
 		</aside>
-	</div>
+	</main>
 
 	<!-- The composer moves into whichever thread is current. -->
 	<template id="composer">
@@ -227,6 +231,7 @@
 					<span class="dot"></span><span></span>
 				</button>
 				<input
+					class="recipients"
 					id="to"
 					autocomplete="off"
 					spellcheck="false"

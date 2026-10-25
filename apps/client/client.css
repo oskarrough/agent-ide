@@ -7,6 +7,7 @@
 	font-style: normal;
 	font-display: swap;
 }
+
 @font-face {
 	font-family: 'iA Writer Quattro S';
 	src: url('https://cdn.jsdelivr.net/gh/iaolo/iA-Fonts@master/iA%20Writer%20Quattro/Webfonts/iAWriterQuattroS-Italic.woff2')
@@ -15,6 +16,7 @@
 	font-style: italic;
 	font-display: swap;
 }
+
 @font-face {
 	font-family: 'iA Writer Quattro S';
 	src: url('https://cdn.jsdelivr.net/gh/iaolo/iA-Fonts@master/iA%20Writer%20Quattro/Webfonts/iAWriterQuattroS-Bold.woff2')
@@ -23,6 +25,7 @@
 	font-style: normal;
 	font-display: swap;
 }
+
 @font-face {
 	font-family: 'iA Writer Quattro S';
 	src: url('https://cdn.jsdelivr.net/gh/iaolo/iA-Fonts@master/iA%20Writer%20Quattro/Webfonts/iAWriterQuattroS-BoldItalic.woff2')
@@ -45,20 +48,24 @@
 	--pick: #3b7be0;
 	--draft: #a02f6f;
 }
+
 * {
 	box-sizing: border-box;
 }
+
 /* Feels installed, not browsed: no tap flash, no font inflation, no double-tap delay, no zoom into a small input. */
 html {
 	-webkit-tap-highlight-color: transparent;
 	-webkit-text-size-adjust: 100%;
 }
+
 button,
 [role='button'] {
 	touch-action: manipulation;
 	-webkit-user-select: none;
 	user-select: none;
 }
+
 @media (pointer: coarse) {
 	input,
 	select,
@@ -66,6 +73,7 @@ button,
 		font-size: max(16px, 1em) !important;
 	}
 }
+
 body {
 	font:
 		17px/1.6 'iA Writer Quattro S',
@@ -75,14 +83,17 @@ body {
 	color: var(--ink);
 	background: Canvas;
 }
+
 h1 {
 	font-size: 1.6rem;
 	margin: 0 0 1rem;
 }
+
 h2 {
 	font-size: 1.1rem;
 	margin: 0 0 0.5rem;
 }
+
 pre {
 	background: var(--tint);
 	color: var(--ink);
@@ -94,13 +105,16 @@ pre {
 	white-space: pre-wrap;
 	word-break: break-all;
 }
+
 code {
 	font-family: ui-monospace, monospace;
 	font-size: 0.85em;
 }
+
 a {
 	color: inherit;
 }
+
 input,
 button,
 select {
@@ -112,35 +126,49 @@ select {
 	color: var(--ink);
 	min-width: 0;
 }
+
+/* A select's open list takes its colours from the select, so it gets the page's, not none. */
+select,
+option {
+	background-color: Canvas;
+	color: CanvasText;
+}
+
 /* One button: white, a thin border; the one that's on gets a dark border. */
 button {
 	cursor: pointer;
+
+	&[aria-pressed='true'],
+	&.current {
+		border-color: var(--edge);
+	}
 }
-button[aria-pressed='true'],
-button.current {
-	border-color: var(--edge);
-}
+
 .mute {
 	color: var(--mute);
 }
+
 /* The two lists that scroll: a thin bar, quiet until you touch it. */
-#list ul,
-.thread ul {
+.thread-list > ul,
+.thread > ul {
 	scrollbar-width: thin;
 	scrollbar-color: var(--edge) transparent;
 }
-#list ul::-webkit-scrollbar,
-.thread ul::-webkit-scrollbar {
+
+.thread-list > ul::-webkit-scrollbar,
+.thread > ul::-webkit-scrollbar {
 	width: 6px;
 	height: 6px;
 }
-#list ul::-webkit-scrollbar-thumb,
-.thread ul::-webkit-scrollbar-thumb {
+
+.thread-list > ul::-webkit-scrollbar-thumb,
+.thread > ul::-webkit-scrollbar-thumb {
 	background: var(--edge);
 	border-radius: 99px;
 }
-#list ul::-webkit-scrollbar-track,
-.thread ul::-webkit-scrollbar-track {
+
+.thread-list > ul::-webkit-scrollbar-track,
+.thread > ul::-webkit-scrollbar-track {
 	background: none;
 }
 
@@ -150,19 +178,23 @@ button.current {
 	grid-template-columns: minmax(0, 34rem) minmax(0, 1fr);
 	gap: 0 3rem;
 	padding: 0 2rem;
+
+	> section {
+		grid-column: 1;
+		padding: 3rem 0;
+		min-height: 60vh;
+
+		&:first-child {
+			padding-top: 4rem;
+		}
+
+		&:last-of-type {
+			min-height: 90vh;
+		}
+	}
 }
-.page > section {
-	grid-column: 1;
-	padding: 3rem 0;
-	min-height: 60vh;
-}
-.page > section:first-child {
-	padding-top: 4rem;
-}
-.page > section:last-of-type {
-	min-height: 90vh;
-}
-#stage {
+
+.stage {
 	grid-column: 2;
 	grid-row: 1 / span 30;
 	position: sticky;
@@ -172,29 +204,32 @@ button.current {
 	overflow-y: auto;
 	padding: 2rem 0;
 }
+
 @media (max-width: 1000px) {
 	/* The stage comes right after the server is introduced. */
 	.page {
 		display: flex;
 		flex-direction: column;
 		padding: 0 1rem;
+
+		> section {
+			min-height: 0;
+			padding: 2rem 0;
+
+			&:nth-child(n + 3) {
+				order: 2;
+			}
+		}
 	}
-	.page > section:nth-child(n + 3) {
-		order: 2;
-	}
-	#stage {
+
+	.stage {
 		order: 1;
-	}
-	.page > section {
-		min-height: 0;
-		padding: 2rem 0;
-	}
-	#stage {
 		position: static;
 		height: auto;
 		padding: 1rem 0;
 	}
 }
+
 /* Sections not yet read with Oskar say so. */
 section.draft > h2::after {
 	content: 'not reviewed yet';
@@ -210,100 +245,125 @@ section.draft > h2::after {
 	margin-left: 0.5rem;
 	vertical-align: 0.15em;
 }
+
 .memory {
 	font-size: 14px;
+
+	ul {
+		list-style: none;
+		margin: 0.5rem 0;
+		padding: 0;
+	}
+
+	li {
+		padding: 0.3rem 0.5rem;
+		border-left: 2px solid var(--line);
+		margin: 0.2rem 0;
+		cursor: pointer;
+
+		small {
+			color: var(--mute);
+			font-family: ui-monospace, monospace;
+			margin-right: 0.4rem;
+		}
+	}
+
+	ul ul {
+		margin-left: 1rem;
+	}
+
+	li {
+		&.pending {
+			color: var(--mute);
+			font-style: italic;
+		}
+
+		&.pending > small::after,
+		&.opening > small::after {
+			content: ' ●';
+			color: var(--ok);
+			animation: blink 1s ease-in-out infinite;
+		}
+
+		/* The cut an agent reads is lit; lines above it fade to one line, lines opened below it are fainter. */
+		&.cut {
+			border-left-color: var(--pick);
+			background: color-mix(in srgb, var(--pick) 7%, Canvas);
+		}
+
+		&.above {
+			cursor: default;
+			color: var(--mute);
+
+			> span {
+				display: block;
+				white-space: nowrap;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				opacity: 0.6;
+			}
+		}
+
+		&.below {
+			color: var(--mute);
+		}
+	}
+
+	.whole {
+		cursor: default;
+		white-space: pre-wrap;
+		background: var(--tint);
+	}
 }
-.memory ul {
-	list-style: none;
-	margin: 0.5rem 0;
-	padding: 0;
-}
-.memory li {
-	padding: 0.3rem 0.5rem;
-	border-left: 2px solid var(--line);
-	margin: 0.2rem 0;
-	cursor: pointer;
-}
-.memory li small {
-	color: var(--mute);
-	font-family: ui-monospace, monospace;
-	margin-right: 0.4rem;
-}
-.memory ul ul {
-	margin-left: 1rem;
-}
+
 agent-memory {
 	display: block;
+
+	h3 {
+		font-size: 15px;
+		margin: 1.5rem 0 0.3rem;
+	}
 }
-agent-memory h3 {
-	font-size: 15px;
-	margin: 1.5rem 0 0.3rem;
+
+.reads {
+	.room {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 14px;
+
+		input {
+			flex: 1;
+		}
+
+		span {
+			min-width: 4.5rem;
+			font-family: ui-monospace, monospace;
+			font-size: 12px;
+			color: var(--mute);
+		}
+	}
+
+	/* One segment per line, as wide as the messages it stands for, darker the more it squeezes. */
+	.bar {
+		display: flex;
+		gap: 2px;
+		height: 1.6rem;
+		margin: 0.5rem 0;
+
+		span {
+			border-radius: 3px;
+			min-width: 3px;
+			cursor: pointer;
+			transition: flex-grow 0.3s;
+
+			&:hover {
+				outline: 2px solid var(--pick);
+			}
+		}
+	}
 }
-.reads .room {
-	display: flex;
-	align-items: center;
-	gap: 0.5rem;
-	font-size: 14px;
-}
-.reads .room input {
-	flex: 1;
-}
-.reads .room span {
-	min-width: 4.5rem;
-	font-family: ui-monospace, monospace;
-	font-size: 12px;
-	color: var(--mute);
-}
-/* One segment per line, as wide as the messages it stands for, darker the more it squeezes. */
-.reads .bar {
-	display: flex;
-	gap: 2px;
-	height: 1.6rem;
-	margin: 0.5rem 0;
-}
-.reads .bar span {
-	border-radius: 3px;
-	min-width: 3px;
-	cursor: pointer;
-	transition: flex-grow 0.3s;
-}
-.reads .bar span:hover {
-	outline: 2px solid var(--pick);
-}
-.memory li.pending {
-	color: var(--mute);
-	font-style: italic;
-}
-.memory li.pending > small::after,
-.memory li.opening > small::after {
-	content: ' ●';
-	color: var(--ok);
-	animation: blink 1s ease-in-out infinite;
-}
-/* The cut an agent reads is lit; lines above it fade to one line, lines opened below it are fainter. */
-.memory li.cut {
-	border-left-color: var(--pick);
-	background: color-mix(in srgb, var(--pick) 7%, Canvas);
-}
-.memory li.above {
-	cursor: default;
-	color: var(--mute);
-}
-.memory li.above > span {
-	display: block;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	opacity: 0.6;
-}
-.memory li.below {
-	color: var(--mute);
-}
-.memory .whole {
-	cursor: default;
-	white-space: pre-wrap;
-	background: var(--tint);
-}
+
 .try {
 	display: flex;
 	flex-wrap: wrap;
@@ -317,12 +377,14 @@ agent-memory h3 {
 	gap: 0.25rem;
 	margin: 1.5rem 0 0.75rem;
 }
+
 .places {
 	display: grid;
 	grid-template-columns: repeat(4, 1fr);
 	gap: 0.5rem;
 	font-size: 14px;
 }
+
 .place {
 	border: 1px dashed var(--line);
 	border-radius: 8px;
@@ -334,14 +396,17 @@ agent-memory h3 {
 	transition:
 		border-color 0.3s,
 		background 0.3s;
+
+	> small {
+		color: var(--mute);
+	}
+
+	&.used {
+		border-style: solid;
+		background: var(--tint);
+	}
 }
-.place > small {
-	color: var(--mute);
-}
-.place.used {
-	border-style: solid;
-	background: var(--tint);
-}
+
 .chip {
 	display: block;
 	padding: 0.25rem 0.5rem;
@@ -350,20 +415,51 @@ agent-memory h3 {
 	border: 1px solid var(--edge);
 	font-weight: 600;
 	cursor: default;
+
+	small {
+		display: block;
+		font-weight: 400;
+		color: var(--mute);
+		font-size: 12px;
+	}
 }
-.chip small {
-	display: block;
-	font-weight: 400;
-	color: var(--mute);
-	font-size: 12px;
-}
+
 .caption {
 	min-height: 3.2em;
 	margin-top: 0.75rem;
 }
 
+:is(.thread, .thread-details) > .hands {
+	display: flex;
+	gap: 0.4rem;
+	align-items: center;
+	padding: 0.25rem 0.6rem;
+	font-size: 12px;
+
+	button {
+		padding: 0 0.4rem;
+		font-size: 12px;
+	}
+
+	input {
+		flex: 1;
+		min-width: 0;
+		border: 0;
+		padding: 0;
+		font:
+			12px ui-monospace,
+			monospace;
+		color: var(--mute);
+		background: none;
+
+		&.bad {
+			color: var(--wait);
+		}
+	}
+}
+
 /* The live system: plumbing is quiet; the route your next message takes is loud, and shows the agent's state. */
-#canvas {
+.system {
 	position: relative;
 	display: grid;
 	grid-template-columns: max-content minmax(0, 1fr);
@@ -371,49 +467,59 @@ agent-memory h3 {
 	align-items: start;
 	font-size: 14px;
 }
-#runners {
+
+.runners {
 	grid-column: 2;
 	display: flex;
 	flex-wrap: wrap;
 	gap: 1rem;
+
+	.node {
+		width: 17rem;
+	}
 }
-#runners .node {
-	width: 17rem;
-}
+
 /* Wires run behind the boxes, so they come out of a box's edge and never cross its text. */
-#canvas > .node,
-#runners .node,
+.system > .node,
+.runners .node,
 .thread {
 	position: relative;
 	z-index: 1;
 }
+
 .wires path {
 	stroke: var(--line);
 	stroke-width: 1.5;
+
+	&.off {
+		stroke-dasharray: 4 4;
+	}
+
+	&.route {
+		stroke: var(--pick);
+		stroke-width: 2.5;
+	}
+
+	&.working {
+		stroke: var(--ok);
+		stroke-width: 2.5;
+		stroke-dasharray: 6 6;
+		animation: flow 0.6s linear infinite;
+	}
+
+	&.blocked {
+		stroke: var(--wait);
+		stroke-width: 2.5;
+		stroke-dasharray: 6 6;
+	}
 }
-.wires path.off {
-	stroke-dasharray: 4 4;
-}
-.wires path.route {
-	stroke: var(--pick);
-	stroke-width: 2.5;
-}
-.wires path.working {
-	stroke: var(--ok);
-	stroke-width: 2.5;
-	stroke-dasharray: 6 6;
-	animation: flow 0.6s linear infinite;
-}
-.wires path.blocked {
-	stroke: var(--wait);
-	stroke-width: 2.5;
-	stroke-dasharray: 6 6;
-}
+
 @keyframes flow {
 	to {
 		stroke-dashoffset: -12;
 	}
 }
+
 .node {
 	border: 1px solid var(--line);
 	border-radius: 8px;
@@ -422,41 +528,50 @@ agent-memory h3 {
 	transition:
 		opacity 0.3s,
 		box-shadow 0.3s;
+
+	&.off {
+		background: Canvas;
+		border-style: dashed;
+	}
+
+	&.routed {
+		border-color: var(--pick);
+	}
+
+	> b {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+	}
+
+	> small {
+		display: block;
+		color: var(--mute);
+		overflow-wrap: anywhere;
+	}
 }
-.node.off {
-	background: Canvas;
-	border-style: dashed;
-}
-.node.routed {
-	border-color: var(--pick);
-}
-.node > b {
-	display: flex;
-	align-items: center;
-	gap: 0.4rem;
-}
-.node > small {
-	display: block;
-	color: var(--mute);
-	overflow-wrap: anywhere;
-}
+
 .dot {
 	width: 0.55rem;
 	height: 0.55rem;
 	border-radius: 50%;
 	background: var(--line);
 	flex: none;
+
+	&.on {
+		background: var(--ok);
+	}
+
+	&.blocked {
+		background: var(--wait);
+	}
+
+	&.working {
+		background: var(--ok);
+		animation: blink 1s ease-in-out infinite;
+	}
 }
-.dot.on {
-	background: var(--ok);
-}
-.dot.blocked {
-	background: var(--wait);
-}
-.dot.working {
-	background: var(--ok);
-	animation: blink 1s ease-in-out infinite;
-}
+
 @keyframes blink {
 	50% {
 		opacity: 0.3;
@@ -464,52 +579,58 @@ agent-memory h3 {
 }
 
 /* What the section in view talks about gets a soft glow; nothing else changes, so the live parts stay readable. */
-#stage[data-focus='server'] #server,
-#stage[data-focus='loop'] #server,
-#stage[data-focus='runners'] #runners .node,
-#stage[data-focus='hands'] #runners .node,
-#stage[data-focus='thread'] .thread,
-#stage[data-focus='model'] .models li {
+.stage[data-focus='server'] .server,
+.stage[data-focus='loop'] .server,
+.stage[data-focus='runners'] .runners .node,
+.stage[data-focus='hands'] .runners .node,
+.stage[data-focus='thread'] .thread,
+.stage[data-focus='model'] .models > li {
 	box-shadow: 0 0 0 3px #2f6fd633;
 }
-#server > .body {
+
+.server > .body {
 	display: grid;
 	grid-template-columns: 10rem minmax(0, 1fr);
 	gap: 0.75rem;
 	margin-top: 0.5rem;
 	align-items: start;
 }
-#threads {
+
+.threads {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 0.75rem;
 	align-items: start;
 	min-width: 0;
 }
-#list {
+
+.thread-list {
 	font-size: 13px;
 	position: relative;
 	z-index: 1;
+
+	.new {
+		width: 100%;
+		text-align: left;
+		margin-bottom: 0.4rem;
+	}
 }
-#list .new {
-	width: 100%;
-	text-align: left;
-	margin-bottom: 0.4rem;
-}
-#list ul,
-#family {
+
+.thread-list > ul,
+.thread-family {
 	display: grid;
 	gap: 1px;
 	list-style: none;
 	margin: 0;
 	padding: 0;
 }
-#list ul {
+
+.thread-list > ul {
 	max-height: 24rem;
 	overflow-y: auto;
 }
-#list li,
-#family li {
+
+:is(.thread-list > ul, .thread-family) > li {
 	display: flex;
 	align-items: center;
 	gap: 0.4rem;
@@ -517,55 +638,55 @@ agent-memory h3 {
 	padding-left: calc(0.4rem + var(--depth, 0) * 1rem);
 	border-radius: 4px;
 	cursor: pointer;
-}
-#list li span:nth-child(2),
-#family li span:nth-child(2) {
-	flex: 1;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-#list li button,
-#family li button {
-	margin-left: auto;
-	padding: 0 0.3rem;
-	font-size: 11px;
-	line-height: 1.4;
-	visibility: hidden;
-	flex: none;
-}
-/* A row darkens a step on hover or focus, and a step more when it's the open thread; over any background. */
-#list li,
-#family li {
 	--step: color-mix(in srgb, CanvasText 4%, transparent);
-}
-#list li:focus-within,
-#family li:focus-within {
-	background: var(--step);
-}
-#list li:focus-within button,
-#family li:focus-within button {
-	visibility: visible;
-}
-/* Without hover, the open thread's row keeps its delete in sight. */
-@media (hover: none) {
-	#list li.current button,
-	#family li.current button {
+
+	> span:nth-child(2) {
+		flex: 1;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	> button {
+		margin-left: auto;
+		padding: 0 0.3rem;
+		font-size: 11px;
+		line-height: 1.4;
+		visibility: hidden;
+		flex: none;
+	}
+
+	&:focus-within {
+		background: var(--step);
+	}
+
+	&:focus-within button {
 		visibility: visible;
 	}
 }
-#list li.current,
-#family li.current {
+
+/* Without hover, the open thread's row keeps its delete in sight. */
+@media (hover: none) {
+	.thread-list > ul > li.current button,
+	.thread-family > li.current button {
+		visibility: visible;
+	}
+}
+
+:is(.thread-list > ul, .thread-family) > li.current {
 	background: color-mix(in srgb, CanvasText 13%, transparent);
 }
+
 @media (max-width: 1300px) {
-	#server > .body {
+	.server > .body {
 		grid-template-columns: minmax(0, 1fr);
 	}
-	#list ul {
+
+	.thread-list > ul {
 		max-height: 7rem;
 	}
 }
+
 .thread {
 	background: Canvas;
 	border: 1px solid var(--line);
@@ -573,191 +694,217 @@ agent-memory h3 {
 	flex: 1 1 16rem;
 	min-width: 0;
 	transition: opacity 0.3s;
+
+	&.current {
+		border-color: var(--edge);
+	}
+
+	> header {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0.5rem 0.9rem;
+		margin-block-end: 0.5rem;
+		border-bottom: 1px solid var(--line);
+		font-size: 13px;
+		font-weight: 600;
+		cursor: pointer;
+
+		span:first-child {
+			flex: 1;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+	}
+
+	/* The chat: agents write on the page, you write in a soft bubble on the right; who's talking is said once, small. */
+	> ul {
+		list-style: none;
+		margin: 0;
+		padding: 0.4rem 1.2rem 1.4rem;
+		max-height: 26rem;
+		overflow-y: auto;
+		font-size: 15px;
+		line-height: 1.6;
+
+		/* A readable column, like a page: never wider than about 70 characters. */
+		> li {
+			max-width: 40rem;
+			margin: 1.5rem auto 0;
+			white-space: pre-wrap;
+			overflow-wrap: anywhere;
+			position: relative;
+
+			&:first-child {
+				margin-top: 0.6rem;
+			}
+
+			&.same {
+				margin-top: 0.8rem;
+
+				> small {
+					display: none;
+				}
+			}
+
+			small {
+				display: block;
+				color: var(--mute);
+				font-size: 12px;
+				line-height: 1.3;
+				margin-bottom: 0.3rem;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			&.mine {
+				margin-right: max(0px, calc((100% - 40rem) / 2));
+				margin-left: auto;
+				width: fit-content;
+				max-width: min(85%, 32rem);
+				padding: 0.6rem 0.9rem;
+				border-radius: 14px;
+				background: var(--tint);
+
+				> small {
+					display: none;
+				}
+			}
+
+			&.writing {
+				color: var(--mute);
+			}
+
+			&.elsewhere {
+				padding: 0.7rem 0.9rem;
+				border: 1px solid var(--line);
+				border-radius: 12px;
+			}
+
+			.fork {
+				position: absolute;
+				right: 0;
+				top: -0.2rem;
+				font-size: 11px;
+				padding: 0 0.35rem;
+				opacity: 0;
+			}
+		}
+	}
+
+	/* Hands off: a toggle, and the tools it stands for. A hands-off thread's box is dashed: its agents touch nothing. */
+	&:not(.hands-off) .hands input:not(:focus) {
+		opacity: 0.5;
+	}
+
+	&.hands-off {
+		border-style: dashed;
+	}
+
+	nav.from:not(:empty) {
+		font-size: 12px;
+		padding: 0.2rem 1.2rem 0;
+	}
+
+	.links {
+		font-size: 12px;
+		padding: 0 0 0.35rem;
+	}
+
+	> ul > li > .links:not(:first-child) {
+		padding: 0.4rem 0 0;
+	}
+
+	form {
+		/* The composer: a rounded box to write in, and under it a quiet bar with what's coming and whom it asks. */
+		margin: 0 0.6rem 0.6rem;
+
+		&[hidden] {
+			display: none;
+		}
+
+		&.elsewhere input {
+			color: var(--mute);
+		}
+
+		.box {
+			display: flex;
+			align-items: center;
+			gap: 0.3rem;
+			padding: 0.25rem 0.3rem 0.25rem 0.8rem;
+			border: 1px solid var(--line);
+			border-radius: 12px;
+			background: var(--tint);
+
+			&:focus-within {
+				border-color: var(--mute);
+			}
+
+			> input {
+				flex: 1;
+				border: 0;
+				background: none;
+				padding: 0.4rem 0;
+				outline: none;
+				font-size: 15px;
+			}
+		}
+
+		button.icon {
+			border: 0;
+			background: none;
+			color: var(--mute);
+			padding: 0.2rem 0.45rem;
+			font-size: 16px;
+			line-height: 1;
+			display: inline-flex;
+
+			&:disabled {
+				cursor: default;
+				opacity: 0.7;
+			}
+		}
+
+		/* The bar is there in every thread, so the composer moving in doesn't change a thread's height. */
+		.bar {
+			display: flex;
+			align-items: center;
+			gap: 0.1rem;
+			padding: 0.3rem 0.1rem 0;
+			min-height: 2.2rem;
+		}
+
+		.pick {
+			display: flex;
+			align-items: center;
+			gap: 0.4rem;
+			min-width: 0;
+			margin-left: auto;
+			border: 0;
+			border-radius: 8px;
+			background: none;
+			color: var(--mute);
+			font-size: 12px;
+			padding: 0.25rem 0.5rem;
+
+			span:nth-child(2) {
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			&[aria-expanded='true'],
+			&:focus-visible {
+				background: color-mix(in srgb, CanvasText 8%, transparent);
+				color: var(--ink);
+			}
+		}
+	}
 }
-.thread.current {
-	border-color: var(--edge);
-}
-.thread > header {
-	display: flex;
-	align-items: center;
-	gap: 0.4rem;
-	padding: 0.5rem 0.9rem;
-	margin-block-end: 0.5rem;
-	border-bottom: 1px solid var(--line);
-	font-size: 13px;
-	font-weight: 600;
-	cursor: pointer;
-}
-.thread > header span:first-child {
-	flex: 1;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-/* The chat: agents write on the page, you write in a soft bubble on the right; who's talking is said once, small. */
-.thread ul {
-	list-style: none;
-	margin: 0;
-	padding: 0.4rem 1.2rem 1.4rem;
-	max-height: 26rem;
-	overflow-y: auto;
-	font-size: 15px;
-	line-height: 1.6;
-}
-/* A readable column, like a page: never wider than about 70 characters. */
-.thread li {
-	max-width: 40rem;
-	margin: 1.5rem auto 0;
-	white-space: pre-wrap;
-	overflow-wrap: anywhere;
-	position: relative;
-}
-.thread li:first-child {
-	margin-top: 0.6rem;
-}
-.thread li.same {
-	margin-top: 0.8rem;
-}
-.thread li.same > small {
-	display: none;
-}
-.thread li small {
-	display: block;
-	color: var(--mute);
-	font-size: 12px;
-	line-height: 1.3;
-	margin-bottom: 0.3rem;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-.thread li.mine {
-	margin-right: max(0px, calc((100% - 40rem) / 2));
-	margin-left: auto;
-	width: fit-content;
-	max-width: min(85%, 32rem);
-	padding: 0.6rem 0.9rem;
-	border-radius: 14px;
-	background: var(--tint);
-}
-.thread li.mine > small {
-	display: none;
-}
-.thread li.writing {
-	color: var(--mute);
-}
-.thread li.elsewhere {
-	padding: 0.7rem 0.9rem;
-	border: 1px solid var(--line);
-	border-radius: 12px;
-}
-.thread li .fork {
-	position: absolute;
-	right: 0;
-	top: -0.2rem;
-	font-size: 11px;
-	padding: 0 0.35rem;
-	opacity: 0;
-}
-/* Hands off: a toggle, and the tools it stands for. A hands-off thread's box is dashed: its agents touch nothing. */
-.thread .hands {
-	display: flex;
-	gap: 0.4rem;
-	align-items: center;
-	padding: 0.25rem 0.6rem;
-	font-size: 12px;
-}
-.thread .hands button {
-	padding: 0 0.4rem;
-	font-size: 12px;
-}
-.thread .hands input {
-	flex: 1;
-	min-width: 0;
-	border: 0;
-	padding: 0;
-	font:
-		12px ui-monospace,
-		monospace;
-	color: var(--mute);
-	background: none;
-}
-.thread .hands input.bad {
-	color: var(--wait);
-}
-.thread:not(.hands-off) .hands input:not(:focus) {
-	opacity: 0.5;
-}
-.thread.hands-off {
-	border-style: dashed;
-}
-.thread nav.from:not(:empty) {
-	font-size: 12px;
-	padding: 0.2rem 1.2rem 0;
-}
-.thread .links {
-	font-size: 12px;
-	padding: 0 0 0.35rem;
-}
-.thread li > .links:not(:first-child) {
-	padding: 0.4rem 0 0;
-}
-.thread-link {
-	color: var(--mute);
-	text-decoration: none;
-}
-.thread form[hidden] {
-	display: none;
-}
-.thread form.elsewhere input {
-	color: var(--mute);
-}
-/* The composer: a rounded box to write in, and under it a quiet bar with what's coming and whom it asks. */
-.thread form {
-	margin: 0 0.6rem 0.6rem;
-}
-.thread form .box {
-	display: flex;
-	align-items: center;
-	gap: 0.3rem;
-	padding: 0.25rem 0.3rem 0.25rem 0.8rem;
-	border: 1px solid var(--line);
-	border-radius: 12px;
-	background: var(--tint);
-}
-.thread form .box:focus-within {
-	border-color: var(--mute);
-}
-.thread form input {
-	flex: 1;
-	border: 0;
-	background: none;
-	padding: 0.4rem 0;
-	outline: none;
-	font-size: 15px;
-}
-.thread form button.icon {
-	border: 0;
-	background: none;
-	color: var(--mute);
-	padding: 0.2rem 0.45rem;
-	font-size: 16px;
-	line-height: 1;
-	display: inline-flex;
-}
-.thread form button.icon:disabled {
-	cursor: default;
-	opacity: 0.7;
-}
-/* The bar is there in every thread, so the composer moving in doesn't change a thread's height. */
-.thread form .bar {
-	display: flex;
-	align-items: center;
-	gap: 0.1rem;
-	padding: 0.3rem 0.1rem 0;
-	min-height: 2.2rem;
-}
-#to {
+
+.recipients {
 	flex: 1;
 	border: 0;
 	background: none;
@@ -766,179 +913,209 @@ agent-memory h3 {
 	padding: 0.2rem 0.3rem;
 	text-align: right;
 	text-overflow: ellipsis;
+
+	&:focus {
+		color: var(--pick);
+		outline: none;
+	}
 }
-#to:focus {
-	color: var(--pick);
-	outline: none;
+
+.thread-link {
+	color: var(--mute);
+	text-decoration: none;
 }
 
 .models {
 	list-style: none;
 	margin: 0.5rem 0 0;
 	padding: 0;
+
+	> li {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0.15rem 0.4rem;
+		border-radius: 4px;
+		overflow-wrap: anywhere;
+
+		&:first-child {
+			background: Canvas;
+			border: 1px solid var(--line);
+		}
+
+		&:not(:first-child) {
+			color: var(--mute);
+			font-size: 13px;
+		}
+	}
 }
-.models li {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 0.4rem;
-	padding: 0.15rem 0.4rem;
-	border-radius: 4px;
-	overflow-wrap: anywhere;
-}
-.models li:first-child {
-	background: Canvas;
-	border: 1px solid var(--line);
-}
-.models li:not(:first-child) {
-	color: var(--mute);
-	font-size: 13px;
-}
+
 /* The whole card is the switch: lit blue when your next message goes there. */
 .card {
 	cursor: pointer;
 	user-select: none;
+
+	&.routed {
+		border-color: var(--pick);
+		box-shadow: 0 0 0 1px var(--pick);
+		background: color-mix(in srgb, var(--pick) 7%, Canvas);
+
+		.models > li:first-child {
+			border-color: var(--pick);
+		}
+	}
 }
-.card.routed {
-	border-color: var(--pick);
-	box-shadow: 0 0 0 1px var(--pick);
-	background: color-mix(in srgb, var(--pick) 7%, Canvas);
-}
-.card.routed .models li:first-child {
-	border-color: var(--pick);
-}
-.models li > span.name {
+
+.models > li > span.name {
 	flex: 1;
 	min-width: 0;
 }
-.thread ul:focus {
+
+.thread > ul:focus {
 	outline: none;
 }
-/* A select's open list takes its colours from the select, so it gets the page's, not none. */
-select,
-option {
-	background-color: Canvas;
-	color: CanvasText;
+
+.models {
+	select.swap {
+		border: 0;
+		padding: 0;
+		background-color: transparent;
+		min-width: 0;
+		flex: 1;
+		font: inherit;
+		cursor: pointer;
+	}
+
+	> li {
+		input[type='range'] {
+			width: 4rem;
+			padding: 0;
+			accent-color: var(--pick);
+		}
+
+		.hands {
+			flex-basis: 100%;
+			font:
+				12px ui-monospace,
+				monospace;
+			color: var(--ok);
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+	}
 }
-.models select.swap {
-	border: 0;
-	padding: 0;
-	background-color: transparent;
-	min-width: 0;
-	flex: 1;
-	font: inherit;
-	cursor: pointer;
-}
-.models li input[type='range'] {
-	width: 4rem;
-	padding: 0;
-	accent-color: var(--pick);
-}
-.models li .hands {
-	flex-basis: 100%;
-	font:
-		12px ui-monospace,
-		monospace;
-	color: var(--ok);
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
+
 /* Just the chat: the story goes, the stage takes the page, and the diagram flattens to a chat app. */
-#mode {
+.mode-toggle {
 	display: block;
 	margin: 0 0 0.5rem auto;
 	font-size: 12px;
 	padding: 0.15rem 0.5rem;
 }
-body.chat .page {
-	display: block;
-	padding: 0;
+
+body.chat {
+	.page {
+		display: block;
+		padding: 0;
+
+		> section {
+			display: none;
+		}
+	}
+
+	.stage {
+		position: relative;
+		height: 100vh;
+		height: 100dvh;
+		padding: 0;
+		overflow: hidden;
+	}
+
+	/* Centred in the thread's header, as far in from the right as the title is from the left. */
+	.mode-toggle {
+		position: absolute;
+		top: 0.35rem;
+		right: 0.9rem;
+		z-index: 2;
+		margin: 0;
+	}
+
+	.system {
+		display: flex;
+		flex-direction: column;
+		align-items: stretch;
+		height: 100%;
+		gap: 0;
+	}
+
+	.client,
+	.wires,
+	.server > b,
+	.server > small {
+		display: none;
+	}
+
+	.server {
+		flex: 1;
+		min-height: 0;
+		border: 0;
+		border-radius: 0;
+		padding: 0;
+		background: Canvas;
+
+		> .body {
+			height: 100%;
+			margin: 0;
+			gap: 0;
+			grid-template-columns: 15rem minmax(0, 1fr);
+			grid-template-rows: minmax(0, 1fr);
+		}
+	}
+
+	.thread-list {
+		min-height: 0;
+		align-self: stretch;
+		display: flex;
+		flex-direction: column;
+		padding: 0.6rem 0.6rem 0;
+		border-right: 1px solid var(--line);
+		overflow-y: auto;
+
+		> ul {
+			max-height: none;
+		}
+	}
+
+	.threads {
+		height: 100%;
+		flex-wrap: nowrap;
+		overflow-x: auto;
+		gap: 0;
+	}
+
+	.thread {
+		display: flex;
+		flex-direction: column;
+		height: 100%;
+		border: 0;
+		border-right: 1px solid var(--line);
+		border-radius: 0;
+		flex: 1 0 min(100%, 26rem);
+	}
 }
-body.chat .page > section {
-	display: none;
-}
-body.chat #stage {
-	position: relative;
-	height: 100vh;
-	height: 100dvh;
-	padding: 0;
-	overflow: hidden;
-}
-/* Centred in the thread's header, as far in from the right as the title is from the left. */
-body.chat #mode {
-	position: absolute;
-	top: 0.35rem;
-	right: 0.9rem;
-	z-index: 2;
-	margin: 0;
-}
-body.chat #canvas {
-	display: flex;
-	flex-direction: column;
-	align-items: stretch;
-	height: 100%;
-	gap: 0;
-}
-body.chat #client,
-body.chat .wires,
-body.chat #server > b,
-body.chat #server > small {
-	display: none;
-}
-body.chat #server {
-	flex: 1;
-	min-height: 0;
-	border: 0;
-	border-radius: 0;
-	padding: 0;
-	background: Canvas;
-}
-body.chat #server > .body {
-	height: 100%;
-	margin: 0;
-	gap: 0;
-	grid-template-columns: 15rem minmax(0, 1fr);
-	grid-template-rows: minmax(0, 1fr);
-}
-body.chat #list {
-	min-height: 0;
-	align-self: stretch;
-}
-body.chat #list {
-	display: flex;
-	flex-direction: column;
-	padding: 0.6rem 0.6rem 0;
-	border-right: 1px solid var(--line);
-	overflow-y: auto;
-}
-body.chat #list ul {
-	max-height: none;
-}
-body.chat #list li,
-#family li {
+
+body.chat .thread-list > ul > li,
+ul.thread-family > li {
 	padding: 0.4rem 0.6rem;
 	padding-left: calc(0.6rem + var(--depth, 0) * 1rem);
 	font-size: 14px;
 	border-radius: 8px;
 }
-body.chat #threads {
-	height: 100%;
-	flex-wrap: nowrap;
-	overflow-x: auto;
-	gap: 0;
-}
-body.chat .thread {
-	display: flex;
-	flex-direction: column;
-	height: 100%;
-	border: 0;
-	border-right: 1px solid var(--line);
-	border-radius: 0;
-	flex: 1 0 min(100%, 26rem);
-}
+
 /* The thread's name is a pill at the top, sized like the new-thread button, its light first: in each thread's head on a big screen, in the bar on a phone. */
-#pill,
+.thread-pill,
 body.chat .thread > header {
 	display: flex;
 	align-items: center;
@@ -956,353 +1133,348 @@ body.chat .thread > header {
 	font-size: 13px;
 	font-weight: 400;
 }
-#pill span:last-child,
+
+.thread-pill span:last-child,
 body.chat .thread > header span:first-child {
 	flex: 0 1 auto;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
+
 body.chat .thread > header {
 	flex: none;
 	width: fit-content;
 	margin: 0.5rem auto;
+
+	.dot {
+		order: -1;
+	}
 }
-body.chat .thread > header .dot {
-	order: -1;
-}
+
 /* Hands off, its agents touch nothing: the pill goes dashed, as the thread's box does on the page. */
 body.chat .thread.hands-off > header,
-#pill.hands-off {
+.thread-pill.hands-off {
 	border-style: dashed;
 }
-body.chat .thread ul {
-	flex: 1;
-	max-height: none;
+
+body.chat {
+	.thread {
+		> ul {
+			flex: 1;
+			max-height: none;
+		}
+
+		form {
+			width: calc(100% - 1.2rem);
+			max-width: 42rem;
+			margin-inline: auto;
+
+			/* The composer sits at the bottom, even in a new thread with no messages above it. */
+			&.compose {
+				margin-top: auto;
+				flex: none;
+			}
+		}
+	}
+
+	/* This thread's sheet, from the right at every size: its family, and whether its hands are off. */
+	.scrim {
+		display: block;
+		position: fixed;
+		inset: 0;
+		z-index: 9;
+		background: rgb(0 0 0 / 0.4);
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 0.25s;
+	}
+
+	&.list .scrim,
+	&.side .scrim {
+		opacity: 1;
+		pointer-events: auto;
+	}
+
+	.thread-details {
+		display: block;
+		position: fixed;
+		top: 0;
+		bottom: 0;
+		right: 0;
+		z-index: 10;
+		width: min(85vw, 22rem);
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		background: Canvas;
+		padding: calc(0.6rem + env(safe-area-inset-top)) 0.6rem calc(1rem + env(safe-area-inset-bottom));
+		visibility: hidden;
+		border-left: 1px solid var(--line);
+		transform: translateX(100%);
+	}
+
+	&.side .thread-details {
+		transform: none;
+		visibility: visible;
+	}
 }
-body.chat .thread form {
-	width: calc(100% - 1.2rem);
-	max-width: 42rem;
-	margin-inline: auto;
+
+.thread-details {
+	h3 {
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--mute);
+		margin: 1rem 0.6rem 0.4rem;
+
+		&:first-child {
+			margin-top: 0.4rem;
+		}
+	}
+
+	.hands {
+		padding: 0 0.6rem;
+
+		&:has([aria-pressed='false']) input:not(:focus) {
+			opacity: 0.5;
+		}
+	}
 }
-/* The composer sits at the bottom, even in a new thread with no messages above it. */
-body.chat .thread form.compose {
-	margin-top: auto;
-	flex: none;
-}
-body.chat #runners {
-	flex-wrap: nowrap;
-	overflow-x: auto;
-	gap: 0.5rem;
-	padding: 0.5rem 0.6rem;
-	border-top: 1px solid var(--line);
-}
-body.chat #runners .node {
-	flex: none;
-	width: 15rem;
-}
-/* This thread's sheet, from the right at every size: its family, and whether its hands are off. */
-body.chat #scrim {
-	display: block;
-	position: fixed;
-	inset: 0;
-	z-index: 9;
-	background: rgb(0 0 0 / 0.4);
-	opacity: 0;
-	pointer-events: none;
-	transition: opacity 0.25s;
-}
-body.chat.list #scrim,
-body.chat.side #scrim {
-	opacity: 1;
-	pointer-events: auto;
-}
-body.chat #side {
-	display: block;
-	position: fixed;
-	top: 0;
-	bottom: 0;
-	right: 0;
-	z-index: 10;
-	width: min(85vw, 22rem);
-	overflow-y: auto;
-	overscroll-behavior: contain;
-	background: Canvas;
-	padding: calc(0.6rem + env(safe-area-inset-top)) 0.6rem calc(1rem + env(safe-area-inset-bottom));
-	visibility: hidden;
-	border-left: 1px solid var(--line);
-	transform: translateX(100%);
-}
-body.chat.side #side {
-	transform: none;
-	visibility: visible;
-}
-#side h3 {
-	font-size: 12px;
-	font-weight: 500;
-	color: var(--mute);
-	margin: 1rem 0.6rem 0.4rem;
-}
-#side h3:first-child {
-	margin-top: 0.4rem;
-}
-#side .hands {
-	display: flex;
-	gap: 0.4rem;
-	align-items: center;
-	padding: 0 0.6rem;
-	font-size: 12px;
-}
-#side .hands button {
-	padding: 0 0.4rem;
-	font-size: 12px;
-}
-#side .hands input {
-	flex: 1;
-	min-width: 0;
-	border: 0;
-	padding: 0;
-	font:
-		12px ui-monospace,
-		monospace;
-	color: var(--mute);
-	background: none;
-}
-#side .hands input.bad {
-	color: var(--wait);
-}
-#side .hands:has([aria-pressed='false']) input:not(:focus) {
-	opacity: 0.5;
-}
+
 body.chat .thread .hands {
 	display: none;
 }
+
 @media (prefers-reduced-motion: no-preference) {
-	body.chat #side {
+	body.chat .thread-details {
 		transition:
 			transform 0.32s cubic-bezier(0.23, 1, 0.32, 1),
 			visibility 0.32s;
 	}
 }
+
 /* Pressed things answer when the finger or the click lands. */
 body.chat button:active:not(:disabled),
-#family li:active,
-body.chat #list li:active {
+.thread-family > li:active,
+body.chat .thread-list > ul > li:active {
 	transform: scale(0.97);
 }
+
 @media (prefers-reduced-motion: no-preference) {
 	body.chat button,
-	#family li,
-	body.chat #list li {
+	.thread-family > li,
+	body.chat .thread-list > ul > li {
 		transition: transform 0.14s cubic-bezier(0.23, 1, 0.32, 1);
 	}
 }
+
 /* Hover is for a mouse; on touch it sticks after a tap. */
 @media (hover: hover) and (pointer: fine) {
 	button:hover {
 		border-color: var(--edge);
 	}
+
 	.memory li:hover {
 		border-left-color: var(--pick);
 		background: var(--tint);
 	}
-	#list li:hover:not(.current),
-	#family li:hover:not(.current) {
+
+	.thread-list > ul > li:hover:not(.current),
+	.thread-family > li:hover:not(.current) {
 		background: var(--step);
 	}
-	#list li:hover button,
-	#family li:hover button {
+
+	.thread-list > ul > li:hover button,
+	.thread-family > li:hover button {
 		visibility: visible;
 	}
-	.thread li:hover .fork {
+
+	.thread > ul > li:hover .fork {
 		opacity: 1;
 	}
+
 	.thread-link:hover {
 		color: var(--ink);
 		text-decoration: underline;
 	}
+
 	.thread form button.icon:hover:not(:disabled) {
 		color: var(--ink);
 	}
+
 	.card:hover {
 		border-color: var(--mute);
 	}
+
 	.thread form .pick:hover,
-	#picker .model:hover,
-	#picker .steps button:hover {
+	.model-picker .model:hover,
+	.model-picker .steps button:hover {
 		background: color-mix(in srgb, CanvasText 8%, transparent);
 		color: var(--ink);
 	}
 }
+
 /* A phone: one thread, an app bar on top, all threads in a drawer on the left, the thread's family and runners on the right. */
-#bar,
-#scrim,
-#side {
+.app-bar,
+.scrim,
+.thread-details {
 	display: none;
 }
+
 @media (max-width: 700px) {
 	body.chat {
 		overscroll-behavior: none;
-	}
-	body.chat #mode {
-		display: block;
-		position: fixed;
-		left: 0;
-		bottom: 0;
-		top: auto;
-		right: 0;
-		z-index: 4;
-		width: auto;
-		margin: 0;
-		border: 0;
-		border-top: 1px solid var(--line);
-		border-radius: 0;
-		background: Canvas;
-		color: var(--mute);
-		padding: 0.7rem 0.8rem calc(0.7rem + env(safe-area-inset-bottom));
-		text-align: left;
-		font-size: 13px;
-	}
-	body.chat #bar {
-		display: grid;
-		grid-template-columns: 1fr auto 1fr;
-		align-items: center;
-		gap: 0.5rem;
-		position: absolute;
-		inset: 0 0 auto;
-		z-index: 6;
-		padding: calc(0.5rem + env(safe-area-inset-top)) 0.7rem 0.5rem;
-		background: linear-gradient(Canvas 55%, transparent);
-	}
-	#bar button {
-		border: 1px solid var(--line);
-		background: color-mix(in srgb, Canvas 75%, transparent);
-		-webkit-backdrop-filter: blur(16px);
-		backdrop-filter: blur(16px);
-		color: var(--ink);
-	}
-	#bar #pill {
-		max-width: calc(100vw - 8rem);
-	}
-	#bar .round {
-		width: 2.125rem;
-		height: 2.125rem;
-		border-radius: 6px;
-		padding: 0;
-		display: grid;
-		place-items: center;
-		flex: none;
-	}
-	body.chat #server > .body {
-		display: block;
-	}
-	body.chat #list {
-		display: none;
-	}
-	body.chat #threads {
-		display: block;
-	}
-	body.chat .thread:not(.current) {
-		display: none;
-	}
-	body.chat #server {
-		z-index: auto;
-	}
-	body.chat .thread {
-		border: 0;
-		display: flex;
-		flex-direction: column;
-		height: 100%;
-	}
-	body.chat .thread > header {
-		display: none;
-	}
-	body.chat .thread ul {
-		padding-top: calc(3.4rem + env(safe-area-inset-top));
-		overscroll-behavior: contain;
-	}
-	body.chat #runners {
-		display: none;
+
+		.mode-toggle {
+			display: block;
+			position: fixed;
+			left: 0;
+			bottom: 0;
+			top: auto;
+			right: 0;
+			z-index: 4;
+			width: auto;
+			margin: 0;
+			border: 0;
+			border-top: 1px solid var(--line);
+			border-radius: 0;
+			background: Canvas;
+			color: var(--mute);
+			padding: 0.7rem 0.8rem calc(0.7rem + env(safe-area-inset-bottom));
+			text-align: left;
+			font-size: 13px;
+		}
+
+		.app-bar {
+			display: grid;
+			grid-template-columns: 1fr auto 1fr;
+			align-items: center;
+			gap: 0.5rem;
+			position: absolute;
+			inset: 0 0 auto;
+			z-index: 6;
+			padding: calc(0.5rem + env(safe-area-inset-top)) 0.7rem 0.5rem;
+			background: linear-gradient(Canvas 55%, transparent);
+		}
 	}
 
-	/* The same composer as on a big screen, edge to edge and clear of the home bar. */
-	body.chat .thread form.compose {
-		width: auto;
-		max-width: none;
-		margin: auto 0.6rem calc(0.3rem + env(safe-area-inset-bottom));
+	.app-bar {
+		button {
+			border: 1px solid var(--line);
+			background: color-mix(in srgb, Canvas 75%, transparent);
+			-webkit-backdrop-filter: blur(16px);
+			backdrop-filter: blur(16px);
+			color: var(--ink);
+		}
+
+		.thread-pill {
+			max-width: calc(100vw - 8rem);
+		}
+
+		.round {
+			width: 2.125rem;
+			height: 2.125rem;
+			border-radius: 6px;
+			padding: 0;
+			display: grid;
+			place-items: center;
+			flex: none;
+		}
 	}
 
-	/* All threads are a screen of their own, under the thread: back slides the thread off to the right and the list in after it, like a mail inbox. */
-	body.chat #list {
-		display: flex;
-		position: fixed;
-		inset: 0;
-		z-index: 3;
-		width: auto;
-		overflow-y: auto;
-		overscroll-behavior: contain;
-		border: 0;
-		background: Canvas;
-		padding: calc(0.6rem + env(safe-area-inset-top)) 0.6rem
-			calc(2.75rem + env(safe-area-inset-bottom));
+	body.chat {
+		.server > .body {
+			display: block;
+		}
+
+		.threads {
+			display: block;
+		}
+
+		.thread:not(.current) {
+			display: none;
+		}
+
+		.server {
+			z-index: auto;
+		}
+
+		.thread {
+			border: 0;
+			display: flex;
+			flex-direction: column;
+			height: 100%;
+
+			> header {
+				display: none;
+			}
+
+			> ul {
+				padding-top: calc(3.4rem + env(safe-area-inset-top));
+				overscroll-behavior: contain;
+			}
+
+			/* The same composer as on a big screen, edge to edge and clear of the home bar. */
+			form.compose {
+				width: auto;
+				max-width: none;
+				margin: auto 0.6rem calc(0.3rem + env(safe-area-inset-bottom));
+			}
+		}
+
+		/* All threads are a screen of their own, under the thread: back slides the thread off to the right and the list in after it, like a mail inbox. */
+		.thread-list {
+			display: flex;
+			position: fixed;
+			inset: 0;
+			z-index: 3;
+			width: auto;
+			overflow-y: auto;
+			overscroll-behavior: contain;
+			border: 0;
+			background: Canvas;
+			padding: calc(0.6rem + env(safe-area-inset-top)) 0.6rem
+				calc(2.75rem + env(safe-area-inset-bottom));
+		}
+
+		.threads {
+			position: relative;
+			z-index: 5;
+			height: 100%;
+			background: Canvas;
+		}
+
+		&.list .threads,
+		&.list .app-bar {
+			transform: translateX(100%);
+		}
+
+		&:not(.list) .thread-list,
+		&:not(.list) .mode-toggle {
+			transform: translateX(-30%);
+			visibility: hidden;
+		}
+
+		&.list .scrim {
+			opacity: 0;
+			pointer-events: none;
+		}
 	}
-	body.chat #threads {
-		position: relative;
-		z-index: 5;
-		height: 100%;
-		background: Canvas;
-	}
-	body.chat.list #threads,
-	body.chat.list #bar {
-		transform: translateX(100%);
-	}
-	body.chat:not(.list) #list,
-	body.chat:not(.list) #mode {
-		transform: translateX(-30%);
-		visibility: hidden;
-	}
-	body.chat.list #scrim {
-		opacity: 0;
-		pointer-events: none;
-	}
+
 	@media (prefers-reduced-motion: no-preference) {
-		body.chat #threads,
-		body.chat #bar,
-		body.chat #list,
-		body.chat #mode {
+		body.chat .threads,
+		body.chat .app-bar,
+		body.chat .thread-list,
+		body.chat .mode-toggle {
 			transition:
 				transform 0.35s cubic-bezier(0.32, 0.72, 0, 1),
 				visibility 0.35s;
 		}
 	}
 }
-/* The model picker and the runner list: two popovers, above what opened them; on a phone, sheets from the bottom. */
-/* The model picker and the runner list: two popovers, above what opened them; on a phone, sheets from the bottom. */
-.thread form .pick {
-	display: flex;
-	align-items: center;
-	gap: 0.4rem;
-	min-width: 0;
-	margin-left: auto;
-	border: 0;
-	border-radius: 8px;
-	background: none;
-	color: var(--mute);
-	font-size: 12px;
-	padding: 0.25rem 0.5rem;
-}
-.thread form .pick span:nth-child(2) {
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-.thread form .pick[aria-expanded='true'],
-.thread form .pick:focus-visible {
-	background: color-mix(in srgb, CanvasText 8%, transparent);
-	color: var(--ink);
-}
-#picker,
-#fleet {
+
+/* The model picker and runner list: popovers on desktop, bottom sheets on phones. */
+.model-picker,
+.runner-list {
 	position: fixed;
 	inset: auto;
 	margin: 0;
@@ -1318,184 +1490,220 @@ body.chat #list li:active {
 	font-size: 14px;
 	box-shadow: 0 12px 40px rgb(0 0 0 / 0.25);
 }
-#fleet {
+
+.runner-list {
 	padding: 0.7rem;
 }
-#picker ul,
-#fleet ul {
+
+.model-picker > ul,
+.runner-list > ul {
 	list-style: none;
 	margin: 0;
 	padding: 0;
 	display: grid;
 	gap: 0.25rem;
 }
+
 /* A runner, its models as rows with a check on the one asked, and how hard it thinks as a row of steps. */
-#picker li + li {
-	border-top: 1px solid var(--line);
-	padding-top: 0.4rem;
+.model-picker {
+	> ul > li + li {
+		border-top: 1px solid var(--line);
+		padding-top: 0.4rem;
+	}
+
+	.who {
+		display: flex;
+		align-items: center;
+		gap: 0.45rem;
+		padding: 0.35rem 0.5rem 0.25rem;
+		font-size: 13px;
+
+		small {
+			flex: 1;
+			min-width: 0;
+			color: var(--mute);
+			font-size: 12px;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+	}
+
+	.also {
+		flex: none;
+		font-size: 12px;
+		padding: 0.1rem 0.5rem;
+		border-radius: 99px;
+		color: var(--mute);
+
+		&[aria-pressed='true'] {
+			color: var(--ink);
+		}
+	}
+
+	.models {
+		display: grid;
+	}
+
+	.model {
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
+		width: 100%;
+		border: 0;
+		border-radius: 8px;
+		background: none;
+		padding: 0.35rem 0.5rem;
+		text-align: left;
+
+		small {
+			color: var(--mute);
+			font-size: 12px;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+
+		&.on {
+			background: color-mix(in srgb, CanvasText 8%, transparent);
+
+			&::after {
+				content: '✓';
+				margin-left: auto;
+				color: var(--pick);
+			}
+		}
+	}
+
+	h4 {
+		margin: 0.5rem 0.5rem 0.2rem;
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--mute);
+	}
+
+	.steps {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.15rem;
+		padding: 0 0.3rem 0.3rem;
+
+		button {
+			border: 0;
+			border-radius: 8px;
+			background: none;
+			padding: 0.3rem 0.5rem;
+			font-size: 13px;
+			color: var(--mute);
+
+			&[aria-pressed='true'] {
+				background: color-mix(in srgb, CanvasText 10%, transparent);
+				color: var(--ink);
+			}
+		}
+	}
+
+	/* The same choice as one line you can write, for several at once or a model the list doesn't offer. */
+	.recipients {
+		display: block;
+		width: 100%;
+		margin: 0.2rem 0 0;
+		text-align: left;
+		border: 0;
+		border-top: 1px solid var(--line);
+		border-radius: 0;
+		background: none;
+		padding: 0.55rem 0.5rem 0.35rem;
+		font:
+			12px ui-monospace,
+			monospace;
+		color: var(--mute);
+
+		&:focus {
+			color: var(--ink);
+		}
+	}
 }
-#picker .who {
-	display: flex;
-	align-items: center;
-	gap: 0.45rem;
-	padding: 0.35rem 0.5rem 0.25rem;
-	font-size: 13px;
+
+.runner-list {
+	> ul > li {
+		display: flex;
+		align-items: start;
+		gap: 0.6rem;
+		padding: 0.45rem 0.4rem;
+
+		.dot {
+			margin-top: 0.45rem;
+		}
+
+		small {
+			display: block;
+			color: var(--mute);
+			font-size: 12px;
+			overflow-wrap: anywhere;
+
+			&.doing {
+				color: var(--ok);
+				font-family: ui-monospace, monospace;
+			}
+		}
+	}
+
+	p {
+		margin: 0.8rem 0.4rem 0.4rem;
+		padding-top: 0.8rem;
+		border-top: 1px solid var(--line);
+		font-size: 13px;
+		color: var(--mute);
+	}
+
+	pre {
+		margin: 0 0.2rem;
+		font-size: 12px;
+	}
 }
-#picker .who small {
-	flex: 1;
-	min-width: 0;
-	color: var(--mute);
-	font-size: 12px;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-#picker .also {
-	flex: none;
-	font-size: 12px;
-	padding: 0.1rem 0.5rem;
-	border-radius: 99px;
-	color: var(--mute);
-}
-#picker .also[aria-pressed='true'] {
-	color: var(--ink);
-}
-#picker .models {
-	display: grid;
-}
-#picker .model {
-	display: flex;
-	align-items: baseline;
-	gap: 0.5rem;
-	width: 100%;
-	border: 0;
-	border-radius: 8px;
-	background: none;
-	padding: 0.35rem 0.5rem;
-	text-align: left;
-}
-#picker .model small {
-	color: var(--mute);
-	font-size: 12px;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-#picker .model.on {
-	background: color-mix(in srgb, CanvasText 8%, transparent);
-}
-#picker .model.on::after {
-	content: '✓';
-	margin-left: auto;
-	color: var(--pick);
-}
-#picker h4 {
-	margin: 0.5rem 0.5rem 0.2rem;
-	font-size: 12px;
-	font-weight: 500;
-	color: var(--mute);
-}
-#picker .steps {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 0.15rem;
-	padding: 0 0.3rem 0.3rem;
-}
-#picker .steps button {
-	border: 0;
-	border-radius: 8px;
-	background: none;
-	padding: 0.3rem 0.5rem;
-	font-size: 13px;
-	color: var(--mute);
-}
-#picker .steps button[aria-pressed='true'] {
-	background: color-mix(in srgb, CanvasText 10%, transparent);
-	color: var(--ink);
-}
-/* The same choice as one line you can write, for several at once or a model the list doesn't offer. */
-#picker #to {
-	display: block;
-	width: 100%;
-	margin: 0.2rem 0 0;
-	text-align: left;
-	border: 0;
-	border-top: 1px solid var(--line);
-	border-radius: 0;
-	background: none;
-	padding: 0.55rem 0.5rem 0.35rem;
-	font:
-		12px ui-monospace,
-		monospace;
-	color: var(--mute);
-}
-#picker #to:focus {
-	color: var(--ink);
-}
-#fleet li {
-	display: flex;
-	align-items: start;
-	gap: 0.6rem;
-	padding: 0.45rem 0.4rem;
-}
-#fleet li .dot {
-	margin-top: 0.45rem;
-}
-#fleet li small {
-	display: block;
-	color: var(--mute);
-	font-size: 12px;
-	overflow-wrap: anywhere;
-}
-#fleet li small.doing {
-	color: var(--ok);
-	font-family: ui-monospace, monospace;
-}
-#fleet p {
-	margin: 0.8rem 0.4rem 0.4rem;
-	padding-top: 0.8rem;
-	border-top: 1px solid var(--line);
-	font-size: 13px;
-	color: var(--mute);
-}
-#fleet pre {
-	margin: 0 0.2rem;
-	font-size: 12px;
-}
-#fleet-open {
+
+.runner-toggle {
 	display: none;
 }
-body.chat #fleet-open {
-	position: sticky;
-	bottom: 0;
-	margin-top: auto;
-	flex: none;
-	display: flex;
-	align-items: center;
-	gap: 0.3rem;
-	width: 100%;
-	border: 0;
-	border-top: 1px solid var(--line);
-	border-radius: 0;
-	background: Canvas;
-	color: var(--mute);
-	font-size: 13px;
-	padding: 0.7rem 0.8rem;
-	text-align: left;
+
+body.chat {
+	.runner-toggle {
+		position: sticky;
+		bottom: 0;
+		margin-top: auto;
+		flex: none;
+		display: flex;
+		align-items: center;
+		gap: 0.3rem;
+		width: 100%;
+		border: 0;
+		border-top: 1px solid var(--line);
+		border-radius: 0;
+		background: Canvas;
+		color: var(--mute);
+		font-size: 13px;
+		padding: 0.7rem 0.8rem;
+		text-align: left;
+
+		span:last-child {
+			margin-left: 0.3rem;
+		}
+	}
+
+	.runners,
+	.recipients {
+		display: none;
+	}
+
+	.model-picker .recipients {
+		display: block;
+	}
 }
-body.chat #fleet-open span:last-child {
-	margin-left: 0.3rem;
-}
-body.chat #runners,
-body.chat #to {
-	display: none;
-}
-body.chat #picker #to {
-	display: block;
-}
+
 @media (max-width: 700px) {
-	#picker,
-	#fleet {
+	.model-picker,
+	.runner-list {
 		inset: auto 0 0 0;
 		width: 100%;
 		max-height: 75dvh;
@@ -1503,28 +1711,32 @@ body.chat #picker #to {
 		border-bottom: 0;
 		padding-bottom: calc(0.7rem + env(safe-area-inset-bottom));
 	}
-	body.chat #fleet-open {
+
+	body.chat .runner-toggle {
 		margin: auto -0.6rem 0;
 		width: calc(100% + 1.2rem);
 	}
 }
+
 @media (prefers-reduced-motion: no-preference) {
-	#picker,
-	#fleet {
+	.model-picker,
+	.runner-list {
 		transition:
 			opacity 0.18s,
 			translate 0.25s cubic-bezier(0.23, 1, 0.32, 1),
 			display 0.25s allow-discrete,
 			overlay 0.25s allow-discrete;
 	}
-	#picker:not(:popover-open),
-	#fleet:not(:popover-open) {
+
+	.model-picker:not(:popover-open),
+	.runner-list:not(:popover-open) {
 		opacity: 0;
 		translate: 0 8px;
 	}
+
 	@starting-style {
-		#picker:popover-open,
-		#fleet:popover-open {
+		.model-picker:popover-open,
+		.runner-list:popover-open {
 			opacity: 0;
 			translate: 0 8px;
 		}

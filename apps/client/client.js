@@ -604,7 +604,7 @@ function threadBox(id) {
 			$picker.showPopover()
 		}
 		box = el(
-			'div',
+			'article',
 			{ className: 'thread' },
 			el('header', { onclick: header(id) }, el('span'), el('span', { className: 'dot' })),
 			handsControl(t?.tools, (tools) => api(`/api/threads/${id}/tools`, { tools }).then(refresh)),
@@ -775,7 +775,7 @@ function render() {
 	const shown = family()
 	const shownThreads = shown.map((id) => threads.find((t) => t.id === id)).filter(Boolean)
 	blankBox ??= el(
-		'div',
+		'article',
 		{ className: 'thread current' },
 		el('header', { onclick: header(null) }, el('span', { textContent: 'a new thread' })),
 		handsControl(null, async (tools) => {
