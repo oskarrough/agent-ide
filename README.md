@@ -89,6 +89,7 @@ The code is the truth. [examples/](examples) shows each idea working.
 ```sh
 bun server.js                          # http://127.0.0.1:3000, stored in agent-ide-3000.sqlite
 HOST=0.0.0.0 PORT=3001 bun server.js   # reachable from other machines
+RUNNER=~/code bun server.js            # lends this machine too: its own runner, which stops with the server
 DIRECTOR=1 bun server.js               # multiplayer
 TALK=0 STATUS=0 CONTEXT=0 bun server.js   # the core alone
 MEMORY=1 MEMORY_MODEL=haiku@laptop bun server.js   # threads that never end

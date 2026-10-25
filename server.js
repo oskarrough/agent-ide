@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -603,6 +604,14 @@ async function upgrade(req, raw, head) {
   console.log(`runner ${name} online: ${runner.dir}, default model ${runner.model || `none (${runner.modelError || 'not set'})`}${runner.owner ? `, work from ${[runner.owner, ...runner.allow].join(', ')}` : ''}`);
 }
 
+// RUNNER=~/code lends this machine too: its own runner.js, one more process, which stops with the server.
+let lent;
+function lend(url) {
+  if (!process.env.RUNNER || lent) return;
+  lent = spawn(process.execPath, [new URL('./runner.js', import.meta.url).pathname, '--server', url, '--dir', process.env.RUNNER], { stdio: 'inherit' });
+  for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => lent.kill(signal));
+}
+
 for (const host of process.env.HOST ? [process.env.HOST] : ['127.0.0.1', '::1']) {
   const server = http.createServer(handleRequest);
   server.on('upgrade', (req, socket, head) => upgrade(req, socket, head).catch((error) => { console.error(error); socket.destroy(); }));
@@ -614,5 +623,6 @@ for (const host of process.env.HOST ? [process.env.HOST] : ['127.0.0.1', '::1'])
   server.listen(port, host, () => {
     const addresses = host === '0.0.0.0' ? Object.values(os.networkInterfaces()).flat().filter((a) => a.family === 'IPv4').map((a) => a.address) : [host === '::1' ? '[::1]' : host];
     for (const address of addresses) console.log(`http://${address}:${server.address().port} on ${file}, modules: ${modules.map((m) => m.name).join(', ') || 'none'}`);
+    lend(`http://${host === '0.0.0.0' ? '127.0.0.1' : addresses[0]}:${server.address().port}`);
   });
 }
