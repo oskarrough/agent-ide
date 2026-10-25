@@ -5,14 +5,14 @@
 //           serve(threadId, query) → what GET /api/threads/:id/<module name> answers
 //   runner: told(message), disconnected(), ops: { [op]: (message, context) → what the runner answers the server's call }
 export async function load(end, defaults, core) {
-  const on = Object.keys(defaults).filter((name) => {
-    const value = process.env[name.toUpperCase()];
-    return value ? value !== '0' : defaults[name];
-  });
-  const modules = [];
-  for (const name of on) {
-    const make = (await import(`./${name}.js`))[end];
-    if (make) modules.push({ name, ...await make(core) });
-  }
-  return modules;
+	const on = Object.keys(defaults).filter((name) => {
+		const value = process.env[name.toUpperCase()]
+		return value ? value !== '0' : defaults[name]
+	})
+	const modules = []
+	for (const name of on) {
+		const make = (await import(`./${name}.js`))[end]
+		if (make) modules.push({ name, ...(await make(core)) })
+	}
+	return modules
 }

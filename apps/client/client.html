@@ -1,128 +1,239 @@
 <!doctype html>
 <html lang="en">
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
-<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
-<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#121212">
-<title>agent-ide</title>
-<link rel="stylesheet" href="./client.css">
+	<meta charset="utf-8" />
+	<meta
+		name="viewport"
+		content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
+	/>
+	<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+	<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#121212" />
+	<title>agent-ide</title>
+	<link rel="stylesheet" href="./client.css" />
 
-<div class="page">
-  <section data-focus="all">
-    <h1>agent-ide</h1>
-    <p>Every AI product decides where these four live.</p>
-    <div class="products" role="group" aria-label="Product">
-      <button data-product="chatgpt">The ChatGPT app</button>
-      <button data-product="claude-code">Claude Code</button>
-      <button data-product="agent-ide">agent-ide</button>
-    </div>
-    <div class="places">
-      <div class="place" data-place="lab"><small>OpenAI, Anthropic, …</small></div>
-      <div class="place" data-place="laptop"><small>your laptop</small></div>
-      <div class="place" data-place="server"><small>your server</small></div>
-      <div class="place" data-place="anywhere"><small>any computer you pick</small></div>
-    </div>
-    <p class="caption" id="caption"></p>
-  </section>
+	<div class="page">
+		<section data-focus="all">
+			<h1>agent-ide</h1>
+			<p>Every AI product decides where these four live.</p>
+			<div class="products" role="group" aria-label="Product">
+				<button data-product="chatgpt">The ChatGPT app</button>
+				<button data-product="claude-code">Claude Code</button>
+				<button data-product="agent-ide">agent-ide</button>
+			</div>
+			<div class="places">
+				<div class="place" data-place="lab"><small>OpenAI, Anthropic, …</small></div>
+				<div class="place" data-place="laptop"><small>your laptop</small></div>
+				<div class="place" data-place="server"><small>your server</small></div>
+				<div class="place" data-place="anywhere"><small>any computer you pick</small></div>
+			</div>
+			<p class="caption" id="caption"></p>
+		</section>
 
-  <section data-focus="server">
-    <h2>Hello, Agent IDE</h2>
-    <p>The loop and the memory need a home that stays on.</p>
-    <pre>npx github:oskarrough/agent-ide</pre>
-  </section>
+		<section data-focus="server">
+			<h2>Hello, Agent IDE</h2>
+			<p>The loop and the memory need a home that stays on.</p>
+			<pre>npx github:oskarrough/agent-ide</pre>
+		</section>
 
-  <section data-focus="runners">
-    <h2>Lend it your laptop</h2>
-    <p>Now an agent can work on the server's own machine. To have it work on your laptop instead, run this there. Your laptop dials the server, so it has to reach it: the same network, or <a href="https://tailscale.com">Tailscale</a>.</p>
-    <pre id="lend"></pre>
-  </section>
+		<section data-focus="runners">
+			<h2>Lend it your laptop</h2>
+			<p>
+				Now an agent can work on the server's own machine. To have it work on your laptop instead,
+				run this there. Your laptop dials the server, so it has to reach it: the same network, or
+				<a href="https://tailscale.com">Tailscale</a>.
+			</p>
+			<pre id="lend"></pre>
+		</section>
 
-  <section data-focus="hands">
-    <h2>Where the work happens</h2>
-    <p>The thinking happens on the server, the work on the runner. Each tool the agent calls travels down its wire and runs in the runner's folder, with the runner's logins.</p>
-    <div class="try"><button data-try="hands">Ask which file here is biggest</button></div>
-  </section>
+		<section data-focus="hands">
+			<h2>Where the work happens</h2>
+			<p>
+				The thinking happens on the server, the work on the runner. Each tool the agent calls
+				travels down its wire and runs in the runner's folder, with the runner's logins.
+			</p>
+			<div class="try"><button data-try="hands">Ask which file here is biggest</button></div>
+		</section>
 
-  <section data-focus="thread">
-    <h2>Bring a friend</h2>
-    <p>A thread isn't yours alone. Send someone the link and they're in it, writing next to you and your agents.</p>
-    <div class="try"><button data-try="friend">Open this thread as Ana</button></div>
-    <p class="mute">There are no accounts: a name is whatever you say it is. Keep the server on a network you trust.</p>
-  </section>
+		<section data-focus="thread">
+			<h2>Bring a friend</h2>
+			<p>
+				A thread isn't yours alone. Send someone the link and they're in it, writing next to you and
+				your agents.
+			</p>
+			<div class="try"><button data-try="friend">Open this thread as Ana</button></div>
+			<p class="mute">
+				There are no accounts: a name is whatever you say it is. Keep the server on a network you
+				trust.
+			</p>
+		</section>
 
-  <section data-focus="runners">
-    <h2>Ask two at once</h2>
-    <p>Click a runner to ask it. Shift-click another to ask it too. One message, two agents, each answering from its own machine.</p>
-    <div class="try"><button data-try="two">Ask every runner what machine it's on</button></div>
-  </section>
+		<section data-focus="runners">
+			<h2>Ask two at once</h2>
+			<p>
+				Click a runner to ask it. Shift-click another to ask it too. One message, two agents, each
+				answering from its own machine.
+			</p>
+			<div class="try"><button data-try="two">Ask every runner what machine it's on</button></div>
+		</section>
 
-  <section data-focus="thread">
-    <h2>Agents talk to each other</h2>
-    <p>An agent asks another with its <code>post</code> tool. With no thread, it starts a child that holds just the question. Given a thread, it asks whoever is there, with everything they already know there.</p>
-    <p>The answer comes back once, as a card, and wakes whoever asked. Nothing else crosses: what's said in a child stays in the child. And an agent's words reach others marked as an agent's, so none can pass for yours.</p>
-    <div class="try"><button data-try="talk">Have one agent ask another</button></div>
-  </section>
+		<section data-focus="thread">
+			<h2>Agents talk to each other</h2>
+			<p>
+				An agent asks another with its <code>post</code> tool. With no thread, it starts a child
+				that holds just the question. Given a thread, it asks whoever is there, with everything they
+				already know there.
+			</p>
+			<p>
+				The answer comes back once, as a card, and wakes whoever asked. Nothing else crosses: what's
+				said in a child stays in the child. And an agent's words reach others marked as an agent's,
+				so none can pass for yours.
+			</p>
+			<div class="try"><button data-try="talk">Have one agent ask another</button></div>
+		</section>
 
-  <section data-focus="server">
-    <h2>Pull the plug</h2>
-    <p>Ask something slow. While its wire is green, stop the server where it runs, with <code>Ctrl-C</code>, and start it again. The server goes dashed, then green, and the answer lands, once. A command that was running when the plug came out is cut off, and the agent says so: it picks up where Pi left it, not where the shell was.</p>
-    <div class="try"><button data-try="slow">Ask something slow</button></div>
-    <p>This page keeps nothing itself. Close the tab, or the laptop, and nothing is lost either.</p>
-  </section>
+		<section data-focus="server">
+			<h2>Pull the plug</h2>
+			<p>
+				Ask something slow. While its wire is green, stop the server where it runs, with
+				<code>Ctrl-C</code>, and start it again. The server goes dashed, then green, and the answer
+				lands, once. A command that was running when the plug came out is cut off, and the agent
+				says so: it picks up where Pi left it, not where the shell was.
+			</p>
+			<div class="try"><button data-try="slow">Ask something slow</button></div>
+			<p>
+				This page keeps nothing itself. Close the tab, or the laptop, and nothing is lost either.
+			</p>
+		</section>
 
-  <section data-focus="thread">
-    <h2>Fork</h2>
-    <p>Wish you'd asked differently? Hover any message for its <b>fork</b>. A new thread starts from there, with the same agents, each remembering only what came before it. The two sit side by side, linked both ways.</p>
-    <div class="try"><button data-try="fork">Fork this thread at its first answer</button></div>
-  </section>
+		<section data-focus="thread">
+			<h2>Fork</h2>
+			<p>
+				Wish you'd asked differently? Hover any message for its <b>fork</b>. A new thread starts
+				from there, with the same agents, each remembering only what came before it. The two sit
+				side by side, linked both ways.
+			</p>
+			<div class="try"><button data-try="fork">Fork this thread at its first answer</button></div>
+		</section>
 
-  <section class="draft" data-focus="memory">
-    <h2>Memory</h2>
-    <p>A thread that never has to end. Each message gets one short line, pairs of lines merge into one going up, and an agent reads those lines instead of every word. When it needs the words, it zooms back down. Click a line to do the same.</p>
-    <p>Load a thread of three people building a shed: 32 messages, where the gate code and the colour change halfway. Watch the lines get written, from the messages up. Then ask an agent what's true now.</p>
-    <div class="try"><button data-try="shed">Load the example thread</button><button data-try="recall">Ask about the shed</button></div>
-    <agent-memory id="memory"></agent-memory>
-  </section>
+		<section class="draft" data-focus="memory">
+			<h2>Memory</h2>
+			<p>
+				A thread that never has to end. Each message gets one short line, pairs of lines merge into
+				one going up, and an agent reads those lines instead of every word. When it needs the words,
+				it zooms back down. Click a line to do the same.
+			</p>
+			<p>
+				Load a thread of three people building a shed: 32 messages, where the gate code and the
+				colour change halfway. Watch the lines get written, from the messages up. Then ask an agent
+				what's true now.
+			</p>
+			<div class="try">
+				<button data-try="shed">Load the example thread</button
+				><button data-try="recall">Ask about the shed</button>
+			</div>
+			<agent-memory id="memory"></agent-memory>
+		</section>
 
-  <section data-focus="all">
-    <h2>Under it all</h2>
-    <p>Six words and five promises: <a id="concepts" href="/concepts">what agent-ide is made of</a>. The code is small enough to read in an evening.</p>
-  </section>
+		<section data-focus="all">
+			<h2>Under it all</h2>
+			<p>
+				Six words and five promises:
+				<a id="concepts" href="/concepts">what agent-ide is made of</a>. The code is small enough to
+				read in an evening.
+			</p>
+		</section>
 
-  <aside id="stage">
-    <button id="mode" type="button" aria-pressed="false">Just the chat</button>
-    <!-- On a phone: back to every thread, and the thread's name, which opens its sheet. -->
-    <header id="bar">
-      <button id="back" class="round" type="button" aria-label="All threads"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
-      <button id="pill" type="button"><span class="dot"></span><span></span></button>
-    </header>
-    <div id="scrim"></div>
-    <div id="side"><h3>In this thread</h3><ul id="family"></ul></div>
-    <button id="fleet-open" type="button"></button>
-    <div id="picker" popover><ul></ul></div>
-    <div id="fleet" popover><ul></ul><p>To add a runner, run this on the computer you want to lend.</p><pre></pre></div>
-    <div id="canvas">
-      <div class="node" id="client"><b>Client</b></div>
-      <div class="node off" id="server">
-        <b><span class="dot"></span>Server</b><small><code></code></small>
-        <div class="body"><nav id="list"></nav><div id="threads"></div></div>
-      </div>
-      <div id="runners"></div>
-    </div>
-  </aside>
-</div>
+		<aside id="stage">
+			<button id="mode" type="button" aria-pressed="false">Just the chat</button>
+			<!-- On a phone: back to every thread, and the thread's name, which opens its sheet. -->
+			<header id="bar">
+				<button id="back" class="round" type="button" aria-label="All threads">
+					<svg
+						width="16"
+						height="16"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2.2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
+						<path d="M15 5l-7 7 7 7" />
+					</svg>
+				</button>
+				<button id="pill" type="button"><span class="dot"></span><span></span></button>
+			</header>
+			<div id="scrim"></div>
+			<div id="side">
+				<h3>In this thread</h3>
+				<ul id="family"></ul>
+			</div>
+			<button id="fleet-open" type="button"></button>
+			<div id="picker" popover><ul></ul></div>
+			<div id="fleet" popover>
+				<ul></ul>
+				<p>To add a runner, run this on the computer you want to lend.</p>
+				<pre></pre>
+			</div>
+			<div id="canvas">
+				<div class="node" id="client"><b>Client</b></div>
+				<div class="node off" id="server">
+					<b><span class="dot"></span>Server</b><small><code></code></small>
+					<div class="body">
+						<nav id="list"></nav>
+						<div id="threads"></div>
+					</div>
+				</div>
+				<div id="runners"></div>
+			</div>
+		</aside>
+	</div>
 
-<!-- The composer moves into whichever thread is current. -->
-<template id="composer">
-  <form class="compose">
-    <div class="box"><input autocomplete="off" required enterkeyhint="send" placeholder="What's in this folder?"><button class="icon send" title="Send" aria-label="Send">↵</button></div>
-    <div class="bar">
-      <button type="button" class="icon add" disabled title="Attach (not yet)" aria-label="Attach">+</button>
-      <button type="button" class="icon mic" disabled title="Voice (not yet)" aria-label="Voice"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
-      <button type="button" class="pick" aria-label="Model"><span class="dot"></span><span></span></button>
-      <input id="to" autocomplete="off" spellcheck="false" title="model:thinking@runner, comma between several">
-    </div>
-  </form>
-</template>
-<script type="module" src="./client.js"></script>
+	<!-- The composer moves into whichever thread is current. -->
+	<template id="composer">
+		<form class="compose">
+			<div class="box">
+				<input
+					autocomplete="off"
+					required
+					enterkeyhint="send"
+					placeholder="What's in this folder?"
+				/><button class="icon send" title="Send" aria-label="Send">↵</button>
+			</div>
+			<div class="bar">
+				<button
+					type="button"
+					class="icon add"
+					disabled
+					title="Attach (not yet)"
+					aria-label="Attach"
+				>
+					+
+				</button>
+				<button type="button" class="icon mic" disabled title="Voice (not yet)" aria-label="Voice">
+					<svg
+						width="15"
+						height="15"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+					>
+						<rect x="9" y="3" width="6" height="11" rx="3" />
+						<path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+					</svg>
+				</button>
+				<button type="button" class="pick" aria-label="Model">
+					<span class="dot"></span><span></span>
+				</button>
+				<input
+					id="to"
+					autocomplete="off"
+					spellcheck="false"
+					title="model:thinking@runner, comma between several"
+				/>
+			</div>
+		</form>
+	</template>
+	<script type="module" src="./client.js"></script>
 </html>

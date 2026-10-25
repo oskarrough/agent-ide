@@ -1,23 +1,23 @@
 {
-  "name": "agent-ide",
-  "private": true,
-  "type": "module",
-  "bin": {
-    "agent-ide": "server.js"
-  },
-  "scripts": {
-    "start": "node server.js",
-    "runner": "node runner.js",
-    "examples": "bun examples/all.js"
-  },
-  "engines": {
-    "node": ">=24"
-  },
-  "dependencies": {
-    "@earendil-works/chord": "^1.4.0",
-    "@earendil-works/pi-ai": "^1.4.0",
-    "@earendil-works/pi-coding-agent": "^1.4.0",
-    "@earendil-works/pi-durable": "^1.4.0",
-    "ws": "^8.22.0"
-  }
+	"name": "agent-ide",
+	"private": true,
+	"type": "module",
+	"bin": {
+		"agent-ide": "server.js"
+	},
+	"scripts": {
+		"start": "node server.js",
+		"runner": "node runner.js",
+		"examples": "bun examples/all.js"
+	},
+	"engines": {
+		"node": ">=24"
+	},
+	"dependencies": {
+		"@earendil-works/chord": "^1.4.0",
+		"@earendil-works/pi-ai": "^1.4.0",
+		"@earendil-works/pi-coding-agent": "^1.4.0",
+		"@earendil-works/pi-durable": "^1.4.0",
+		"ws": "^8.22.0"
+	}
 }
