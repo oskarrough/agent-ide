@@ -74,6 +74,17 @@ function family() {
   return out.filter((id) => byId.has(id));
 }
 // Pi records where a fork came from.
+// Just the chat, or the chat beside the story; the link remembers which.
+const setMode = (chat) => {
+  document.body.classList.toggle('chat', chat);
+  $('mode').textContent = chat ? 'With the story' : 'Just the chat';
+  const next = new URL(location.href);
+  if (chat) next.searchParams.set('chat', ''); else next.searchParams.delete('chat');
+  history.replaceState(null, '', next);
+  dispatchEvent(new Event('resize'));
+};
+$('mode').onclick = () => setMode(!document.body.classList.contains('chat'));
+setMode(params.has('chat'));
 const forkOf = (t) => t?.conversation?.parent?.conversationId;
 const go = (id) => {
   current = id;
@@ -114,6 +125,8 @@ $to.oninput = () => {
   for (const { runner, ...set } of picks) chosen[runner] = set;
   render();
 };
+// Enter in the name line keeps the name; it doesn't send.
+$to.onkeydown = (e) => { if (e.key === 'Enter') e.preventDefault(); };
 const choose = (next) => { picks = next; $to.value = picks.map(name).join(', '); render(); };
 
 // Fetches what changed; the server says when over /ws.
@@ -238,23 +251,24 @@ function threadBox(id) {
     const stuck = grew || list.scrollTop + list.clientHeight >= list.scrollHeight - 4;
     list.replaceChildren(
       // A message from another thread is a card: an answer to a post comes back as a reply, a post arrives as a question.
-      ...entries.map(({ id: at, data }) => el('li', { className: data.from && data.from !== id ? `elsewhere${data.re ? ' reply' : ''}` : '' },
+      ...entries.map(({ id: at, data }, i) => el('li', { className: data.from && data.from !== id ? `elsewhere${data.re ? ' reply' : ''}`
+        : data.author === me ? 'mine' : !entries[i - 1]?.data.from && entries[i - 1]?.data.author === data.author ? 'same' : '' },
         data.from && data.from !== id && el('div', { className: 'links' }, link(data.from, `${data.re ? '↩ answer from' : '→ asked from'} ${titleOf(data.from)}`)),
-        el('small', {}, data.author), data.body,
+        el('small', { title: data.author }, who(data.author)), data.body,
         ...(forksAt.get(at) ?? []).map((f) => el('div', { className: 'links' }, link(f.id, `forked → ${f.title}`))),
         el('button', { className: 'fork', textContent: 'fork', title: 'A new thread from this message', onclick: () => fork(id, at) }))),
-      ...writing.map(([who, s]) => el('li', { className: 'writing' }, el('small', { textContent: `${who} · writing` }), s)));
+      ...writing.map(([name, s]) => el('li', { className: `writing${!entries.at(-1)?.data.from && entries.at(-1)?.data.author === name ? ' same' : ''}` }, el('small', { textContent: `${who(name)} · writing` }), s)));
     if (stuck) list.scrollTop = list.scrollHeight;
   }
-  if (id === current && form.parentNode !== box) box.append(form, $to);
+  if (id === current && form.parentNode !== box) box.append(form);
   return box;
 }
+// An agent goes by its model's own name and where it runs; the full id is on hover.
+const who = (author) => author?.replace(/^(?:[^@]*\/)?([^/@:]+)(?::[^@]*)?@(.+)$/, '$1 · $2') ?? '';
 const titleOf = (id) => threads.find((t) => t.id === id)?.title || `thread ${id}`;
-// A link to another thread, with its light.
+// A link to another thread; its light lives in its own header and the list.
 function link(id, label) {
-  const t = threads.find((x) => x.id === id);
-  return el('a', { href: `?${new URLSearchParams({ ...Object.fromEntries(params), thread: id })}`, className: 'thread-link', onclick: (e) => { e.preventDefault(); go(id); } },
-    el('span', { className: `dot${t?.status === 'working' ? ' working' : t?.status === 'blocked' ? ' blocked' : ''}` }), label);
+  return el('a', { href: `?${new URLSearchParams({ ...Object.fromEntries(params), thread: id })}`, className: 'thread-link', onclick: (e) => { e.preventDefault(); go(id); } }, label);
 }
 async function fork(id, at) {
   go((await api(`/api/threads/${id}/fork`, { at })).id);
@@ -274,7 +288,7 @@ function render() {
   const shownThreads = shown.map((id) => threads.find((t) => t.id === id)).filter(Boolean);
   blankBox ??= el('div', { className: 'thread current' }, el('header', {}, el('span', { textContent: 'a new thread' })));
   const blank = !current && blankBox;
-  if (blank && form.parentNode !== blank) blank.append(form, $to);
+  if (blank && form.parentNode !== blank) blank.append(form);
   // Moved only when they change: taking a box out and back would lose the cursor in it.
   const next = [...shown.map(threadBox), ...(blank ? [blank] : [])];
   if (next.length !== $('threads').children.length || next.some((b, i) => $('threads').children[i] !== b)) $('threads').replaceChildren(...next);
@@ -379,6 +393,7 @@ function runnerCard(r, asked) {
 // The buttons in the text set the stage up and press go.
 const defaults = () => runners.filter((r) => r.online && setting(r).model).map((r) => ({ runner: r.name, ...setting(r) }));
 const fresh = () => { if (current) go(null); };
+const SHED = [["Oskar", "Shall we finally build the shed this spring? The old one is rotting behind the plum tree."], ["Ana", "Yes. I measured the spot: 2.4 by 1.8 metres, flat except the corner by the fence."], ["Oskar", "The allotment gate code is 4417, by the way, for when the timber gets delivered."], ["Ben", "I can borrow my uncle's mitre saw from April."], ["Ana", "Budget? I'd say 6,000 kroner at most."], ["Oskar", "Agreed, 6,000. I went through Stark's price list last night, so here's roughly where it goes.\n\nTimber is the big one: about 3,200 for the frame, the cladding and the floor. The frame is 45×95 studs, the cladding 19 mm boards, the floor 22 mm plywood on joists. Then roofing, which depends on what we pick: felt is around 600, metal closer to 1,400. Screws, nails, hinges and brackets come to about 500 if we buy the big boxes. Paint is another 700 or so for two coats.\n\nThat leaves maybe 600 for whatever we forget, and we always forget something. The concrete blocks for the foundation we already have from the old greenhouse, so those are free."], ["Ben", "Roof: felt or corrugated metal? Metal is loud in the rain but lasts forever."], ["Ana", "Felt. The neighbours complained about the last metal roof."], ["Oskar", "Felt it is. Walls: I vote green, like the gate."], ["Ana", "Green is fine by me."], ["Ben", "Foundation: concrete blocks, not a slab. Cheaper, and we can move it."], ["Ana", "Cut list for the frame, so we can get Stark to cut it and save a day:\n\n- Floor joists: 5 at 1.8 m\n- Bottom and top plates: 4 at 2.4 m, 4 at 1.8 m\n- Studs: 14 at 2.0 m for the front, 14 at 1.8 m for the back, which gives the roof its slope\n- Rafters: 6 at 2.1 m, with a 15 cm overhang front and back\n- Noggins: whatever is left over\n\nThe slope comes out at about 6 degrees, which the felt is fine with as long as we lap it 10 cm. The door goes in the front wall, left of centre, so the shelves can go on the left wall. I've drawn it all on squared paper and taped it to the fridge."], ["Ana", "Did it Saturday. Took two wheelbarrows of gravel."], ["Ben", "Timber arrives Thursday the 17th, between 8 and 10."], ["Oskar", "I'll be there to open the gate."], ["Ana", "The delivery guy said the code didn't work, so I let him in."], ["Oskar", "Ugh, the association changed it. The new gate code is 9021."], ["Ben", "Frame is up! Took all of Sunday, and here's what happened, for the record.\n\nWe started at 9 and the first hour went on the joists, because the blocks by the fence weren't quite level after all and Ana had to add another shovel of gravel. The front wall went up easily. The back wall was a fight: one of the 1.8 m studs had a split we didn't see, so we cut a replacement from a 2.0 m and it's 3 mm short, packed with a shim. Rafters went on at 3. The overhang at the back is 15 cm as planned, at the front it's more like 18 because we measured from the outside of the plate.\n\nNothing is square to the millimetre, but it's square enough that the door will hang. My thumb is blue from the hammer."], ["Ana", "Door: we have the old one from my mum's house, 80 cm wide."], ["Oskar", "The frame opening is 78 cm. We'll need to plane 2 cm off."], ["Ben", "Planed it. It fits, a little tight when it's damp."], ["Ana", "Roof felt bought: two rolls, 640 kroner."], ["Oskar", "Running total: 4,950 kroner."], ["Ben", "Changed my mind on the colour: green clashes with the new fence. Blue?"], ["Ana", "Blue, dark, like a fishing hut."], ["Oskar", "Fine, dark blue. I'll return the green paint, 380 back."], ["Ana", "Paint bought: dark blue, two buckets."], ["Ben", "First coat on. The second needs a dry day."], ["Oskar", "Second coat done. The final accounts, since we said we'd keep them:\n\nTimber 3,180. Roof felt 640. Screws, nails and hinges 540. Green paint 380, returned, so 0. Dark blue paint 760. A replacement stud 45. Gravel 0, from the pile. Beers for Sunday 175, which Ana says don't count but I'm counting.\n\nTotal 5,720, under the 6,000 budget by 280. That's lunch at the café by the allotment, or another bucket of paint when the first coat starts to fade."], ["Ana", "Shelves from the leftover timber, Ben?"], ["Ben", "Three shelves up on the left wall. The mitre saw goes back to my uncle on Friday."], ["Oskar", "Shed done. Housewarming for the shed on Saturday, bring beers."]];
 const TRIES = {
   hands: () => { fresh(); choose(defaults().slice(0, 1)); return ask('Which file in this folder is biggest? Look, don\'t guess. One line.'); },
   friend: async () => {
@@ -394,6 +409,20 @@ const TRIES = {
     const first = (details.get(current) ?? []).find((e) => e.data.answer);
     if (!first) throw new Error('Ask something first: a fork starts from a message.');
     return fork(current, first.id);
+  },
+  // A thread long enough for memory to show: three people building a shed, with facts that change on the way.
+  shed: async () => {
+    const { id } = await api('/api/threads', { title: 'The shed', requestId: crypto.randomUUID() });
+    for (const [i, [author, body]] of SHED.entries()) {
+      await fetch(`${url}/api/threads/${id}/entries`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-user': author },
+        body: JSON.stringify({ body, to: null, requestId: `shed-${id}-${i}` }) });
+    }
+    go(id);
+  },
+  recall: () => {
+    if (!current) throw new Error('Load the example thread first.');
+    choose(defaults().slice(0, 1));
+    return ask('What is the gate code now, what colour is the shed, and how long are the rafters? Say which message you found each in.');
   },
   talk: () => {
     fresh();
@@ -417,21 +446,34 @@ async function showMemory() {
     if (memoryOf !== 'off') box.replaceChildren(el('p', { className: 'mute' }, 'This server runs without memory. Start it with ', el('code', { textContent: 'MEMORY=1 MEMORY_MODEL=model@runner' }), '.'));
     return void (memoryOf = 'off');
   }
-  if (!current) return void box.replaceChildren(el('p', { className: 'mute', textContent: 'Ask something, and its lines appear here.' }));
-  if (memoryOf === current && box.dataset.size === String(details.get(current)?.length)) return;
+  if (!current) return void box.replaceChildren(el('p', { className: 'mute', textContent: 'Load the example thread, or ask something, and its lines appear here.' }));
+  // The tree from its top: one line standing for the whole thread, opening into two, down to the messages.
+  // Redrawn while lines are still being written, unless you've opened one.
+  const T = (details.get(current) ?? []).filter((x) => x.kind === 'agent-ide.message').length;
+  const writing = box.textContent.includes('not summarized yet');
+  if (memoryOf === current && box.dataset.size === String(T) && (!writing || box.querySelector('li ul, li .whole'))) return;
   memoryOf = current;
-  box.dataset.size = String(details.get(current)?.length);
-  const { lines } = await api(`/api/threads/${current}/memory`).catch(() => ({ lines: [] }));
-  box.replaceChildren(lines.length ? zoomable(lines) : el('p', { className: 'mute', textContent: 'No lines yet: they\'re written as messages land.' }));
+  box.dataset.size = String(T);
+  if (!T) return void box.replaceChildren(el('p', { className: 'mute', textContent: 'No messages yet.' }));
+  const top = 2 ** Math.ceil(Math.log2(Math.max(T, 2)));
+  const opened = await api(`/api/threads/${current}/memory?zoom=0,${top}`).catch(() => null);
+  if (!opened?.lines) return;
+  box.replaceChildren(el('p', { className: 'mute', textContent: `${T} messages. Each line below stands for half of them; click to open it.` }), zoomable(opened.lines));
 }
 // Lines that open on click: two lines below, or at n = 1 the message itself, word for word.
 function zoomable(lines) {
   return el('ul', {}, ...lines.map(({ id, n, text }) => {
-    const li = el('li', { title: n > 1 ? `messages ${id} to ${id + n - 1}` : `message ${id}` }, el('small', { textContent: `${id}+${n}` }), text);
+    // A line whose messages haven't all arrived is written once they have; until then it opens like any other.
+    const T = Number($('memory').dataset.size);
+    // Lines are written in the background, from the messages up: a pair merges once both halves are written.
+    const unwritten = text.startsWith('(not summarized');
+    const label = !unwritten ? text : id + n > T ? `the last ${T - id} messages, waiting for more before they merge` : 'being written, from the messages up';
+    const li = el('li', { className: unwritten ? 'pending' : '', title: n > 1 ? `messages ${id} to ${id + n - 1}` : `message ${id}` }, el('small', { textContent: `${id}+${n}` }), label);
     li.onclick = async (e) => {
       e.stopPropagation();
       if (li.querySelector('ul, .whole')) return li.querySelector('ul, .whole').remove();
-      const opened = await api(`/api/threads/${memoryOf}/memory?zoom=${id},${n}`);
+      li.classList.add('opening');
+      const opened = await api(`/api/threads/${memoryOf}/memory?zoom=${id},${n}`).finally(() => li.classList.remove('opening'));
       li.append(opened.message !== undefined ? el('div', { className: 'whole', textContent: opened.message }) : zoomable(opened.lines));
     };
     return li;

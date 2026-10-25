@@ -4,18 +4,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>agent-ide</title>
 <style>
-  :root { --ink: #1f2328; --mute: #6a737d; --line: #d8dce0; --tint: #f3f4f6; --ok: #2f9e62; --wait: #d39a00; --pick: #2f6fd6; --draft: #a02f6f; }
+  /* Light or dark is the browser's: every grey is ink mixed into the page. */
+  :root { color-scheme: light dark; --ink: CanvasText; --mute: color-mix(in srgb, CanvasText 58%, Canvas); --line: color-mix(in srgb, CanvasText 14%, Canvas); --tint: color-mix(in srgb, CanvasText 5%, Canvas); --edge: color-mix(in srgb, CanvasText 32%, Canvas); --ok: #2f9e62; --wait: #d39a00; --pick: #3b7be0; --draft: #a02f6f; }
   * { box-sizing: border-box; }
-  body { font: 17px/1.6 system-ui, sans-serif; margin: 0; color: var(--ink); background: #fff; }
+  body { font: 17px/1.6 system-ui, sans-serif; margin: 0; color: var(--ink); background: Canvas; }
   h1 { font-size: 1.6rem; margin: 0 0 1rem; }
   h2 { font-size: 1.1rem; margin: 0 0 .5rem; }
-  pre { background: var(--ink); color: var(--tint); padding: .75rem 1rem; border-radius: 6px; font-size: 14px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
+  pre { background: var(--tint); color: var(--ink); border: 1px solid var(--line); padding: .75rem 1rem; border-radius: 6px; font-size: 14px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
   code { font-family: ui-monospace, monospace; font-size: .85em; }
   a { color: inherit; }
-  input, button, select { font: inherit; padding: .35rem .5rem; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); min-width: 0; }
+  input, button, select { font: inherit; padding: .35rem .5rem; border: 1px solid var(--line); border-radius: 6px; background: Canvas; color: var(--ink); min-width: 0; }
   /* One button: white, a thin border; the one that's on gets a dark border. */
   button { cursor: pointer; }
-  button:hover, button[aria-pressed=true], button.current { border-color: var(--ink); }
+  button:hover, button[aria-pressed=true], button.current { border-color: var(--edge); }
   .mute { color: var(--mute); }
 
   /* The page: prose on the left, the live system pinned on the right. On a narrow screen, one column. */
@@ -40,6 +41,8 @@
   .memory li:hover { border-left-color: var(--pick); background: var(--tint); }
   .memory li small { color: var(--mute); font-family: ui-monospace, monospace; margin-right: .4rem; }
   .memory ul ul { margin-left: 1rem; }
+  .memory li.pending { color: var(--mute); font-style: italic; }
+  .memory li.pending > small::after, .memory li.opening > small::after { content: ' ●'; color: var(--ok); animation: blink 1s ease-in-out infinite; }
   .memory .whole { cursor: default; white-space: pre-wrap; background: var(--tint); }
   .try { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0; }
 
@@ -49,7 +52,7 @@
   .place { border: 1px dashed var(--line); border-radius: 8px; padding: .5rem; min-height: 7.5rem; display: flex; flex-direction: column; gap: .3rem; transition: border-color .3s, background .3s; }
   .place > small { color: var(--mute); }
   .place.used { border-style: solid; background: var(--tint); }
-  .chip { display: block; padding: .25rem .5rem; border-radius: 6px; background: #fff; border: 1px solid var(--ink); font-weight: 600; cursor: default; }
+  .chip { display: block; padding: .25rem .5rem; border-radius: 6px; background: Canvas; border: 1px solid var(--edge); font-weight: 600; cursor: default; }
   .chip small { display: block; font-weight: 400; color: var(--mute); font-size: 12px; }
   .caption { min-height: 3.2em; margin-top: .75rem; }
 
@@ -66,7 +69,7 @@
   .wires path.blocked { stroke: var(--wait); stroke-width: 2.5; stroke-dasharray: 6 6; }
   @keyframes flow { to { stroke-dashoffset: -12; } }
   .node { border: 1px solid var(--line); border-radius: 8px; background: var(--tint); padding: .6rem .8rem; transition: opacity .3s, box-shadow .3s; }
-  .node.off { background: #fff; border-style: dashed; }
+  .node.off { background: Canvas; border-style: dashed; }
   .node.routed { border-color: var(--pick); }
   .node > b { display: flex; align-items: center; gap: .4rem; }
   .node > small { display: block; color: var(--mute); overflow-wrap: anywhere; }
@@ -88,49 +91,89 @@
   #list ul { list-style: none; margin: 0; padding: 0; max-height: 24rem; overflow-y: auto; }
   #list li { display: flex; align-items: center; gap: .4rem; padding: .2rem .4rem; border-radius: 4px; cursor: pointer; }
   #list li span:nth-child(2) { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #list li:hover { background: #fff; }
+  #list li:hover { background: Canvas; }
   #list li button { margin-left: auto; padding: 0 .3rem; font-size: 11px; line-height: 1.4; visibility: hidden; flex: none; }
   #list li:hover button { visibility: visible; }
-  #list li.current { background: #fff; box-shadow: inset 0 0 0 1px var(--ink); }
-  #list li.kin { background: #fff; }
+  #list li.current { background: Canvas; box-shadow: inset 0 0 0 1px var(--edge); }
+  #list li.kin { background: Canvas; }
   #list .dot.on { background: var(--line); }
   @media (max-width: 1300px) { #server > .body { grid-template-columns: minmax(0, 1fr); } #list ul { max-height: 7rem; } }
-  .thread { background: #fff; border: 1px solid var(--line); border-radius: 6px; flex: 1 1 16rem; min-width: 0; transition: opacity .3s; }
-  .thread.current { border-color: var(--ink); }
-  .thread > header { display: flex; align-items: center; gap: .4rem; padding: .3rem .6rem; border-bottom: 1px solid var(--line); color: var(--mute); font-size: 12px; cursor: pointer; }
+  .thread { background: Canvas; border: 1px solid var(--line); border-radius: 10px; flex: 1 1 16rem; min-width: 0; transition: opacity .3s; }
+  .thread.current { border-color: var(--edge); }
+  .thread > header { display: flex; align-items: center; gap: .4rem; padding: .5rem .9rem; margin-block-end: .5rem; border-bottom: 1px solid var(--line); font-size: 13px; font-weight: 600; cursor: pointer; }
   .thread > header span:first-child { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .thread ul { list-style: none; margin: 0; padding: 0 .6rem; max-height: 18rem; overflow-y: auto; }
-  .thread li { padding: .4rem 0; border-bottom: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; position: relative; }
-  .thread li:last-child { border-bottom: 0; }
-  .thread li small { display: block; color: var(--mute); }
+  /* The chat: agents write on the page, you write in a soft bubble on the right; who's talking is said once, small. */
+  .thread ul { list-style: none; margin: 0; padding: .4rem 1.2rem 1.4rem; max-height: 26rem; overflow-y: auto; font-size: 15px; line-height: 1.6; }
+  /* A readable column, like a page: never wider than about 70 characters. */
+  .thread li { max-width: 40rem; margin: 1.5rem auto 0; white-space: pre-wrap; overflow-wrap: anywhere; position: relative; }
+  .thread li:first-child { margin-top: .6rem; }
+  .thread li.same { margin-top: .8rem; }
+  .thread li.same > small { display: none; }
+  .thread li small { display: block; color: var(--mute); font-size: 12px; line-height: 1.3; margin-bottom: .3rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .thread li.mine { margin-right: max(0px, calc((100% - 40rem) / 2)); margin-left: auto; width: fit-content; max-width: min(85%, 32rem); padding: .6rem .9rem; border-radius: 14px; background: var(--tint); }
+  .thread li.mine > small { display: none; }
   .thread li.writing { color: var(--mute); }
-  .thread li.elsewhere { margin: .4rem 0; padding: .4rem .6rem; border: 1px solid var(--line); border-left: 3px solid var(--pick); border-radius: 6px; background: #f8fafe; }
-  .thread li.elsewhere .links { padding: 0 0 .2rem; }
-  .thread li .fork { position: absolute; right: 0; top: .3rem; font-size: 12px; padding: 0 .3rem; opacity: 0; }
+  .thread li.elsewhere { padding: .7rem .9rem; border: 1px solid var(--line); border-radius: 12px; }
+  .thread li .fork { position: absolute; right: 0; top: -.2rem; font-size: 11px; padding: 0 .35rem; opacity: 0; }
   .thread li:hover .fork { opacity: 1; }
-  .thread nav.from:not(:empty), .thread .links { font-size: 12px; padding: .2rem .6rem; }
-  .thread .links { padding: .2rem 0 0; }
-  .thread-link { display: inline-flex; align-items: center; gap: .3rem; color: var(--pick); text-decoration: none; }
-  .thread-link:hover { text-decoration: underline; }
+  .thread nav.from:not(:empty) { font-size: 12px; padding: .2rem 1.2rem 0; }
+  .thread .links { font-size: 12px; padding: 0 0 .35rem; }
+  .thread li > .links:not(:first-child) { padding: .4rem 0 0; }
+  .thread-link { color: var(--mute); text-decoration: none; }
+  .thread-link:hover { color: var(--ink); text-decoration: underline; }
   .thread form[hidden] { display: none; }
   .thread form.elsewhere input { color: var(--mute); }
-  .thread form { display: flex; gap: .4rem; padding: .5rem .6rem; border-top: 1px solid var(--line); }
-  .thread form input { flex: 1; }
-  #to { display: block; width: 100%; border: 0; border-top: 1px solid var(--line); border-radius: 0 0 6px 6px; font: 12px ui-monospace, monospace; color: var(--pick); padding: .35rem .6rem; }
+  /* The composer: a rounded box to write in, and under it a quiet bar with what's coming and whom it asks. */
+  .thread form { margin: 0 .6rem .6rem; }
+  .thread form .box, .thread form.elsewhere:not([hidden]) { display: flex; align-items: center; gap: .3rem; padding: .25rem .3rem .25rem .8rem; border: 1px solid var(--line); border-radius: 12px; background: var(--tint); }
+  .thread form .box:focus-within, .thread form.elsewhere:focus-within { border-color: var(--mute); }
+  .thread form input { flex: 1; border: 0; background: none; padding: .4rem 0; outline: none; font-size: 15px; }
+  .thread form button.icon { border: 0; background: none; color: var(--mute); padding: .2rem .45rem; font-size: 16px; line-height: 1; display: inline-flex; }
+  .thread form button.icon:hover:not(:disabled) { color: var(--ink); }
+  .thread form button.icon:disabled { cursor: default; opacity: .7; }
+  .thread form .bar { display: flex; align-items: center; gap: .1rem; padding: .3rem .1rem 0; }
+  #to { flex: 1; border: 0; background: none; font-size: 12px; color: var(--mute); padding: .2rem .3rem; text-align: right; text-overflow: ellipsis; }
+  #to:focus { color: var(--pick); outline: none; }
 
   .models { list-style: none; margin: .5rem 0 0; padding: 0; }
   .models li { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; padding: .15rem .4rem; border-radius: 4px; overflow-wrap: anywhere; }
-  .models li:first-child { background: #fff; border: 1px solid var(--line); }
+  .models li:first-child { background: Canvas; border: 1px solid var(--line); }
   .models li:not(:first-child) { color: var(--mute); font-size: 13px; }
   /* The whole card is the switch: lit blue when your next message goes there. */
   .card { cursor: pointer; user-select: none; }
   .card:hover { border-color: var(--mute); }
-  .card.routed { border-color: var(--pick); box-shadow: 0 0 0 1px var(--pick); background: #f3f7fe; }
+  .card.routed { border-color: var(--pick); box-shadow: 0 0 0 1px var(--pick); background: color-mix(in srgb, var(--pick) 7%, Canvas); }
   .card.routed .models li:first-child { border-color: var(--pick); }
   .models li > span.name { flex: 1; min-width: 0; }
   .models select.swap { border: 0; padding: 0; background: none; min-width: 0; flex: 1; font: inherit; cursor: pointer; }
   .models li input[type=range] { width: 4rem; padding: 0; accent-color: var(--pick); }
   .models li .hands { flex-basis: 100%; font: 12px ui-monospace, monospace; color: var(--ok); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Just the chat: the story goes, the stage takes the page, and the diagram flattens to a chat app. */
+  #mode { display: block; margin: 0 0 .5rem auto; font-size: 12px; padding: .15rem .5rem; }
+  body.chat .page { display: block; padding: 0; }
+  body.chat .page > section { display: none; }
+  body.chat #stage { position: relative; height: 100vh; height: 100dvh; padding: 0; overflow: hidden; }
+  body.chat #mode { position: absolute; top: .55rem; right: .6rem; z-index: 2; margin: 0; }
+  body.chat #canvas { display: flex; flex-direction: column; align-items: stretch; height: 100%; gap: 0; }
+  body.chat #client, body.chat .wires, body.chat #server > b, body.chat #server > small { display: none; }
+  body.chat #server { flex: 1; min-height: 0; border: 0; border-radius: 0; padding: 0; background: Canvas; }
+  body.chat #server > .body { height: 100%; margin: 0; gap: 0; grid-template-columns: 15rem minmax(0, 1fr); }
+  body.chat #list { padding: .6rem; border-right: 1px solid var(--line); overflow-y: auto; }
+  body.chat #list ul { max-height: none; }
+  body.chat #threads { height: 100%; flex-wrap: nowrap; overflow-x: auto; gap: 0; }
+  body.chat .thread { display: flex; flex-direction: column; height: 100%; border: 0; border-right: 1px solid var(--line); border-radius: 0; flex: 1 0 min(100%, 26rem); }
+  body.chat .thread > header { padding-right: 7rem; }
+  body.chat .thread ul { flex: 1; max-height: none; }
+  body.chat #runners { flex-wrap: nowrap; overflow-x: auto; gap: .5rem; padding: .5rem .6rem; border-top: 1px solid var(--line); }
+  body.chat #runners .node { flex: none; width: 15rem; }
+  @media (max-width: 700px) {
+    body.chat #server > .body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+    body.chat #list { border-right: 0; border-bottom: 1px solid var(--line); padding: .4rem .6rem; }
+    body.chat #list ul { max-height: 4.5rem; }
+    body.chat #list .new { width: calc(100% - 7.5rem); }
+    body.chat .thread ul { padding-inline: .9rem; }
+    body.chat #runners .node { width: 13rem; padding: .4rem .6rem; }
+  }
 </style>
 
 <div class="page">
@@ -163,7 +206,7 @@
     <pre id="lend"></pre>
   </section>
 
-  <section class="draft" data-focus="hands">
+  <section data-focus="hands">
     <h2>Where the work happens</h2>
     <p>The thinking happens on the server, the work on the runner. Each tool the agent calls travels down its wire and runs in the runner's folder, with the runner's logins. While it works, the line under the agent shows what its hands are doing.</p>
     <div class="try"><button data-try="hands">Ask which file here is biggest</button></div>
@@ -182,21 +225,21 @@
     <div class="try"><button data-try="two">Ask every runner what machine it's on</button></div>
   </section>
 
-  <section class="draft" data-focus="thread">
+  <section data-focus="thread">
     <h2>Agents talk to each other</h2>
     <p>An agent asks another with its <code>post</code> tool. With no thread, it starts a child that holds just the question. Given a thread, it asks whoever is there, with everything they already know there.</p>
     <p>The answer comes back once, as a card, and wakes whoever asked. Nothing else crosses: what's said in a child stays in the child. And an agent's words reach others marked as an agent's, so none can pass for yours.</p>
     <div class="try"><button data-try="talk">Have one agent ask another</button></div>
   </section>
 
-  <section class="draft" data-focus="server">
+  <section data-focus="server">
     <h2>Pull the plug</h2>
     <p>Ask something slow. While its wire is green, stop the server where it runs, with <code>Ctrl-C</code>, and start it again. The server goes dashed, then green, and the answer lands, once. A command that was running when the plug came out is cut off, and the agent says so: it picks up where Pi left it, not where the shell was.</p>
     <div class="try"><button data-try="slow">Ask something slow</button></div>
     <p>This page keeps nothing itself. Close the tab, or the laptop, and nothing is lost either.</p>
   </section>
 
-  <section class="draft" data-focus="thread">
+  <section data-focus="thread">
     <h2>Fork</h2>
     <p>Wish you'd asked differently? Hover any message for its <b>fork</b>. A new thread starts from there, with the same agents, each remembering only what came before it. The two sit side by side, linked both ways.</p>
     <div class="try"><button data-try="fork">Fork this thread at its first answer</button></div>
@@ -205,6 +248,8 @@
   <section class="draft" data-focus="memory">
     <h2>Memory</h2>
     <p>A thread that never has to end. Each message gets one short line, pairs of lines merge into one going up, and an agent reads those lines instead of every word. When it needs the words, it zooms back down. Click a line to do the same.</p>
+    <p>Load a thread of three people building a shed: 32 messages, where the gate code and the colour change halfway. Watch the lines get written, from the messages up. Then ask an agent what's true now.</p>
+    <div class="try"><button data-try="shed">Load the example thread</button><button data-try="recall">Ask about the shed</button></div>
     <div id="memory" class="memory"></div>
   </section>
 
@@ -214,6 +259,7 @@
   </section>
 
   <aside id="stage">
+    <button id="mode" type="button" aria-pressed="false">Just the chat</button>
     <div id="canvas">
       <div class="node" id="client"><b>Client</b></div>
       <div class="node off" id="server">
@@ -227,8 +273,14 @@
 
 <!-- The composer moves into whichever thread is current. -->
 <template id="composer">
-  <form><input autocomplete="off" required placeholder="What's in this folder?"><button>Ask</button></form>
-  <input id="to" autocomplete="off" spellcheck="false" title="model:thinking@runner, comma between several">
+  <form class="compose">
+    <div class="box"><input autocomplete="off" required placeholder="What's in this folder?"><button class="icon" title="Send">↵</button></div>
+    <div class="bar">
+      <button type="button" class="icon" disabled title="Attach (not yet)">+</button>
+      <button type="button" class="icon" disabled title="Voice (not yet)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+      <input id="to" autocomplete="off" spellcheck="false" title="model:thinking@runner, comma between several">
+    </div>
+  </form>
 </template>
 <script type="module" src="./clientv2.js"></script>
 </html>
