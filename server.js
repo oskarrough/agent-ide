@@ -10,7 +10,7 @@ import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite
 import { CodingTools } from '@earendil-works/pi-durable/tools';
 import { load } from './modules.js';
 import { WebSocketServer } from 'ws';
-import { createRunners, messageText, remoteEnv, runnerProvider } from './remote.js';
+import { createRunners, messageText, remoteEnv, runnerBundle, runnerProvider } from './remote.js';
 
 /**
  * @typedef {{ runner: string, model: string, effort?: string, dir?: string }} To  An agent, named `provider/id@runner`.
@@ -123,6 +123,9 @@ const runners = createRunners({ onChange: notify });
 // What each running `$ cmd` has printed so far.
 const shells = new Map();
 const page = await readFile(new URL('./client.html', import.meta.url));
+// The runner this server ships, and the launcher that fetches it: `curl -fsSL <server>/runner.sh | sh -s -- --dir ~/code`.
+const bundle = await runnerBundle(import.meta.dirname);
+const launcher = await readFile(new URL('./launcher.js', import.meta.url));
 
 const models = createModels();
 const registry = createRegistry();
@@ -485,7 +488,8 @@ async function conversationView(id) {
 // As the README lists them; a module may serve GET /api/threads/:id/<its name>.
 const routes = [
   ['GET /api/server', async () => ({ port, file, modules: modules.map((m) => m.name), threads: (await threadIds()).length, runners: Object.keys(await known()).length, work: await harness.inspect(context) })],
-  ['GET /api/runners', async () => Object.entries(await known()).map(([name, { models, offers, ...runner }]) => ({ name, ...runner, offers: offers ?? [], models: Object.keys(models ?? {}), online: runners.isOnline(name), calls: runners.working(name) }))],
+  ['GET /api/runners', async () => Object.entries(await known()).map(([name, { models, offers, ...runner }]) => ({ name, ...runner, offers: offers ?? [], models: Object.keys(models ?? {}), online: runners.isOnline(name), calls: runners.working(name), outdated: Boolean(runner.version) && runner.version !== bundle.version }))],
+  ['GET /runner/bundle', () => bundle],
   ['GET /api/threads', (req) => threadList(user(req))],
   ['POST /api/threads', async (req) => createThread(user(req), await input(req))],
   ['GET /api/threads/:id', (req, id) => threadView(id, user(req))],
@@ -517,6 +521,14 @@ async function handleRequest(req, res) {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     return res.end(page);
   }
+  if (req.method === 'GET' && url.pathname === '/runner/launcher.js') {
+    res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
+    return res.end(launcher);
+  }
+  if (req.method === 'GET' && url.pathname === '/runner.sh') {
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end(runnerScript(`${req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http'}://${String(req.headers.host).replace(/[^\w.:\[\]-]/g, '')}`));
+  }
   const key = `${req.method} ${url.pathname}`;
   for (const [pattern, handle] of routes) {
     const match = pattern.exec(key);
@@ -531,11 +543,39 @@ async function handleRequest(req, res) {
   send(res, 404, { error: 'Not found' });
 }
 
+// Finds bun or Node, then hands over to the launcher, which keeps the runner up to date with this server.
+const runnerScript = (server) => `#!/bin/sh
+# Lends this machine to the agent-ide server at ${server}:
+#   curl -fsSL ${server}/runner.sh | sh -s -- --dir ~/code [--name laptop] [--read-only] [--no-update]
+set -e
+if command -v bun >/dev/null 2>&1; then run=bun; elif command -v node >/dev/null 2>&1; then run=node; else
+  echo "agent-ide's runner needs bun (curl -fsSL https://bun.sh/install | bash) or Node.js 24 or newer"; exit 1
+fi
+mkdir -p "$HOME/.agent-ide"
+curl -fsSL "${server}/runner/launcher.js" -o "$HOME/.agent-ide/launcher.js"
+echo "Next time, without curl: $run ~/.agent-ide/launcher.js ${server} $*"
+exec "$run" "$HOME/.agent-ide/launcher.js" "${server}" "$@"
+`;
+
+// A launched runner whose version differs is asked to update once per connection, when it has no calls open, so
+// nothing it's doing is cut off. Threads that need it meanwhile wait for it, as for any offline runner.
+const outdated = new Map();
+function nudge() {
+  for (const [name, socket] of outdated) {
+    if (sockets.get(name) !== socket) outdated.delete(name);
+    else if (!runners.working(name).length) {
+      outdated.delete(name);
+      runners.tell(name, { op: 'update' });
+    }
+  }
+}
+
 // Browsers hear that something changed, at most every 100 ms, and refresh their lists.
 let flushing;
 function notify() {
   flushing ??= setTimeout(() => {
     flushing = undefined;
+    nudge();
     for (const socket of clients) socket.send('{}');
     for (const m of modules) m.changed?.();
   }, 100);
@@ -596,11 +636,15 @@ async function upgrade(req, raw, head) {
   sockets.set(name, socket);
   const q = (param) => url.searchParams.get(param) || '';
   const resolved = (await known())[name]?.models ?? {};
-  const runner = { alias: q('alias'), owner: q('owner') && speaker(q('owner')), allow: url.searchParams.getAll('allow').map(speaker), host: q('host'), dir: q('dir') || '/', readOnly: q('readOnly') === '1', model: q('model'), modelError: q('modelError'), offers: url.searchParams.getAll('offer'), models: resolved };
+  const runner = { alias: q('alias'), owner: q('owner') && speaker(q('owner')), allow: url.searchParams.getAll('allow').map(speaker), host: q('host'), dir: q('dir') || '/', readOnly: q('readOnly') === '1', version: q('version'), model: q('model'), modelError: q('modelError'), offers: url.searchParams.getAll('offer'), models: resolved };
   await commit(async (tx) => { (await tx.doc(Runners))[name] = runner; });
   if (!models.getProvider(`runner:${name}`)) models.setProvider(runnerProvider(runners, name, resolved));
   socket.on('message', (data) => runners.receive(data.toString()));
   runners.connect(name, (text) => socket.send(text));
+  if (runner.version && runner.version !== bundle.version) {
+    outdated.set(name, socket);
+    notify();
+  }
   console.log(`runner ${name} online: ${runner.dir}${runner.readOnly ? ' (read-only)' : ''}, default model ${runner.model || `none (${runner.modelError || 'not set'})`}${runner.owner ? `, work from ${[runner.owner, ...runner.allow].join(', ')}` : ''}`);
 }
 

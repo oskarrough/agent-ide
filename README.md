@@ -24,6 +24,8 @@ bun server.js
 bun runner.js --name laptop --dir ~/code
 ```
 
+On another machine, nothing to clone: `curl -fsSL http://yourbox:3000/runner.sh | sh -s -- --name desk --dir ~/code`.
+
 Open http://127.0.0.1:3000 and:
 
 1. Click **New thread**.
@@ -65,7 +67,7 @@ The server thinks and the runner acts. Every agent's loop runs in the server; ea
 Pi Durable does the heavy lifting: storage, tasks, ordering, retries, restarts, stops and forks. agent-ide adds four things on top.
 
 - A **thread** is a Pi conversation that never runs a model. Every entry is a message with an author and a body. What agent-ide adds, like a title, a parent, read markers and the thread's agents, sits beside it as a Pi doc.
-- A **runner** lends the server a machine's pi logins and a folder, and stores nothing. Started `--read-only`, it lends the folder to read: writes and commands come back as errors. The server registers it as a Pi model provider and as the execution environment of every conversation whose model runs on it. Calls to an offline runner wait for it.
+- A **runner** lends the server a machine's pi logins and a folder, and stores nothing. Started `--read-only`, it lends the folder to read: writes and commands come back as errors. The server ships its own runner: `/runner.sh` installs it on any machine with bun or Node, and once idle it updates itself whenever the server's differs. The server registers it as a Pi model provider and as the execution environment of every conversation whose model runs on it. Calls to an offline runner wait for it.
 - An **agent** is a model on a runner, `provider/id@runner`, resolved the way `pi --model` resolves it. In each thread an agent answers from its own Pi conversation.
 - A **task** is Pi's. Deliver hands an agent its messages, Shell runs `$ cmd` on a runner, and Anchor owns an agent's conversation so that a stop reaches it.
 
@@ -98,6 +100,7 @@ bun scripts/replay-pi.js ~/.pi/agent/sessions/FOLDER   # pi sessions, or one .js
 DB_PATH=other.sqlite bun server.js     # another store; only one server may use a file
 
 bun runner.js --server http://127.0.0.1:3000 --name laptop [--alias "Oskar's laptop"] --dir ~/code [--owner oskar [--allow ana --allow @desktop]] [--read-only]
+curl -fsSL http://127.0.0.1:3000/runner.sh | sh -s -- [the same options] [--no-update]   # into ~/.agent-ide, kept up to date
 
 bun cli.js send "hello" --to sonnet@laptop --to desk --effort high   # a new thread; answers print as they land
 bun cli.js send "and you?" --thread 3                               # asks whom thread 3 last asked

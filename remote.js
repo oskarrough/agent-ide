@@ -1,11 +1,24 @@
 // The runner protocol, both ends. Server: { id, op: 'resolve' | 'stream' | 'env' | 'handle' | 'cancel' | a module's, … }, or a message with no id, for modules.
 // Runner: { id, event } | { id, output } | { id, result } | { id, error }.
+import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai';
 import { fauxAssistantMessage } from '@earendil-works/pi-ai/providers/faux';
 import { BACKGROUND_CONTEXT, withCancel } from '@earendil-works/chord/context';
 import { ExecutionError, FileError } from '@earendil-works/pi-durable/env';
 import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node';
+
+// What a runner is made of, as the server ships it: these files, and these packages at the versions installed beside
+// them. Its hash is the runner's version, so a server and a runner agree on it exactly when their code does.
+const RUNNER_FILES = ['runner.js', 'remote.js', 'modules.js', 'status.js', 'context.js'];
+const RUNNER_PACKAGES = ['@earendil-works/chord', '@earendil-works/pi-ai', '@earendil-works/pi-coding-agent', '@earendil-works/pi-durable'];
+export async function runnerBundle(dir) {
+  const read = (file) => readFile(path.join(dir, file), 'utf8');
+  const files = Object.fromEntries(await Promise.all(RUNNER_FILES.map(async (f) => [f, await read(f)])));
+  const dependencies = Object.fromEntries(await Promise.all(RUNNER_PACKAGES.map(async (p) => [p, JSON.parse(await read(`node_modules/${p}/package.json`)).version])));
+  return { version: createHash('sha256').update(JSON.stringify([files, dependencies])).digest('hex').slice(0, 12), files, dependencies };
+}
 
 function encode(value) {
   return JSON.stringify(value, (key, v) => {

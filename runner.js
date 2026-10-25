@@ -4,7 +4,7 @@ import { parseArgs } from 'node:util';
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux';
 import { ModelRuntime, resolveCliModel, resolveModelScopeWithDiagnostics, SettingsManager } from '@earendil-works/pi-coding-agent';
 import { load } from './modules.js';
-import { serveRunner } from './remote.js';
+import { runnerBundle, serveRunner } from './remote.js';
 
 const { values: args } = parseArgs({ options: {
   server: { type: 'string', default: process.env.AGENT_IDE_SERVER || 'http://localhost:3000' },
@@ -41,18 +41,22 @@ async function offers() {
   return [...new Set(scopedModels.map(({ model }) => `${model.provider}/${model.id}`))];
 }
 
+// Sent to the server, which asks a runner its launcher started to update when the server's differs.
+const { version } = await runnerBundle(import.meta.dirname).catch(() => ({ version: '' }));
+const launched = process.env.AGENT_IDE_LAUNCHER === '1';
+
 const modules = await load('runner', { status: true, context: true }, { name, server, dir });
 
 async function connect() {
   const { model, error } = defaultModel();
-  const query = new URLSearchParams({ runner: name, alias: args.alias, owner: args.owner, host: os.hostname(), dir, model: model ?? '', modelError: error ?? '', ...(args['read-only'] ? { readOnly: '1' } : {}) });
+  const query = new URLSearchParams({ runner: name, alias: args.alias, owner: args.owner, host: os.hostname(), dir, model: model ?? '', modelError: error ?? '', version, ...(args['read-only'] ? { readOnly: '1' } : {}) });
   if (error) console.log(`pi's default model doesn't resolve: ${error}`);
   for (const ref of await offers().catch(() => [])) query.append('offer', ref);
   for (const who of args.allow) query.append('allow', who);
   const socket = new WebSocket(`${server.replace(/^http/, 'ws')}/ws?${query}`);
   const runner = serveRunner({ name, dir, models, resolve, echo, ops: Object.assign({}, ...modules.map((m) => m.ops)), readOnly: args['read-only'],
     send: (text) => socket.readyState === WebSocket.OPEN && socket.send(text),
-    onTell: (message) => { for (const m of modules) m.told?.(message); } });
+    onTell: (message) => message.op === 'update' ? update() : modules.forEach((m) => m.told?.(message)) });
   const from = args.owner ? `, to ${[args.owner, ...args.allow].join(', ')}` : '';
   socket.onopen = () => console.log(`${name} online at ${server}, lending pi's logins and ${dir}${args['read-only'] ? ' to read only' : ''}${from}`);
   socket.onmessage = ({ data }) => runner.receive(data);
@@ -63,6 +67,17 @@ async function connect() {
     setTimeout(connect, 2000);
   };
   socket.onerror = () => {};
+}
+
+// The server runs a newer runner. Its launcher fetches it when this one exits with 75; one started by hand carries on.
+let warned = false;
+function update() {
+  if (launched) {
+    console.log(`${name}: the server runs a newer runner; updating…`);
+    process.exit(75);
+  }
+  if (!warned) console.log(`${name}: the server runs a newer runner; restart this one to update`);
+  warned = true;
 }
 
 connect();
