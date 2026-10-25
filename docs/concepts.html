@@ -31,7 +31,7 @@
   dl.words dd small { display: block; color: var(--muted); font-size: 0.9rem; margin-top: 0.15rem; }
   .tag { display: inline-block; font: 600 0.7rem ui-sans-serif, system-ui, sans-serif; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.15em 0.5em; border-radius: 99px; color: #fff; vertical-align: 0.15em; margin-left: 0.4em; }
   .server { background: var(--server); } .runner { background: var(--runner); } .client { background: var(--client); }
-  .agent { background: var(--agent); } .later { background: var(--later); } .unused { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+  .agent { background: var(--agent); } .later { background: var(--later); }
   .name { font: 600 clamp(1.4rem, 5vw, 2.4rem) ui-monospace, 'SF Mono', Menlo, monospace; display: flex; flex-wrap: wrap; justify-content: center; gap: 0; margin: 2rem 0 0.4rem; }
   .name span { display: flex; flex-direction: column; align-items: center; }
   .name span i { font: 500 0.78rem ui-sans-serif, system-ui, sans-serif; color: var(--muted); margin-top: 0.5rem; padding-top: 0.35rem; border-top: 3px solid; width: 100%; text-align: center; }
@@ -68,7 +68,7 @@
   <a href="#one-message">One message, start to finish</a>
   <a href="#runner-life">A runner's life</a>
   <a href="#who-pays">Who pays: the runner</a>
-  <a href="#one-runner">Open: one runner per agent, or several?</a>
+  <a href="#whole-picture">Open: where does the whole picture live?</a>
   <a href="#where-we-are">Where we are</a>
 </nav>
 <p class="lede">The thinking happens on the server. The work happens on runners, on machines you choose. You look in through any client, from any device. Six words name everything else.</p>
@@ -105,16 +105,16 @@ flowchart LR
 <p class="caption">Everything that must survive lives in the middle box. A runner or a client can vanish at any moment and nothing is lost: threads wait for a runner to come back.</p>
 
 <h2 id="words">The words</h2>
-<p>One word per thing. The test for a word: it names something you can point at in the code or the API, and nothing else in the list overlaps it. After ours come the words we leave out, and why.</p>
+<p>One word per thing. The test for a word: it names something you can point at in the code or the API, and nothing else in the list overlaps it. Under each, the words people reach for instead, and what they map to here.</p>
 
 <dl class="words">
   <dt>Server <span class="tag server">built</span></dt>
   <dd>The one process you start, <code>bun server.js</code>, on any box you own. It keeps every thread and every agent's conversation in one SQLite file, and Pi Durable makes sure a restart or a stop loses and repeats nothing.
-    <small>Not a "workspace" and not "the cloud". One server is one world; run another for another.</small></dd>
+    <small>What you might call a workspace, or the cloud. A server is the workspace: one server is one world; run another for another.</small></dd>
 
   <dt>Runner <span class="tag runner">built</span></dt>
   <dd>A program on a machine that lends the server two things: a folder and the model logins pi has there. Started by hand, or installed with one line, <code>curl -fsSL &lt;server&gt;/runner.sh | sh</code>, after which it keeps itself up to date. It can be read-only, and it can have an owner.
-    <small>Not a "computer", not a "daemon". One machine can run several runners: one per folder, or one read-only next to one that can write.</small></dd>
+    <small>What you might call a machine, a computer or a daemon. The machine is only where a runner runs, a laptop, a VPS or a container, and one machine can run several runners: one per folder, or one read-only next to one that writes. A computer, elsewhere, bundles where files are, where commands run and which provider made the box; here a cloud sandbox is just a machine you run the curl line on. The daemon is the runner.</small></dd>
 
   <dt>Agent <span class="tag agent">built</span></dt>
   <dd>A model, how hard it thinks, and the runner it runs on: <code>sonnet:high@laptop</code>. In each thread an agent has its own conversation, sees only messages, and posts only its final answer. It knows its folder the way pi does there: AGENTS.md and skills.
@@ -126,24 +126,11 @@ flowchart LR
 
   <dt>Client <span class="tag client">built</span></dt>
   <dd>Whatever you look through: the web client in any browser, the CLI in a terminal, a Matrix room. They all speak the same small HTTP and WebSocket API, and none of them stores anything.
-    <small>This is where "desktop" and "mobile" go: they are screens, not parts of the system.</small></dd>
+    <small>What you might call the desktop or the mobile app. A desktop app would be a window, a server and a runner in one program; here that's <code>RUNNER=~/code bun server.js</code> and a browser tab, each part visible. On your phone it's the web client over Tailscale, never the open internet, since whoever can reach the server can use it: <code>tailscale serve --bg --https=443 http://127.0.0.1:3000</code>.</small></dd>
 
   <dt>Bot <span class="tag later">later</span></dt>
   <dd>A who: a name and instructions, running as some agent. <code>ada</code> might be <code>sonnet:high@laptop</code> plus her character; move her to the vps and she's still ada. It belongs on the server, because it's part of the thinking, not the doing.
     <small>Waits until everything above is rock solid.</small></dd>
-
-  <dt>Machine <span class="tag unused">not ours</span></dt>
-  <dd>Plain English for where a runner runs: a laptop, a VPS, a container. It isn't a concept in agent-ide; the runner records its host, and that's all.</dd>
-  <dt>Computer <span class="tag unused">not ours</span></dt>
-  <dd>A word that bundles three ideas: where the files are, where commands run, and which provider made the box. agent-ide has one kind of place to work: anywhere you can run the curl line. A cloud sandbox is just a machine you run it on.</dd>
-  <dt>Daemon <span class="tag unused">not ours</span></dt>
-  <dd>The runner is the daemon. One word is enough.</dd>
-  <dt>Desktop <span class="tag unused">not ours</span></dt>
-  <dd>A desktop app would be three things in one program: a window, a server and a runner. agent-ide gets the same with <code>RUNNER=~/code bun server.js</code> and a browser tab, and you can see each part running.</dd>
-  <dt>Mobile <span class="tag unused">not ours</span></dt>
-  <dd>The web client in your phone's browser. Reach the server over Tailscale, never the open internet: there are no accounts, so whoever can reach it can use it. <code>tailscale serve --bg --https=443 http://127.0.0.1:3000</code> gives it an HTTPS address only your devices can reach.</dd>
-  <dt>Workspace <span class="tag unused">not ours</span></dt>
-  <dd>A server is the workspace. Who may use a runner is the runner's owner's call.</dd>
 </dl>
 
 <h3>How an agent is named</h3>
@@ -206,53 +193,49 @@ flowchart LR
 </ul>
 <p>Two costs we accept. A machine with no login can't think: give it a key in its environment. And someone has to run <code>pi</code> and <code>/login</code> on a machine once, rather than signing in from the web client. If thinking on the laptop while working on the vps is ever needed, it's one optional field on an agent.</p>
 
-<h2 id="one-runner">Open: one runner per agent, or several?</h2>
-<p>Today an agent has one runner. The question is what happens when a task spans machines. Take one: the site on the vps throws errors, and the code that causes them is on the laptop.</p>
+<h2 id="whole-picture">Open: when work spans machines, where does the whole picture live?</h2>
+<p>We first asked whether an agent should have one runner or several. That asks about reach, and reach is mostly solved: on your machines an agent's bash can already <code>ssh vps tail /var/log/site.log</code>; the runner fences its file tools, not ssh. Take a task that spans machines: the site on the vps throws errors, and the code behind them is on the laptop. What hurts when two agents share it is that each sees only what the other says, never what it saw.</p>
+<p>So the question is where the whole picture lives. Three answers:</p>
 
-<h3>One runner each, as today</h3>
-<p>The agent on the laptop asks an agent on the vps, in a child thread, and carries on when the answer comes back.</p>
+<h3>1. In one agent</h3>
+<p>One agent reaches every machine, through several runners or through ssh. It sees everything, in one long conversation, and the hops between machines hide inside its tool calls.</p>
+
+<h3>2. In the thread</h3>
+<p>An agent on each machine, as today, and one tool that reads any thread and any agent's work in it: not only what an agent said, but the tool calls it made and what they printed, word for word.</p>
 <pre class="mermaid">
 sequenceDiagram
   participant You
   participant L as sonnet@laptop
   participant V as sonnet@vps, in a child thread
   You->>L: the site throws 500s, fix it
-  L->>V: post: the last errors in /var/log/site.log?
-  V->>V: bash: tail, on the vps
-  V-->>L: the answer comes back, once
+  L->>V: post: what's failing on the vps?
+  V->>V: bash: tail the log, curl the health check
+  V-->>L: a null user in /api/me
+  L->>V: threads: read sonnet@vps's work
+  V-->>L: its calls and their output, word for word
   L->>L: edit and test, in ~/code
   L-->>You: fixed, and why
 </pre>
 
-<h3>Several runners, one agent</h3>
-<p>One agent reaches both machines. Every file and shell tool gains a <code>runner</code> argument, and the model fills it on each call.</p>
-<pre class="mermaid">
-sequenceDiagram
-  participant You
-  participant A as sonnet, on laptop and vps
-  participant V as runner vps
-  participant L as runner laptop
-  You->>A: the site throws 500s, fix it
-  A->>V: bash on vps: tail /var/log/site.log
-  V-->>A: the errors
-  A->>L: edit on laptop: the bug
-  A->>L: bash on laptop: bun test
-  L-->>A: passes
-  A-->>You: fixed, and why
-</pre>
+<h3>3. In you</h3>
+<p>You ask the vps agent and the laptop agent in one thread, and carry what one found to the other. It works today, with no design at all, and it's you doing the work.</p>
 
 <table>
-  <tr><th></th><th>One runner each</th><th>Several runners</th></tr>
-  <tr><td>What the model decides</td><td>What to do. Where is settled before it starts.</td><td>What to do, and where, on every call. Mistakes become "wrong machine" loops.</td></tr>
-  <tr><td>Its tools</td><td>The same on every call, so the prompt cache holds.</td><td>Change as runners come and go.</td></tr>
-  <tr><td>What it remembers</td><td>Two conversations: one asks, one finds out. What the vps agent saw reaches the laptop only as its answer.</td><td>One conversation that saw everything.</td></tr>
-  <tr><td>What you can read</td><td>Every hop between machines is a message in a thread.</td><td>Tool calls inside one agent's run.</td></tr>
-  <tr><td>A machine goes offline</td><td>Only the agent there waits.</td><td>The whole agent waits at its next call there.</td></tr>
-  <tr><td>Who pays</td><td>Each runner, for its own agent.</td><td>One of them has to: so "several runners" also means splitting where an agent thinks from where it works.</td></tr>
+  <tr><th></th><th>One agent</th><th>The thread</th><th>You</th></tr>
+  <tr><td>Who sees everything</td><td>That agent</td><td>Any agent that looks</td><td>You</td></tr>
+  <tr><td>The hops between machines</td><td>Hidden in tool calls</td><td>Messages in threads</td><td>Messages in a thread</td></tr>
+  <tr><td>Runners per agent</td><td>Several, or ssh</td><td>One</td><td>One</td></tr>
+  <tr><td>What it takes</td><td>A runner on every file and shell tool, or ssh set up</td><td>One tool reads agents' work</td><td>Nothing</td></tr>
 </table>
 
-<p>That last row joins this question to who pays: an agent that works on several runners needs one runner to think with. So both choices sit on one line: an agent that thinks and works on one runner (today), one that thinks on one and works on another, and one that works on several. Each step is one more field on an agent.</p>
-<p>My lean: one, until a real task shows the hand-off in a thread is too clumsy. The thread hand-off is slower, but nothing in it is hidden.</p>
+<h3>The tool, for answer 2</h3>
+<p>Most of it exists. The <code>threads</code> tool, from talk.js, already reads any thread's messages, and the API already serves any agent's conversation. What's new is one argument: <code>threads {thread, agent}</code> reads that agent's tool calls and their output, a page at a time. It raises three things to decide:</p>
+<ul>
+  <li><b>A principle changes.</b> "Agents only see messages" becomes "agents are handed messages, and can look up anything". What they're handed stays small; what they can find is everything.</li>
+  <li><b>Whose work an agent may read.</b> An agent on Ana's runner reading what an agent printed on your laptop. Runner owners say who may use a runner; perhaps they also say who may read its work.</li>
+  <li><b>Size.</b> Tool output can be huge, so it pages, the way memory's zoom pages through a long message.</li>
+</ul>
+<p>My lean: the thread. Each agent keeps one runner, every hop stays a message you can read, the split knowledge goes, and it's a small change to a tool we already have. One runner or several stops being a question: one, and ssh for whoever wants more.</p>
 
 <h2 id="where-we-are">Where we are</h2>
 <ul class="status">
