@@ -1,6 +1,8 @@
 // Modules turn off whole: TALK=0 and STATUS=0 remove talk and status. Each check runs with the module on first,
-// so the off case proves something.
-import { rmSync } from 'node:fs'
+// so the off case proves something. agent-ide.json does the same without env vars, and loads modules of your own.
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { getCurrentTools } from '@earendil-works/pi-ai/utils/transcript'
 import {
 	api,
@@ -137,4 +139,34 @@ for (const status of ['1', '0']) {
 	)
 }
 srv.kill()
+await sleep(300)
+
+// agent-ide.json in the folder the server starts in: context off, search and a module of its own on, and an env var
+// still beats it.
+fresh()
+const own = mkdtempSync(path.join(os.tmpdir(), 'agent-ide-own-'))
+writeFileSync(
+	path.join(own, 'agent-ide.json'),
+	JSON.stringify({ modules: { status: false, context: false, search: true, './mine.js': true } }),
+)
+writeFileSync(
+	path.join(own, 'mine.js'),
+	'export const server = ({ thread }) => ({ serve: async (id) => ({ title: (await thread(id)).title }) })',
+)
+const configured = await server({ STATUS: '1' }, { cwd: own })
+const listed = (await api('GET', '/api/server')).json.modules
+check(
+	listed.join() === 'talk,status,search,mine',
+	'agent-ide.json turns context off and search on, STATUS=1 beats its status: false',
+	JSON.stringify(listed),
+)
+const made = (await api('POST', '/api/threads', { title: 'mine' })).json.id
+const served = (await api('GET', `/api/threads/${made}/mine`)).json
+check(
+	served.title === 'mine',
+	'a module of your own, by path, serves its route',
+	JSON.stringify(served),
+)
+configured.kill()
+rmSync(own, { recursive: true, force: true })
 done()

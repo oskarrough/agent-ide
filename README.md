@@ -33,6 +33,7 @@ DIRECTOR=1 bun server.js               # director.js asks the agents a message @
 MEMORY=1 MEMORY_MODEL=haiku@laptop bun server.js   # memory.js: threads that never end
 SEARCH=1 bun server.js                 # search.js: agents' web_search, through Exa's free search
 MATRIX=1 MATRIX_TOKEN=… MATRIX_ROOMS=… bun server.js   # matrix.js: Matrix rooms as threads; its top says how
+echo '{"modules": {"memory": true, "../bots.js": true}}' > agent-ide.json   # the same switches in the folder it starts in; a path is a module of your own, and an env var beats the file
 bun scripts/replay-pi.js ~/.pi/agent/sessions/FOLDER   # pi sessions, or one .jsonl, as one long thread
 DB_PATH=other.sqlite bun server.js     # another store; only one server may use a file
 
