@@ -216,6 +216,7 @@ flowchart LR
 <ul>
   <li><b>For the runner:</b> the server holds no secrets, you think on your own subscriptions from your own machine, and with several people the answer is plain: whoever lends a runner pays for the agents on it.</li>
   <li><b>Against it:</b> thinking and working come as one. A vps with no login can't think, and an agent can't think on the laptop's login while it works on the vps's disk.</li>
+  <li><b>With several people:</b> do-computer pools keys and subscriptions at the workspace, so one person's sign-in pays for everyone's Doods. Here a login stays with whoever lends the runner, and <code>--owner</code> decides who else may use it. A pool paid for by the server is a runner without an owner, next to the server. What do-computer has that we don't: signing in from the app, where here someone runs <code>pi</code> and <code>/login</code> on the runner's machine.</li>
   <li><b>The ways out:</b> keys on the server, as do-computer does, which turns the server into a keeper of secrets; or an agent that thinks with one runner and works on another, which is one optional field on an agent rather than a new design.</li>
 </ul>
 <p>My lean: the runner pays, and the split waits until the tie actually bites.</p>
