@@ -451,7 +451,7 @@ async function forkThread(id, { at, title }) {
 }
 
 const core = { speaker, models, runners, known, address, reach, agentName, agentTo, agentOf, conversation, thread, home, threadList, messages, lastAsked, field, startThread, post, said, seenBy, commit, collect, once };
-const modules = await load('server', { director: false, talk: true, status: true, memory: false, matrix: false, context: true }, core);
+const modules = await load('server', { director: false, talk: true, status: true, memory: false, matrix: false, context: true, search: false }, core);
 for (const m of modules) if (m.extension) registry.install(m.extension);
 const hook = (name) => modules.find((m) => m[name])?.[name];
 const posted = modules.flatMap((m) => m.posted ?? []);

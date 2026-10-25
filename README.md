@@ -83,7 +83,7 @@ And a few principles:
 - A name is one line of plain text, so nobody can forge a speaker in an agent's input.
 - A runner with an `--owner` takes work only from its owner and the names it `--allow`s: people, or `@runner` for the agents there. An agent always reaches its own runner. Allowing is transitive: allow `@desktop`, and whoever desktop takes can reach you through its agents. A refusal writes nothing.
 - The client watches Pi's own event streams, so replies and tool calls show live. A reconnect starts from fresh snapshots.
-- Anything optional is a module: one file, switched by an env var of the same name. [talk.js](talk.js) gives agents `post` and `threads` tools. [status.js](status.js) has runners report status to their terminal. [context.js](context.js) gives each agent what pi reads in its folder, AGENTS.md and the skills, found by pi on the runner before every request. [director.js](director.js) asks the agents a message @mentions. [memory.js](memory.js) gives each thread a memory of short lines that agents read within their context and zoom back down to the words. [matrix.js](matrix.js) mirrors Matrix rooms into threads, and its top says how to set it up.
+- Anything optional is a module: one file, switched by an env var of the same name. [talk.js](talk.js) gives agents `post` and `threads` tools. [status.js](status.js) has runners report status to their terminal. [context.js](context.js) gives each agent what pi reads in its folder, AGENTS.md and the skills, found by pi on the runner before every request. [director.js](director.js) asks the agents a message @mentions. [memory.js](memory.js) gives each thread a memory of short lines that agents read within their context and zoom back down to the words. [search.js](search.js) gives agents `web_search`, through Exa's free search. [matrix.js](matrix.js) mirrors Matrix rooms into threads, and its top says how to set it up.
 
 The code is the truth. [examples/](examples) shows each idea working, and [docs/concepts.html](docs/concepts.html) draws the words and how they fit.
 
@@ -96,6 +96,7 @@ RUNNER=~/code bun server.js            # lends this machine too: its own runner,
 DIRECTOR=1 bun server.js               # multiplayer
 TALK=0 STATUS=0 CONTEXT=0 bun server.js   # the core alone
 MEMORY=1 MEMORY_MODEL=haiku@laptop bun server.js   # threads that never end
+SEARCH=1 bun server.js                 # agents can search the web
 MATRIX=1 MATRIX_TOKEN=… MATRIX_ROOMS=… bun server.js   # Matrix rooms as threads; see matrix.js and apps/matrix-sync
 bun scripts/replay-pi.js ~/.pi/agent/sessions/FOLDER   # pi sessions, or one .jsonl, as one long thread
 DB_PATH=other.sqlite bun server.js     # another store; only one server may use a file
