@@ -84,7 +84,7 @@ And a few principles:
 - The client watches Pi's own event streams, so replies and tool calls show live. A reconnect starts from fresh snapshots.
 - Anything optional is a module: one file, switched by an env var of the same name. [talk.js](talk.js) gives agents `post` and `threads` tools. [status.js](status.js) has runners report status to their terminal. [context.js](context.js) gives each agent what pi reads in its folder, AGENTS.md and the skills, found by pi on the runner before every request. [director.js](director.js) asks the agents a message @mentions. [memory.js](memory.js) gives each thread a memory of short lines that agents read within their context and zoom back down to the words. [matrix.js](matrix.js) mirrors Matrix rooms into threads, and its top says how to set it up.
 
-The code is the truth. [examples/](examples) shows each idea working.
+The code is the truth. [examples/](examples) shows each idea working, and [docs/concepts.html](docs/concepts.html) draws the words and how they fit.
 
 ## Running it
 

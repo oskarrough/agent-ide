@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agent-ide: what it's made of</title>
+<style>
+  :root {
+    --bg: #fffcf0; --fg: #100f0f; --muted: #6f6e69; --line: #cecdc3; --surface: #f2f0e5;
+    --server: #205ea6; --runner: #66800b; --client: #ad8301; --agent: #a02f6f; --later: #6f6e69;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.55 Charter, 'Iowan Old Style', Georgia, serif; }
+  main { max-width: 780px; margin: 0 auto; padding: 3rem 1.25rem 6rem; }
+  h1, h2, h3 { font-family: ui-sans-serif, system-ui, sans-serif; line-height: 1.2; letter-spacing: -0.01em; }
+  h1 { font-size: 2.1rem; margin: 0 0 0.5rem; }
+  h2 { font-size: 1.35rem; margin: 3.2rem 0 0.8rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 1.6rem 0 0.3rem; }
+  p.lede { font-size: 1.2rem; color: #343331; }
+  code { font: 0.86em ui-monospace, 'SF Mono', Menlo, monospace; background: var(--surface); padding: 0.1em 0.35em; border-radius: 4px; }
+  pre.mermaid { display: none; }
+  .diagram { margin: 1.5rem 0 0.5rem; padding: 1rem; background: #fff; border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
+  .pele {
+    --pele-bg: #ffffff; --pele-fg: #100f0f; --pele-muted: #6f6e69; --pele-line: #575653;
+    --pele-surface: #f2f0e5; --pele-surface-alt: #e6e4d9; --pele-border: #b7b5ac;
+  }
+  figcaption, .caption { color: var(--muted); font-size: 0.92rem; margin: 0.4rem 0 0; }
+  dl.words { display: grid; grid-template-columns: max-content 1fr; gap: 0.9rem 1.2rem; margin: 1.2rem 0; }
+  dl.words dt { font: 600 1rem ui-sans-serif, system-ui, sans-serif; padding-top: 0.15rem; }
+  dl.words dd { margin: 0; }
+  dl.words dd small { display: block; color: var(--muted); font-size: 0.9rem; margin-top: 0.15rem; }
+  .tag { display: inline-block; font: 600 0.7rem ui-sans-serif, system-ui, sans-serif; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.15em 0.5em; border-radius: 99px; color: #fff; vertical-align: 0.15em; margin-left: 0.4em; }
+  .server { background: var(--server); } .runner { background: var(--runner); } .client { background: var(--client); }
+  .agent { background: var(--agent); } .later { background: var(--later); }
+  .name { font: 600 clamp(1.4rem, 5vw, 2.4rem) ui-monospace, 'SF Mono', Menlo, monospace; display: flex; flex-wrap: wrap; justify-content: center; gap: 0; margin: 2rem 0 0.4rem; }
+  .name span { display: flex; flex-direction: column; align-items: center; }
+  .name span i { font: 500 0.78rem ui-sans-serif, system-ui, sans-serif; color: var(--muted); margin-top: 0.5rem; padding-top: 0.35rem; border-top: 3px solid; width: 100%; text-align: center; }
+  .name .m i { border-color: var(--agent); } .name .t i { border-color: var(--client); } .name .r i { border-color: var(--runner); }
+  .name .sep { color: var(--muted); font-weight: 400; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.95rem; margin: 1rem 0; }
+  th, td { text-align: left; vertical-align: top; padding: 0.55rem 0.6rem; border-bottom: 1px solid var(--line); }
+  th { font: 600 0.85rem ui-sans-serif, system-ui, sans-serif; color: var(--muted); }
+  td:first-child { width: 42%; }
+  ul.status { list-style: none; padding: 0; }
+  ul.status li { padding: 0.35rem 0 0.35rem 1.7rem; position: relative; }
+  ul.status li::before { position: absolute; left: 0; font-family: ui-sans-serif, system-ui, sans-serif; }
+  ul.status li.done::before { content: '✓'; color: var(--runner); font-weight: 700; }
+  ul.status li.next::before { content: '→'; color: var(--server); font-weight: 700; }
+  ul.status li.no::before { content: '×'; color: var(--muted); }
+  blockquote { margin: 1.5rem 0; padding: 0.2rem 0 0.2rem 1rem; border-left: 3px solid var(--agent); color: #343331; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>What agent-ide is made of</h1>
+<p class="lede">The thinking happens on the server. The work happens on runners, on machines you choose. You look in through any client, from any device. Six words name everything else.</p>
+
+<pre class="mermaid">
+flowchart LR
+  subgraph clients["Clients, wherever you are"]
+    web["client.html in a browser"]
+    phone["the same, on your phone"]
+    cli["cli.js in a terminal"]
+    mx["Matrix rooms"]
+  end
+  subgraph server["The server: Pi Durable and one SQLite file"]
+    threads["Threads: who said what, to whom"]
+    convos["Each agent's own conversation"]
+  end
+  subgraph laptop["machine: laptop"]
+    r1["runner laptop: ~/code and its pi logins"]
+  end
+  subgraph vps["machine: vps"]
+    r2["runner vps: /srv and its pi logins"]
+    r3["runner docs: /srv/docs, read-only"]
+  end
+  web --> threads
+  phone --> threads
+  cli --> threads
+  mx --> threads
+  threads -- "asks" --> convos
+  r1 -- "dials out" --> convos
+  r2 -- "dials out" --> convos
+  r3 -- "dials out" --> convos
+</pre>
+<p class="caption">Everything that must survive lives in the middle box. A runner or a client can vanish at any moment and nothing is lost: threads wait for a runner to come back.</p>
+
+<h2>The words</h2>
+<p>One word per thing. The test for a word: it names something you can point at in the code or the API, and nothing else in the list overlaps it.</p>
+
+<dl class="words">
+  <dt>Server <span class="tag server">built</span></dt>
+  <dd>The one process you start, <code>bun server.js</code>, on any box you own. It keeps every thread and every agent's conversation in one SQLite file, and Pi Durable makes sure a restart or a stop loses and repeats nothing.
+    <small>Not a "workspace" and not "the cloud". One server is one world; run another for another.</small></dd>
+
+  <dt>Runner <span class="tag runner">built</span></dt>
+  <dd>A program on a machine that lends the server two things: a folder and the model logins pi has there. Started by hand, or installed with one line, <code>curl -fsSL &lt;server&gt;/runner.sh | sh</code>, after which it keeps itself up to date. It can be read-only, and it can have an owner.
+    <small>Not a "computer", not a "daemon". One machine can run several runners: one per folder, or one read-only next to one that can write.</small></dd>
+
+  <dt>Agent <span class="tag agent">built</span></dt>
+  <dd>A model, how hard it thinks, and the runner it runs on: <code>sonnet:high@laptop</code>. In each thread an agent has its own conversation, sees only messages, and posts only its final answer. It knows its folder the way pi does there: AGENTS.md and skills.
+    <small>Not a bot. An agent has no name of its own and no character; it is "this model, this hard, there".</small></dd>
+
+  <dt>Thread <span class="tag server">built</span></dt>
+  <dd>A conversation on the server, with any number of people and agents in it. A message asks the agents in its <code>to</code>, or whoever the thread asked last. Threads fork at any entry, and talk to each other: a child's answer comes back to its parent exactly once.
+    <small>Threads don't live on runners. A thread can ask an agent on the laptop and one on the vps side by side.</small></dd>
+
+  <dt>Client <span class="tag client">built</span></dt>
+  <dd>Whatever you look through: the web client in any browser, the CLI in a terminal, a Matrix room. They all speak the same small HTTP and WebSocket API, and none of them stores anything.
+    <small>This is where "desktop" and "mobile" go: they are screens, not parts of the system.</small></dd>
+
+  <dt>Bot <span class="tag later">later</span></dt>
+  <dd>A who: a name and instructions, running as some agent. <code>ada</code> might be <code>sonnet:high@laptop</code> plus her character; move her to the vps and she's still ada. It belongs on the server, because it's part of the thinking, not the doing.
+    <small>Waits until everything above is rock solid.</small></dd>
+</dl>
+
+<h3>How an agent is named</h3>
+<div class="name">
+  <span class="m">sonnet<i>model</i></span><span class="sep">:</span><span class="t">high<i>thinking</i></span><span class="sep">@</span><span class="r">laptop<i>runner</i></span>
+</div>
+<p class="caption" style="text-align:center">Each part is optional and falls back to pi's defaults on that runner: <code>laptop</code> alone is its default model. The model part is anything <code>pi --model</code> takes, resolved by pi on the runner.</p>
+
+<h2>One message, start to finish</h2>
+<pre class="mermaid">
+sequenceDiagram
+  participant You as You, in any client
+  participant T as Thread, on the server
+  participant A as The agent, on the server
+  participant R as runner laptop
+  participant M as The model's provider
+  You->>T: "fix the flaky test", to sonnet:high@laptop
+  T->>A: everything it hasn't seen yet, as one input
+  A->>R: model request
+  R->>M: with the laptop's login
+  M-->>A: streamed back: call bash
+  A->>R: bash: bun test, in ~/code
+  R-->>A: what it printed
+  A->>R: model request, and so on
+  A-->>T: only its final answer
+  T-->>You: live, as it lands
+</pre>
+<p class="caption">The brain never leaves the server: the agent's loop, its conversation and its memory. The runner is its hands and its voice: it runs the tools, and it carries the model calls on its own logins. If the runner drops mid-way, the agent waits for it and carries on.</p>
+
+<h2>A runner's life</h2>
+<pre class="mermaid">
+stateDiagram-v2
+  direction LR
+  [*] --> Online: curl …/runner.sh | sh
+  Online --> Offline: machine sleeps, network drops
+  Offline --> Online: dials back by itself
+  Online --> Updating: new runner on the server, and it's idle
+  Updating --> Online: fetched, installed, restarted
+</pre>
+<p class="caption">The server ships its own runner, so a runner always matches its server. It never updates mid-answer: the server asks only when it has nothing open.</p>
+
+<h2>Words we don't use, and why</h2>
+<dl class="words">
+  <dt>Machine</dt>
+  <dd>Plain English for where a runner runs: a laptop, a VPS, a container. It isn't a concept in agent-ide; the runner records its host, and that's all.</dd>
+  <dt>Computer</dt>
+  <dd>do-computer's word for where a Dood works, which bundles three ideas: where the files are, where commands run, and which provider made the box (a virtual shell, Daytona, Modal, Cloudflare, or your own paired machine). agent-ide has one kind: anywhere you can run the curl line. A cloud sandbox is just a machine you run it on.</dd>
+  <dt>Daemon</dt>
+  <dd>The runner is the daemon. One word is enough.</dd>
+  <dt>Desktop</dt>
+  <dd>do-computer's desktop app is three things in one program: a window, a server, and a daemon. agent-ide gets the same with <code>RUNNER=~/code bun server.js</code> and a browser tab, and you can see each part running.</dd>
+  <dt>Mobile</dt>
+  <dd>The web client in your phone's browser. Reach the server over Tailscale, never the open internet: there are no accounts, so whoever can reach it can use it.</dd>
+  <dt>Workspace</dt>
+  <dd>A server is the workspace. Who may use a runner is the runner's owner's call.</dd>
+</dl>
+
+<h2>Next to do-computer</h2>
+<p>do-computer is a good neighbour to think against: the same idea, a product around it. Where we differ, it's on purpose.</p>
+<table>
+  <tr><th>do-computer</th><th>agent-ide</th></tr>
+  <tr><td>A deployment on Node or Cloudflare, with accounts and teams</td><td>A server: one process, one file, no accounts. Keep it on a trusted network.</td></tr>
+  <tr><td>Computers of five kinds, made by providers from keys on the server</td><td>Runners of one kind. Where you run them is your business.</td></tr>
+  <tr><td>A daemon, installed by <code>install.sh</code>, paired through a link</td><td>A runner, installed by <code>runner.sh</code>. No pairing; <code>--owner</code> says whose it is.</td></tr>
+  <tr><td>Model keys live on the server</td><td>Logins live on each runner: think with the laptop's subscription, while the server holds none.</td></tr>
+  <tr><td>A Dood can use several computers, and names one on each tool call</td><td>An agent has one runner. To work elsewhere it asks an agent there, in a thread.</td></tr>
+  <tr><td>A Dood: identity, memory, a hatching ritual</td><td>A bot, later: a name and instructions. Memory belongs to threads.</td></tr>
+  <tr><td>Desktop and phone apps</td><td>Any browser, and a CLI.</td></tr>
+  <tr><td><code>tailscale serve</code> from the desktop app, for your phone</td><td>The same, by hand: <code>tailscale serve --bg --https=443 http://127.0.0.1:3000</code> gives the server an HTTPS address only your devices can reach.</td></tr>
+</table>
+
+<blockquote>do-computer's hardest-won idea is that the agent has no computer of its own. We agree, and go one further: it doesn't choose one either. Choosing is a person's job, done once, in the agent's name.</blockquote>
+
+<h2>Where we are</h2>
+<ul class="status">
+  <li class="done">A server that survives restarts and stops, on Pi Durable.</li>
+  <li class="done">Runners: started by hand or with one curl line, self-updating, read-only if you like, with owners.</li>
+  <li class="done">Agents as <code>model:thinking@runner</code>, knowing their folder's AGENTS.md and skills.</li>
+  <li class="done">Threads with many people and agents, forks, and threads that talk to each other.</li>
+  <li class="done">Clients: the web client, the CLI, Matrix.</li>
+  <li class="next">Bots, once the rest is rock solid.</li>
+  <li class="next">Memory, a thread that never has to end, still being explored.</li>
+  <li class="no">A desktop app, a phone app, cloud machine kinds, accounts. Each is a shell around what's already here.</li>
+</ul>
+
+</main>
+<script type="module">
+  import { mount } from 'https://cdn.jsdelivr.net/npm/pele@1/dist/pele.js';
+  for (const pre of document.querySelectorAll('pre.mermaid')) {
+    const box = document.createElement('div');
+    box.className = 'diagram pele';
+    pre.before(box);
+    mount(box, pre.textContent, { fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 14 });
+  }
+</script>
+</body>
+</html>
