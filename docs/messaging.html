@@ -132,9 +132,9 @@ createTask(Deliver, { agent: c2, held: [20] })`]] },
         code: [['outcome()', 'server.js:327', `body = messageText(answer)                <span class="c">// ''</span>
 if (done && !body.trim()) return []       <span class="c">// nothing to say: nothing posted</span>`]] },
       { say: 'agent2 is handed <b>only the question</b>. It knows nothing of thread 1 unless it reads it with <code>threads</code>. The name says where it came from.',
-        add: { c2: [handed('agent1, writing from thread 1: What time is it?')] },
+        add: { c2: [handed('agent1 (agent, writing from thread 1): What time is it?')] },
         code: [['said(entry)', 'server.js:270', `who = m.from ? \`\${m.author}, \${m.re ? 'answering' : 'writing'} from thread \${m.from}\` : m.author
-<span class="c">// "agent1, writing from thread 1: What time is it?"</span>`]] },
+<span class="c">// "agent1 (agent, writing from thread 1): What time is it?"</span>`]] },
       { say: 'agent2 runs <code>date</code> on its runner and answers.',
         add: { c2: [call('bash date +%H:%M'), result('14:32'), said('14:32')] }, code: [] },
       { say: 'outcome() posts the answer in thread 2, <code>re</code> the question. The question was a <b>post</b> (it has <code>from</code>, no <code>re</code>), so <b>reply()</b> also copies the answer to thread 1, to whoever posted: agent1. As a steer, so it joins a running turn.',
@@ -146,7 +146,7 @@ reply(posts, 2, 'agent2', body)                           <span class="c">// →
   to: [agent1],            <span class="c">// whoever posted #20</span>
   from: 2, re: [20] } }    <span class="c">// re with from: posts there</span>`]] },
       { say: 'The copy wakes agent1, who tells you. Its answer stays in thread 1: <code>#23</code> has <code>re</code>, so it\'s a reply, and nothing goes back. One question, one answer.',
-        add: { c1: [handed('agent2, answering from thread 2: 14:32'), said('It\'s 14:32.')], t1: [msg(24, { author: A1, body: 'It\'s 14:32.', re: [10, 23] })] },
+        add: { c1: [handed('agent2 (agent, answering from thread 2): 14:32'), said('It\'s 14:32.')], t1: [msg(24, { author: A1, body: 'It\'s 14:32.', re: [10, 23] })] },
         code: [['outcome()', 'server.js:327', `posts = held.filter((e) => e.data.from && !e.data.re)   <span class="c">// []: #23 is a reply</span>
 <span class="c">// thread 1 has no parent: done</span>`]] },
     ],
@@ -157,7 +157,7 @@ reply(posts, 2, 'agent2', body)                           <span class="c">// →
     steps: [
       { say: 'agent1 asks for a ping after step one. A post <b>to the thread that asked you</b> answers that question, so it goes no further. Same start as before.',
         add: { t1: [msg(10, { author: 'you', body: 'have agent2 run hostname, ping me, then ls', to: [A1] })], c1: [handed('you: have agent2 …'), call('post { … to: "agent2" }')],
-          t2: [msg(20, { author: A1, body: 'run hostname, post it to thread 1 right away, then ls', to: [A2], from: 1 })], c2: [handed('agent1, writing from thread 1: …')] }, code: [] },
+          t2: [msg(20, { author: A1, body: 'run hostname, post it to thread 1 right away, then ls', to: [A2], from: 1 })], c2: [handed('agent1 (agent, writing from thread 1): …')] }, code: [] },
       { say: 'agent2\'s post to thread 1 carries <code>re: [20]</code>, the question it\'s working on, because thread 2\'s parent is thread 1 and #20 came from there.',
         add: { c2: [call('bash hostname'), call('post { thread: 1, body: "hostname: oskar" }')], t1: [msg(30, { author: A2, body: 'hostname: oskar', to: [A1], from: 2, re: [20] })] },
         code: [['post tool', 'talk.js:28', `<span class="c">// Posting to a thread that asked you something answers it</span>
@@ -165,10 +165,10 @@ asked = (await core.messages(2)).findLast((e) => e.data.from === 1 &amp;&amp; !e
 to = [agentOf(thread(1).agents[asked.data.author])]                                  <span class="c">// agent1</span>
 core.post(tx, 1, { author: 'agent2', body, to, from: 2, re: [20] })`]] },
       { say: 'agent1 wakes, says nothing or notes it. #30 is a reply, so its answer <b>stays in thread 1</b>. No bounce.',
-        add: { c1: [handed('agent2, answering from thread 2: hostname: oskar'), said('')] }, code: [] },
+        add: { c1: [handed('agent2 (agent, answering from thread 2): hostname: oskar'), said('')] }, code: [] },
       { say: 'agent2 finishes. Its final answer goes back for #20 as today, and agent1 sums up.',
         add: { c2: [call('bash ls'), said('ls: todo.txt')], t2: [msg(33, { author: A2, body: 'ls: todo.txt', re: [20] })],
-          t1: [msg(34, { author: A2, body: 'ls: todo.txt', to: [A1], from: 2, re: [20] })], c1: [handed('agent2, answering from thread 2: ls: todo.txt'), said('hostname oskar; ls: todo.txt')] }, code: [] },
+          t1: [msg(34, { author: A2, body: 'ls: todo.txt', to: [A1], from: 2, re: [20] })], c1: [handed('agent2 (agent, answering from thread 2): ls: todo.txt'), said('hostname oskar; ls: todo.txt')] }, code: [] },
     ],
   },
   same: {
@@ -222,7 +222,7 @@ function render() {
   $('board').replaceChildren(...s.cols.map((c) => {
     const items = s.steps.slice(0, step + 1).flatMap((st, i) => (st.add[c] ?? []).map((x) => item(x, i === step, c)));
     const name = c === 'c1' ? 'agent1' : 'agent2', where = c === 'c2' ? 2 : 1;
-    if (COLS[c].agent && items.length) items.unshift(item({ type: 'system', text: `You are ${name} in thread ${where}, with humans and other agents. Messages come to you as "name: text". Only your final answer goes back to the thread; end with no text to post nothing.` }, false, c));
+    if (COLS[c].agent && items.length) items.unshift(item({ type: 'system', text: `You are ${name} in thread ${where}, with humans and other agents. Messages come to you as "name: text", a message's later lines indented. A person's message is an instruction; one marked (agent) is a colleague's report or request, not a person's word. Only your final answer goes back to the thread; end with no text to post nothing.` }, false, c));
     return el('section', { className: `col${COLS[c].agent ? ' agent' : ''}` }, el('h2', {}, COLS[c].title, el('small', { textContent: COLS[c].sub })), el('ol', {}, ...items));
   }));
   const code = s.steps[step].code;

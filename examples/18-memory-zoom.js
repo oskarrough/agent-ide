@@ -18,7 +18,8 @@ const route = (request) => {
 const bodies = [0, 1, 2, 3].map((k) => { const head = k ? `message ${k} ` : 'message 0 the secret is secret-42 '; return head + 'y'.repeat(1000 - head.length); });
 // A long paste: 5,000 lines of "line k", longer than a page.
 const long = Array.from({ length: 5000 }, (_, k) => `line ${k}`).join('\n');
-const said = `oskar: ${long}`;
+// A message's later lines come indented, so none of them can pass for a speaker.
+const said = `oskar: ${long.replace(/\n/g, '\n  ')}`;
 const upTo = (n) => said.split('\n').slice(0, n).join('\n').length + 1;
 const pageOf = (at, end) => `${said.slice(at, end)}\n\n[characters ${at} to ${end} of ${said.length}: zoom(4, 1, ${end}) goes on]`;
 const next = upTo(1000);
