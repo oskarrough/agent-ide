@@ -5,7 +5,7 @@ A small agent IDE on [Pi Durable](https://www.npmjs.com/package/@earendil-works/
 ## What it promises
 
 1. **Threads with many authors.** Humans and agents talk in one thread, and each agent answers from its own conversation.
-2. **Runners.** Tool calls run on a machine you choose, in a folder you choose, with that machine's logins.
+2. **Runners.** Tool calls run on a machine you choose, in a folder you choose, with that machine's logins, and the agent knows that folder's AGENTS.md and skills as pi would.
 3. **Models of your choice.** Any model pi can name, named the way pi names it.
 4. **Stable messaging.** A message between threads arrives once and its answer comes back once, even across restarts and stops.
 5. **Forks.** Fork a thread at any entry, with each agent in it, to try another path from the same point.
@@ -80,7 +80,7 @@ And a few principles:
 - A name is one line of plain text, so nobody can forge a speaker in an agent's input.
 - A runner with an `--owner` takes work only from its owner and the names it `--allow`s: people, or `@runner` for the agents there. An agent always reaches its own runner. Allowing is transitive: allow `@desktop`, and whoever desktop takes can reach you through its agents. A refusal writes nothing.
 - The client watches Pi's own event streams, so replies and tool calls show live. A reconnect starts from fresh snapshots.
-- Anything optional is a module: one file, switched by an env var of the same name. [talk.js](talk.js) gives agents `post` and `threads` tools. [status.js](status.js) has runners report status to their terminal. [director.js](director.js) asks the agents a message @mentions. [memory.js](memory.js) gives each thread a memory of short lines that agents read within their context and zoom back down to the words. [matrix.js](matrix.js) mirrors Matrix rooms into threads, and its top says how to set it up.
+- Anything optional is a module: one file, switched by an env var of the same name. [talk.js](talk.js) gives agents `post` and `threads` tools. [status.js](status.js) has runners report status to their terminal. [context.js](context.js) gives each agent what pi reads in its folder, AGENTS.md and the skills, found by pi on the runner before every request. [director.js](director.js) asks the agents a message @mentions. [memory.js](memory.js) gives each thread a memory of short lines that agents read within their context and zoom back down to the words. [matrix.js](matrix.js) mirrors Matrix rooms into threads, and its top says how to set it up.
 
 The code is the truth. [examples/](examples) shows each idea working.
 
@@ -90,7 +90,7 @@ The code is the truth. [examples/](examples) shows each idea working.
 bun server.js                          # http://127.0.0.1:3000, stored in agent-ide-3000.sqlite
 HOST=0.0.0.0 PORT=3001 bun server.js   # reachable from other machines
 DIRECTOR=1 bun server.js               # multiplayer
-TALK=0 STATUS=0 bun server.js          # the core alone
+TALK=0 STATUS=0 CONTEXT=0 bun server.js   # the core alone
 MEMORY=1 MEMORY_MODEL=haiku@laptop bun server.js   # threads that never end
 MATRIX=1 MATRIX_TOKEN=… MATRIX_ROOMS=… bun server.js   # Matrix rooms as threads; see matrix.js and apps/matrix-sync
 bun scripts/replay-pi.js ~/.pi/agent/sessions/FOLDER   # pi sessions, or one .jsonl, as one long thread

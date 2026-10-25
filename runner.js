@@ -40,7 +40,7 @@ async function offers() {
   return [...new Set(scopedModels.map(({ model }) => `${model.provider}/${model.id}`))];
 }
 
-const modules = await load('runner', { status: true }, { name, server });
+const modules = await load('runner', { status: true, context: true }, { name, server, dir });
 
 async function connect() {
   const { model, error } = defaultModel();
@@ -49,7 +49,8 @@ async function connect() {
   for (const ref of await offers().catch(() => [])) query.append('offer', ref);
   for (const who of args.allow) query.append('allow', who);
   const socket = new WebSocket(`${server.replace(/^http/, 'ws')}/ws?${query}`);
-  const runner = serveRunner({ name, dir, models, resolve, echo, send: (text) => socket.readyState === WebSocket.OPEN && socket.send(text),
+  const runner = serveRunner({ name, dir, models, resolve, echo, ops: Object.assign({}, ...modules.map((m) => m.ops)),
+    send: (text) => socket.readyState === WebSocket.OPEN && socket.send(text),
     onTell: (message) => { for (const m of modules) m.told?.(message); } });
   const from = args.owner ? `, to ${[args.owner, ...args.allow].join(', ')}` : '';
   socket.onopen = () => console.log(`${name} online at ${server}, lending pi's logins and ${dir}${from}`);

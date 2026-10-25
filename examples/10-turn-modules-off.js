@@ -38,15 +38,15 @@ async function round(env) {
 }
 
 const on = await round({});
-check(on.modules.join() === 'talk,status', 'by default talk and status are on, the director off', JSON.stringify(on.modules));
+check(on.modules.join() === 'talk,status,context', 'by default talk, status and context are on, the director off', JSON.stringify(on.modules));
 check(on.offered.includes('post') && on.offered.includes('threads') && on.offered.includes('read'), 'talk on: the model has post and threads, beside Pi\'s own read', JSON.stringify(on.offered));
 check(on.prompt.includes('end your turn'), 'talk on: its instructions are in the prompt');
 check(on.children.length === 1, 'talk on: the post starts a child');
 check(on.parent.entries.some((e) => e.data.from && e.data.re), 'talk on: the answer comes back');
 check(on.told.some((m) => m.op === 'status'), 'status on: the runner is told how its threads stand');
 
-const off = await round({ TALK: '0', STATUS: '0' });
-check(off.modules.length === 0, 'TALK=0 STATUS=0: no modules', JSON.stringify(off.modules));
+const off = await round({ TALK: '0', STATUS: '0', CONTEXT: '0' });
+check(off.modules.length === 0, 'TALK=0 STATUS=0 CONTEXT=0: no modules', JSON.stringify(off.modules));
 check(!off.offered.includes('post') && !off.offered.includes('threads') && off.offered.includes('bash'), 'talk off: no post or threads, still the coding tools', JSON.stringify(off.offered));
 check(!off.prompt.includes('end your turn'), 'talk off: nothing about other threads in the prompt');
 check(Boolean(off.result) && !/Posted to thread/.test(off.result), 'talk off: a post call fails', off.result);

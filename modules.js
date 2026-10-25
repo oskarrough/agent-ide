@@ -3,7 +3,7 @@
 //           posted(tx, threadId, entry): work added to a post's commit, writes only,
 //           catchUp(threadId, held, all, agent) → the content of a Deliver task's input to that agent's conversation,
 //           serve(threadId, query) → what GET /api/threads/:id/<module name> answers
-//   runner: told(message), disconnected()
+//   runner: told(message), disconnected(), ops: { [op]: (message, context) → what the runner answers the server's call }
 export async function load(end, defaults, core) {
   const on = Object.keys(defaults).filter((name) => {
     const value = process.env[name.toUpperCase()];
