@@ -115,7 +115,7 @@ flowchart LR
   <li><b>Runners.</b> Tool calls run on a machine you choose, in a folder you choose, with that machine's logins, and the agent knows that folder's AGENTS.md and skills as pi would.</li>
   <li><b>Models of your choice.</b> Any model pi can name, named the way pi names it.</li>
   <li><b>Stable messaging.</b> A message between threads arrives once and its answer comes back once, even across restarts and stops.</li>
-  <li><b>Forks.</b> Fork a thread at any entry, with each agent in it, to try another path from the same point.</li>
+  <li><b>Forks.</b> Fork a thread at any message, with each agent in it, to try another path from the same point.</li>
   <li><b>Memory</b> (under exploration). A thread never has to end, and anything said in it can be found again, word for word.</li>
 </ol>
 <p class="caption">A change serves one of these, or it doesn't land. The code is the truth, and <a href="https://github.com/oskarrough/agent-ide/tree/main/examples">examples/</a> shows each idea working.</p>
@@ -125,7 +125,7 @@ flowchart LR
 
 <dl class="words">
   <dt>Server <span class="tag server">built</span></dt>
-  <dd>The one process you start, <code>bun server.js</code>, on any box you own. It keeps every thread and every agent's conversation in one SQLite file, and Pi Durable makes sure a restart or a stop loses and repeats nothing.
+  <dd>The one process you start, <code>npx github:oskarrough/agent-ide</code>, on any box you own. It lends the folder it starts in as its first runner. It keeps every thread and every agent's conversation in one SQLite file, and Pi Durable makes sure a restart or a stop loses and repeats nothing.
     <small>What you might call a workspace, or the cloud. A server is the workspace: one server is one world; run another for another.</small></dd>
 
   <dt>Runner <span class="tag runner">built</span></dt>
@@ -137,12 +137,12 @@ flowchart LR
     <small>Not a bot. An agent has no name of its own and no character; it is "this model, this hard, there".</small></dd>
 
   <dt>Thread <span class="tag server">built</span></dt>
-  <dd>A conversation on the server, with any number of people and agents in it. A message asks the agents in its <code>to</code>, or whoever the thread asked last. Threads fork at any entry, and talk to each other: a child's answer comes back to its parent exactly once.
+  <dd>A conversation on the server, with any number of people and agents in it. A message asks the agents in its <code>to</code>, or whoever the thread asked last. Threads fork at any message, and talk to each other: an answer comes back to the thread that asked exactly once.
     <small>Threads don't live on runners. A thread can ask an agent on the laptop and one on the vps side by side.</small></dd>
 
   <dt>Client <span class="tag client">built</span></dt>
   <dd>Whatever you look through: the web client in any browser, the CLI in a terminal, a Matrix room. They all speak the same small HTTP and WebSocket API, and none of them stores anything.
-    <small>What you might call the desktop or the mobile app: <code>RUNNER=~/code bun server.js</code> and a browser tab, on your laptop or, over Tailscale, your phone.</small></dd>
+    <small>What you might call the desktop or the mobile app: <code>npx github:oskarrough/agent-ide</code> in a folder and a browser tab, on your laptop or, over Tailscale, your phone.</small></dd>
 
   <dt>Bot <span class="tag later">later</span></dt>
   <dd>A who: a name and instructions, running as some agent. <code>ada</code> might be <code>sonnet:high@laptop</code> plus her character; move her to the vps and she's still ada. It belongs on the server, because it's part of the thinking, not the doing.

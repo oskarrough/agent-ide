@@ -50,7 +50,7 @@ DB_PATH=other.sqlite bun server.js     # another store; only one server may use 
 bun runner.js --server http://127.0.0.1:3000 --name laptop [--alias "Oskar's laptop"] --dir ~/code [--owner oskar [--allow ana --allow @desktop]] [--read-only]
 curl -fsSL http://127.0.0.1:3000/connect-runner | sh -s -- [the same options] [--no-update]   # into ~/.agent-ide, kept up to date
 
-bun cli.js post "hello" --to sonnet@laptop --to desk --effort high   # a new thread; answers print as they land
+bun cli.js post "hello" --to sonnet@laptop --to desk --thinkingLevel high   # a new thread; answers print as they land
 bun cli.js post "and you?" --thread 3                               # asks whom thread 3 last asked
 bun cli.js threads | runners | read 3 [--last 5] | stop 3          # runner.js and cli.js both read AGENT_IDE_SERVER=url, or --server
 ```
@@ -62,14 +62,14 @@ The client is served at `/`, or by `bun client.html` with live reload; [cli.js](
 Send `x-user: name` to say who you are. The two POSTs that make something, a thread and an entry, take an optional `"requestId"` (a string of up to 128 characters, such as `crypto.randomUUID()`): send the same one again after a dropped response and you get the first result back, whatever else changed. A thread entry is Pi's own, `{id, kind: "agent-ide.message", data}`, and `data` is a message:
 
 ```
-{ author, body, to?: [{runner, model, effort?, dir?}], from?: threadId, re?: [entryId],
+{ author, body, to?: [{runner, model, thinkingLevel?, dir?}], from?: threadId, re?: [entryId],
   answer?: {conversation, entry}, error?: true, shell?: {runner, code, stdout, stderr} }
 ```
 
 - `GET /api/server`: the server's options, its modules, and what Pi is running.
 - `GET|POST /api/threads` `{"title","parent"?,"requestId"?}`: each thread with its agents, status, running commands and Pi conversation record.
 - `GET /api/threads/:id`: the thread's row, its `agents` as `{name, conversation, to, status}`, and every entry.
-- `POST /api/threads/:id/entries` `{"body","to"?: agent | [agent] | null, "steer"?: true, "requestId"?}`, an agent being `{"runner","model"?,"effort"?,"dir"?}` and its model anything `pi --model` takes: a steer joins the answer being written. A runner that doesn't take work from you answers 403.
+- `POST /api/threads/:id/entries` `{"body","to"?: agent | [agent] | null, "steer"?: true, "requestId"?}`, an agent being `{"runner","model"?,"thinkingLevel"?,"dir"?}` and its model anything `pi --model` takes: a steer joins the answer being written. A runner that doesn't take work from you answers 403.
 - `POST /api/threads/:id/fork` `{"at": entryId, "title"?}`: a new thread from that entry.
 - `POST /api/threads/:id/read`: marks it read for you, so its last answer stops counting as done.
 - `POST /api/threads/:id/stop`: stops its agents, deliveries and commands, and withdraws their queued inputs.

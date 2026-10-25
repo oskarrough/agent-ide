@@ -6,7 +6,7 @@ const usage = `bun cli.js [--server url] [--as name] <command>
   post <message>   post to a new thread, or --thread N, and print the answers as they land
                    --to agent    model@runner, a runner for its default model, or nobody; repeat for more
                                  (left out: whom the thread last asked)
-                   --effort e    how hard they think: off, minimal, low, medium, high, xhigh, max
+                   --thinking t  how hard they think: off, minimal, low, medium, high, xhigh, max
                    --dir d       a folder inside the runner's
                    --title t     the new thread's title (the message's start by default)
                    --steer       join the answer being written
@@ -23,7 +23,7 @@ const parse = (options) => {
 const { values: o, positionals: [command, ...rest] } = parse({
   server: { type: 'string', default: process.env.AGENT_IDE_SERVER || 'http://127.0.0.1:3000' },
   as: { type: 'string', default: process.env.USER || 'anon' },
-  thread: { type: 'string' }, to: { type: 'string', multiple: true }, effort: { type: 'string' }, dir: { type: 'string' },
+  thread: { type: 'string' }, to: { type: 'string', multiple: true }, thinking: { type: 'string' }, dir: { type: 'string' },
   title: { type: 'string' }, steer: { type: 'boolean' }, 'no-wait': { type: 'boolean' }, last: { type: 'string' },
   help: { type: 'boolean', short: 'h' },
 });
@@ -39,7 +39,7 @@ async function api(method, route, body) {
 function agent(name) {
   if (name === 'nobody') return null;
   const at = name.lastIndexOf('@');
-  return { runner: name.slice(at + 1), model: at < 0 ? '' : name.slice(0, at), ...(o.effort ? { effort: o.effort } : {}), ...(o.dir ? { dir: o.dir } : {}) };
+  return { runner: name.slice(at + 1), model: at < 0 ? '' : name.slice(0, at), ...(o.thinking ? { thinkingLevel: o.thinking } : {}), ...(o.dir ? { dir: o.dir } : {}) };
 }
 
 function show({ id, data: m }) {

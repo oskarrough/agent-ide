@@ -39,7 +39,7 @@ check(answers(v2 ?? { entries: [] })[1]?.data.body === 'echo@laptop heard: ana: 
 await api('POST', `/api/threads/${id}/entries`, { body: 'think hard', to: { runner: 'laptop', model: 'echo:high' } }, 'cy');
 const v3 = await answered(id, 3);
 const cy = v3?.entries.find((e) => e.data.author === 'cy');
-check(cy?.data.to?.[0].model === 'echo/echo' && cy.data.to[0].effort === 'high', 'pi resolves a pattern and its thinking level', JSON.stringify(cy?.data.to));
+check(cy?.data.to?.[0].model === 'echo/echo' && cy.data.to[0].thinkingLevel === 'high', 'pi resolves a pattern and its thinking level', JSON.stringify(cy?.data.to));
 check(v3?.agents.length === 1, 'the same model is the same agent', JSON.stringify(v3?.agents));
 
 // Dee names no model: the desk runner's default, pi's own, whose settings name it with its provider as pi takes it too.

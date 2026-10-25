@@ -40,15 +40,15 @@ const sections = new IntersectionObserver((list) => {
 }, { rootMargin: '-45% 0px -45% 0px' });
 document.querySelectorAll('.page > section').forEach((s) => sections.observe(s));
 
-// model:thinking@runner, as pi names a model: the last @ splits off the runner, a last :effort the thinking.
+// model:thinking@runner, as pi names a model: the last @ splits off the runner, a last :thinkingLevel the thinking.
 function agent(name) {
   const at = name.lastIndexOf('@');
-  let model = at < 0 ? name : name.slice(0, at), effort;
+  let model = at < 0 ? name : name.slice(0, at), thinkingLevel;
   const colon = model.lastIndexOf(':');
-  if (colon >= 0 && EFFORTS.includes(model.slice(colon + 1))) [model, effort] = [model.slice(0, colon), model.slice(colon + 1)];
-  return { runner: at < 0 ? '' : name.slice(at + 1), ...(model && { model }), ...(effort && { effort }) };
+  if (colon >= 0 && EFFORTS.includes(model.slice(colon + 1))) [model, thinkingLevel] = [model.slice(0, colon), model.slice(colon + 1)];
+  return { runner: at < 0 ? '' : name.slice(at + 1), ...(model && { model }), ...(thinkingLevel && { thinkingLevel }) };
 }
-const name = ({ model, effort, runner }) => `${model ?? ''}${effort ? `:${effort}` : ''}@${runner}`;
+const name = ({ model, thinkingLevel, runner }) => `${model ?? ''}${thinkingLevel ? `:${thinkingLevel}` : ''}@${runner}`;
 const key = (runner, model) => `${model}@${runner}`;
 const same = (a, b) => a?.runner === b?.runner && a?.model === b?.model;
 
@@ -323,7 +323,7 @@ const chosen = {};
 const setting = (r) => {
   const p = picks.find((x) => x.runner === r.name);
   // Low thinking unless you turn it up: quick answers suit a page you play with.
-  return p ? { model: p.model, effort: p.effort } : chosen[r.name] ?? { model: r.model, effort: 'low' };
+  return p ? { model: p.model, thinkingLevel: p.thinkingLevel } : chosen[r.name] ?? { model: r.model, thinkingLevel: 'low' };
 };
 function tune(r, change) {
   const next = Object.fromEntries(Object.entries({ ...setting(r), ...change }).filter(([, v]) => v));
@@ -362,8 +362,8 @@ function runnerCard(r, asked) {
   const swap = el('select', { className: 'swap', title: 'model', onclick: stop, onchange: () => tune(r, { model: swap.value }) }, ...models.map((o) => new Option(o, o)));
   swap.value = set.model ?? '';
   // How hard it thinks: a slider from the runner's default up to max.
-  const knob = el('input', { type: 'range', min: 0, max: EFFORTS.length, value: EFFORTS.indexOf(set.effort) + 1, title: set.effort || 'default thinking', onclick: stop });
-  knob.onchange = () => tune(r, { effort: knob.value > 0 ? EFFORTS[knob.value - 1] : undefined });
+  const knob = el('input', { type: 'range', min: 0, max: EFFORTS.length, value: EFFORTS.indexOf(set.thinkingLevel) + 1, title: set.thinkingLevel || 'default thinking', onclick: stop });
+  knob.onchange = () => tune(r, { thinkingLevel: knob.value > 0 ? EFFORTS[knob.value - 1] : undefined });
   const others = [...new Set(here.map((a) => a.to.model))].filter((m) => m !== set.model);
   return el('div', {
     className: `node card${r.online ? '' : ' off'}${on ? ' routed' : ''}`, id: `runner-${r.name}`,

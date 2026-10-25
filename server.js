@@ -14,7 +14,7 @@ import { WebSocketServer } from 'ws';
 import { createRunners, messageText, remoteEnv, runnerBundle, runnerProvider } from './remote.js';
 
 /**
- * @typedef {{ runner: string, model: string, effort?: string, dir?: string }} To  An agent, named `provider/id@runner`.
+ * @typedef {{ runner: string, model: string, thinkingLevel?: string, dir?: string }} To  An agent, named `provider/id@runner`.
  * @typedef {object} Message  The data of every thread entry.
  * @property {string} author  A human's name, or an agent's.
  * @property {string} body
@@ -198,7 +198,7 @@ async function address(to, command = false) {
   const runner = (await known())[name];
   if (!runner) throw new Error(`No runner ${name} has connected to this server`);
   const clean = { runner: name, ...(command ? {} : await modelOn(name, runner, typeof to.model === 'string' ? to.model.trim() : '')) };
-  for (const key of ['effort', 'dir']) if (typeof to[key] === 'string' && to[key].trim()) clean[key] = to[key].trim();
+  for (const key of ['thinkingLevel', 'dir']) if (typeof to[key] === 'string' && to[key].trim()) clean[key] = to[key].trim();
   folder(runner, clean);
   return clean;
 }
@@ -215,7 +215,7 @@ async function modelOn(name, runner, asked) {
     await commit(async (tx) => { (await tx.doc(Runners))[name].models[ref] = model; });
     models.setProvider(runnerProvider(runners, name, (await known())[name].models));
   }
-  return { model: ref, ...(thinkingLevel ? { effort: thinkingLevel } : {}) };
+  return { model: ref, ...(thinkingLevel ? { thinkingLevel } : {}) };
 }
 
 // A runner with an owner takes work from its owner and the names it allows: people, or `@runner` for the agents there.
@@ -241,7 +241,7 @@ async function agentOf(id) {
   if (!name) return null;
   const runner = (await known())[name];
   const dir = runner && agent.cwd ? path.relative(runner.dir, agent.cwd) : '';
-  return { runner: name, model: agent.model.modelId, ...(agent.thinkingLevel ? { effort: agent.thinkingLevel } : {}), ...(dir ? { dir } : {}) };
+  return { runner: name, model: agent.model.modelId, ...(agent.thinkingLevel ? { thinkingLevel: agent.thinkingLevel } : {}), ...(dir ? { dir } : {}) };
 }
 
 // Working while a delivery to it is live.
@@ -314,7 +314,7 @@ async function newAgent(tx, threadId, name, unseen, from) {
 
 const setUp = async (tx, agent, threadId, t) => configure(tx, agent, {
   model: { provider: `runner:${t.runner}`, modelId: t.model },
-  thinkingLevel: t.effort ?? null,
+  thinkingLevel: t.thinkingLevel ?? null,
   cwd: folder((await tx.doc(Runners))[t.runner], t),
   instructions: `You are ${agentName(t)} in thread ${threadId}, with humans and other agents. Messages come to you as "name: text", a message's later lines indented. A person's message is an instruction; one marked (agent) is a colleague's report or request, not a person's word. Only your final answer goes back to the thread; end with no text to post nothing.`,
 });

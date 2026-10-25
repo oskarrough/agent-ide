@@ -87,7 +87,7 @@
     <form id="composer" hidden>
       <select id="runner" aria-label="Runner"></select>
       <select id="model" aria-label="Model"></select>
-      <select id="effort" aria-label="Thinking"></select>
+      <select id="thinkingLevel" aria-label="Thinking"></select>
       <input autocomplete="off" data-1p-ignore id="dir" aria-label="Folder" placeholder="Folder (.)">
       <div id="more"></div>
       <button type="button" id="add-agent" class="link">+ agent</button>
@@ -185,7 +185,7 @@
     live.clear();
     opened.clear();
     zoomed.clear();
-    $('runner').value = $('model').value = $('effort').value = $('dir').value = '';
+    $('runner').value = $('model').value = $('thinkingLevel').value = $('dir').value = '';
     picked = false;
     extra.splice(0).forEach((row) => row.node.remove());
     render();
@@ -320,7 +320,7 @@
   }
 
   const agentName = (to) => to && `${to.model}@${to.runner}`;
-  const toLabel = (to) => [agentName(to), to.effort, to.dir && `in ${to.dir}`].filter(Boolean).join(' · ');
+  const toLabel = (to) => [agentName(to), to.thinkingLevel, to.dir && `in ${to.dir}`].filter(Boolean).join(' · ');
 
   function threadLink(server, id) {
     const title = server.threads.find((t) => t.id === Number(id))?.title || `#${id}`;
@@ -448,7 +448,7 @@
   // Who answers: one row per agent, each a runner, one of its models and how hard it thinks.
   // The first row alone can keep the thread's last pick or name nobody; more rows each add an agent.
   const EFFORTS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
-  const first = { runner: $('runner'), model: $('model'), effort: $('effort') };
+  const first = { runner: $('runner'), model: $('model'), thinkingLevel: $('thinkingLevel') };
   const extra = [];
   function fill(select, options) {
     const value = select.value;
@@ -459,8 +459,8 @@
     fill(row.runner, runners);
     const runner = server.runners.find((r) => r.name === row.runner.value);
     fill(row.model, runner ? [...(runner.model || !runner.modelError ? [['', `Default model${runner.model ? ` (${runner.model})` : ''}`]] : []), ...[...new Set([...runner.offers, ...runner.models, 'echo/echo'])].map((m) => [m, m])] : [['', '—']]);
-    fill(row.effort, runner ? [['', 'Default thinking'], ...EFFORTS.map((e) => [e, `Thinking: ${e}`])] : [['', '—']]);
-    row.model.disabled = row.effort.disabled = !runner;
+    fill(row.thinkingLevel, runner ? [['', 'Default thinking'], ...EFFORTS.map((e) => [e, `Thinking: ${e}`])] : [['', '—']]);
+    row.model.disabled = row.thinkingLevel.disabled = !runner;
     return runner;
   }
   function renderPicker() {
@@ -480,8 +480,8 @@
   }
   $('runner').onchange = () => { picked = true; renderPicker(); };
   $('add-agent').onclick = () => {
-    const row = { runner: build('select', { ariaLabel: 'Runner', onchange: renderPicker }), model: build('select', { ariaLabel: 'Model' }), effort: build('select', { ariaLabel: 'Thinking' }) };
-    row.node = build('div', { className: 'more' }, [row.runner, row.model, row.effort, build('button', { type: 'button', className: 'link', textContent: 'remove', onclick: () => {
+    const row = { runner: build('select', { ariaLabel: 'Runner', onchange: renderPicker }), model: build('select', { ariaLabel: 'Model' }), thinkingLevel: build('select', { ariaLabel: 'Thinking' }) };
+    row.node = build('div', { className: 'more' }, [row.runner, row.model, row.thinkingLevel, build('button', { type: 'button', className: 'link', textContent: 'remove', onclick: () => {
       extra.splice(extra.indexOf(row), 1);
       row.node.remove();
     } })]);
@@ -494,7 +494,7 @@
   function pickedTo() {
     if (!first.runner.value) return undefined;
     if (first.runner.value === 'nobody') return null;
-    return [first, ...extra].map((row) => ({ runner: row.runner.value, model: row.model.value, effort: row.effort.value, dir: $('dir').value }));
+    return [first, ...extra].map((row) => ({ runner: row.runner.value, model: row.model.value, thinkingLevel: row.thinkingLevel.value, dir: $('dir').value }));
   }
 
   // A child whose parent is hidden sits at the top.
