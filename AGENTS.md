@@ -4,14 +4,14 @@ agent-ide proves that an agent IDE can be small.
 
 ## What agent-ide is
 
-The promises under "What it promises" in the README, and nothing else. Read the readme. The sixth is under exploration: a module, off by default, until its examples prove it. A change serves one of them, or it doesn't land.
+The promises under "What it promises" in [docs/concepts.html](docs/concepts.html), and nothing else. Read it. The sixth is under exploration: a module, off by default, until its examples prove it. A change serves one of them, or it doesn't land.
 
 ## What every change keeps
 
-- **Clean.** One name per concept, named in the README. If a change can't be said in one sentence, it isn't understood yet.
+- **Clean.** One name per concept, named in docs/concepts.html. If a change can't be said in one sentence, it isn't understood yet.
 - **Stable.** A restart or a stop at any point loses nothing and duplicates nothing. An action that takes more than one commit is a Pi task or transaction, or it's a bug. Durability, ordering, retries and cancellation belong to Pi Durable, so find its primitive before writing your own.
 - **Fast.** No guardrail yet. Don't make it slower.
-- **Planned.** The README holds the principles and primitives; the code is the truth. Keep them agreeing.
+- **Planned.** docs/concepts.html holds the promises, words and principles, and the README how to run it; the code is the truth. Keep them agreeing.
 
 ## Before adding anything
 
@@ -24,7 +24,7 @@ The principles can be wrong. When a clearly better design breaks one, don't bend
 
 ## Reviewing
 
-Read the README, the code and Pi Durable's spec as an adversary. Look for three things:
+Read docs/concepts.html, the code and Pi Durable's spec as an adversary. Look for three things:
 
 - where we rebuild something Pi already does
 - where a sentence breaks between two steps (a restart, a stop, a fork, a replay)
@@ -55,5 +55,5 @@ One line each, so nobody proposes them twice.
 - **TypeScript or a build step.** Plain JS that runs with bun or Node.
 - **UX polish.** Functional UI, not shiny.
 - **Our own durability.** Pi Durable has it.
-- **Rebuilding from the README.** It's a plan, not a spec. 
+- **Rebuilding from the docs.** They're a plan, not a spec. 
 - **Backwards compatibility.** No migrations, shims or old shapes; an old store can be thrown away.

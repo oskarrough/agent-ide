@@ -125,6 +125,8 @@ const runners = createRunners({ onChange: notify });
 // What each running `$ cmd` has printed so far.
 const shells = new Map();
 const page = await readFile(new URL('./client.html', import.meta.url));
+// What agent-ide promises, its words and principles: docs/concepts.html, at /concepts.
+const concepts = await readFile(new URL('./docs/concepts.html', import.meta.url));
 // The runner this server ships, and the launcher that fetches it: `curl -fsSL <server>/runner.sh | sh -s -- --dir ~/code`.
 const bundle = await runnerBundle(import.meta.dirname);
 const launcher = await readFile(new URL('./launcher.js', import.meta.url));
@@ -525,9 +527,9 @@ async function handleRequest(req, res) {
     res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, x-user' });
     return res.end();
   }
-  if (req.method === 'GET' && url.pathname === '/') {
+  if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/concepts')) {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    return res.end(page);
+    return res.end(url.pathname === '/' ? page : concepts);
   }
   if (req.method === 'GET' && url.pathname === '/runner/launcher.js') {
     res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });

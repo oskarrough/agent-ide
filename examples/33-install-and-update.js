@@ -39,6 +39,7 @@ check((await ask(id, 1)).includes('echo@fresh heard'), 'an agent on it answers')
 const deployed = path.join(tmp, 'deployed');
 mkdirSync(deployed);
 for (const f of readdirSync(repo).filter((f) => /\.(js|html|json)$/.test(f))) cpSync(path.join(repo, f), path.join(deployed, f));
+cpSync(path.join(repo, 'docs'), path.join(deployed, 'docs'), { recursive: true });
 symlinkSync(path.join(repo, 'node_modules'), path.join(deployed, 'node_modules'));
 appendFileSync(path.join(deployed, 'remote.js'), '// deployed\n');
 srv.kill('SIGTERM');

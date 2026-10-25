@@ -55,6 +55,7 @@
     nav.toc { position: fixed; top: 3rem; left: calc(50% - 390px - 250px); width: 220px; background: none; padding: 0; }
   }
   h2 { scroll-margin-top: 1.5rem; }
+  ol.promises li { margin: 0.35rem 0; }
   blockquote { margin: 1.5rem 0; padding: 0.2rem 0 0.2rem 1rem; border-left: 3px solid var(--agent); color: #343331; }
 </style>
 </head>
@@ -64,11 +65,15 @@
 <h1>What agent-ide is made of</h1>
 <nav class="toc">
   <b>On this page</b>
+  <a href="#promises">What it promises</a>
   <a href="#words">The words</a>
+  <a href="#machine">The machine</a>
   <a href="#one-message">One message, start to finish</a>
+  <a href="#principles">Principles</a>
   <a href="#runner-life">A runner's life</a>
-  <a href="#who-pays">Who pays: the runner</a>
-  <a href="#whole-picture">The whole picture lives in the thread</a>
+  <a href="#modules">Modules</a>
+  <a href="#decided">Decided</a>
+  <a href="#open">Open</a>
   <a href="#where-we-are">Where we are</a>
 </nav>
 <p class="lede">The thinking happens on the server. The work happens on runners, on machines you choose. You look in through any client, from any device. Six words name everything else.</p>
@@ -104,6 +109,17 @@ flowchart LR
 </pre>
 <p class="caption">Everything that must survive lives in the middle box. A runner or a client can vanish at any moment and nothing is lost: threads wait for a runner to come back.</p>
 
+<h2 id="promises">What it promises</h2>
+<ol class="promises">
+  <li><b>Threads with many authors.</b> Humans and agents talk in one thread, and each agent answers from its own conversation.</li>
+  <li><b>Runners.</b> Tool calls run on a machine you choose, in a folder you choose, with that machine's logins, and the agent knows that folder's AGENTS.md and skills as pi would.</li>
+  <li><b>Models of your choice.</b> Any model pi can name, named the way pi names it.</li>
+  <li><b>Stable messaging.</b> A message between threads arrives once and its answer comes back once, even across restarts and stops.</li>
+  <li><b>Forks.</b> Fork a thread at any entry, with each agent in it, to try another path from the same point.</li>
+  <li><b>Memory</b> (under exploration). A thread never has to end, and anything said in it can be found again, word for word.</li>
+</ol>
+<p class="caption">A change serves one of these, or it doesn't land. The code is the truth, and <a href="https://github.com/oskarrough/agent-ide/tree/main/examples">examples/</a> shows each idea working.</p>
+
 <h2 id="words">The words</h2>
 <p>One word per thing. The test for a word: it names something you can point at in the code or the API, and nothing else in the list overlaps it. Under each, the words people reach for instead, and what they map to here.</p>
 
@@ -114,7 +130,7 @@ flowchart LR
 
   <dt>Runner <span class="tag runner">built</span></dt>
   <dd>A program on a machine that lends the server two things: a folder and the model logins pi has there. Started by hand, or installed with one line, <code>curl -fsSL &lt;server&gt;/runner.sh | sh</code>, after which it keeps itself up to date. It can be read-only, and it can have an owner.
-    <small>What you might call a machine, a computer or a daemon. The machine is only where a runner runs, a laptop, a VPS or a container, and one machine can run several runners: one per folder, or one read-only next to one that writes. A computer, elsewhere, bundles where files are, where commands run and which provider made the box; here a cloud sandbox is just a machine you run the curl line on. The daemon is the runner.</small></dd>
+    <small>What you might call a machine, a computer or a daemon. A machine is where runners run, one per folder if you like, and a cloud sandbox is just another machine. The daemon is the runner.</small></dd>
 
   <dt>Agent <span class="tag agent">built</span></dt>
   <dd>A model, how hard it thinks, and the runner it runs on: <code>sonnet:high@laptop</code>. In each thread an agent has its own conversation. It is handed messages, posts only its final answer, and can read any agent's work: the tool calls it made and what they printed. It knows its folder the way pi does there: AGENTS.md and skills.
@@ -126,7 +142,7 @@ flowchart LR
 
   <dt>Client <span class="tag client">built</span></dt>
   <dd>Whatever you look through: the web client in any browser, the CLI in a terminal, a Matrix room. They all speak the same small HTTP and WebSocket API, and none of them stores anything.
-    <small>What you might call the desktop or the mobile app. A desktop app would be a window, a server and a runner in one program; here that's <code>RUNNER=~/code bun server.js</code> and a browser tab, each part visible. On your phone it's the web client over Tailscale, never the open internet, since whoever can reach the server can use it: <code>tailscale serve --bg --https=443 http://127.0.0.1:3000</code>.</small></dd>
+    <small>What you might call the desktop or the mobile app: <code>RUNNER=~/code bun server.js</code> and a browser tab, on your laptop or, over Tailscale, your phone.</small></dd>
 
   <dt>Bot <span class="tag later">later</span></dt>
   <dd>A who: a name and instructions, running as some agent. <code>ada</code> might be <code>sonnet:high@laptop</code> plus her character; move her to the vps and she's still ada. It belongs on the server, because it's part of the thinking, not the doing.
@@ -138,6 +154,24 @@ flowchart LR
   <span class="m">sonnet<i>model</i></span><span class="sep">:</span><span class="t">high<i>thinking</i></span><span class="sep">@</span><span class="r">laptop<i>runner</i></span>
 </div>
 <p class="caption" style="text-align:center">Each part is optional and falls back to pi's defaults on that runner: <code>laptop</code> alone is its default model. The model part is anything <code>pi --model</code> takes, resolved by pi on the runner.</p>
+
+<h2 id="machine">The machine</h2>
+<pre class="mermaid">
+flowchart TB
+  clients["client.html and cli.js, anywhere"] -- "HTTP and /ws" --> server["server.js: one Pi Durable harness, threads, every agent's loop, one SQLite file; checks each runner's owner"]
+  runner["runner.js on laptop: stores nothing"] -- "dials /ws" --> server
+  server -- "resolve, stream, files, exec, cancel" --> runner
+  runner -. "file tools stay inside; $ commands only start here" .-> folder["~/code"]
+  runner -- "pi logins" --> providers["Anthropic, OpenAI, …"]
+</pre>
+<p>The server thinks and the runner acts. Every agent's loop runs in the server; each model call and tool call crosses the socket the runner dialled, so its logins never leave its machine. File tools stay inside the runner's folder, but a command only starts there, which is why that line is dashed. A runner with an owner says whom it takes work from, and the server checks.</p>
+<p>Pi Durable does the heavy lifting: storage, tasks, ordering, retries, restarts, stops and forks. agent-ide adds four things on top.</p>
+<ul>
+  <li>A <b>thread</b> is a Pi conversation that never runs a model. Every entry is a message with an author and a body. What agent-ide adds, like a title, a parent, read markers and the thread's agents, sits beside it as a Pi doc.</li>
+  <li>A <b>runner</b> lends the server a machine's pi logins and a folder, and stores nothing. The server registers it as a Pi model provider and as the execution environment of every conversation whose model runs on it. Calls to an offline runner wait for it.</li>
+  <li>An <b>agent</b> is a model on a runner, <code>provider/id@runner</code>, resolved the way <code>pi --model</code> resolves it. In each thread an agent answers from its own Pi conversation.</li>
+  <li>A <b>task</b> is Pi's. Deliver hands an agent its messages, Shell runs <code>$ cmd</code> on a runner, and Anchor owns an agent's conversation so that a stop reaches it.</li>
+</ul>
 
 <h2 id="one-message">One message, start to finish</h2>
 <pre class="mermaid">
@@ -160,6 +194,28 @@ sequenceDiagram
 </pre>
 <p class="caption">The brain never leaves the server: the agent's loop, its conversation and its memory. The runner is its hands and its voice: it runs the tools, and it carries the model calls on its own logins. If the runner drops mid-way, the agent waits for it and carries on.</p>
 
+<h2 id="principles">Principles</h2>
+<h3>Messages</h3>
+<ul>
+  <li>Agents are handed messages, and can look up anything. Each delivery hands an agent everything it hasn't seen yet as one input, and only its final answer comes back to the thread. Its tool calls stay in its own conversation, where any agent can read them with <code>threads</code>.</li>
+  <li>A message asks the agents in its <code>to</code>. With no <code>to</code>, it asks whoever the thread asked last, and <code>to: null</code> asks nobody.</li>
+  <li>Threads talk like email. A child reports its answers to its parent. When an agent answers another thread's post, the answer goes back to that thread, and a reply to that answer ends the exchange.</li>
+  <li>A name is one line of plain text, so nobody can forge a speaker in an agent's input.</li>
+  <li>The client watches Pi's own event streams, so replies and tool calls show live. A reconnect starts from fresh snapshots.</li>
+</ul>
+<h3>Durability</h3>
+<ul>
+  <li>Every write lands in the commit that ends or advances a Pi task, so a restart repeats nothing. A retried request with the same <code>requestId</code> gets the first result back.</li>
+  <li>A stop posts nothing, and messages that were never delivered wait for the next delivery.</li>
+  <li>A fork forks the thread and each agent's conversation at the same point, in one commit.</li>
+</ul>
+<h3>Runners</h3>
+<ul>
+  <li>Whoever lends a runner pays for the thinking on it: its pi logins are its agents' logins, and the server holds none. A shared pool is a runner without an owner.</li>
+  <li>A runner with an <code>--owner</code> takes work only from its owner and the names it <code>--allow</code>s: people, or <code>@runner</code> for the agents there. An agent always reaches its own runner. Allowing is transitive: allow <code>@desktop</code>, and whoever desktop takes can reach you through its agents. A refusal writes nothing. Agents can't pick their name, but a person can claim to be the owner.</li>
+  <li>A runner started <code>--read-only</code> lends its folder to read: writes and commands come back as errors.</li>
+</ul>
+
 <h2 id="runner-life">A runner's life</h2>
 <pre class="mermaid">
 stateDiagram-v2
@@ -172,7 +228,20 @@ stateDiagram-v2
 </pre>
 <p class="caption">The server ships its own runner, so a runner always matches its server. It never updates mid-answer: the server asks only when it has nothing open.</p>
 
-<h2 id="who-pays">Who pays: the runner</h2>
+<h2 id="modules">Modules</h2>
+<p>Anything optional is a module: one file, switched by an env var of the same name.</p>
+<dl class="words">
+  <dt>talk.js <span class="tag server">on</span></dt><dd>Gives agents <code>post</code> and <code>threads</code> tools: start or answer other threads, and read any thread or any agent's work.</dd>
+  <dt>status.js <span class="tag server">on</span></dt><dd>Has runners report status to their terminal.</dd>
+  <dt>context.js <span class="tag server">on</span></dt><dd>Gives each agent what pi reads in its folder, AGENTS.md and the skills, found by pi on the runner before every request.</dd>
+  <dt>director.js <span class="tag later">off</span></dt><dd>Asks the agents a message @mentions.</dd>
+  <dt>memory.js <span class="tag later">off</span></dt><dd>Gives each thread a memory of short lines that agents read within their context and zoom back down to the words.</dd>
+  <dt>search.js <span class="tag later">off</span></dt><dd>Gives agents <code>web_search</code>, through Exa's free search.</dd>
+  <dt>matrix.js <span class="tag later">off</span></dt><dd>Mirrors Matrix rooms into threads, and its top says how to set it up.</dd>
+</dl>
+
+<h2 id="decided">Decided</h2>
+<h3 id="who-pays">Who pays: the runner</h3>
 <p>An agent's model calls go out through the pi logins on its runner, so whoever lends a runner pays for the thinking on it. agent-ide is for one person and for teams alike, and this answer holds for both.</p>
 <pre class="mermaid">
 flowchart LR
@@ -189,20 +258,11 @@ flowchart LR
   <li><b>Just you:</b> every runner is yours, with your logins. Nothing to decide.</li>
   <li><b>A team:</b> Ana's runners pay for the agents on them, and <code>--owner</code> and <code>--allow</code> say who else may use them. Nobody's subscription quietly becomes everyone's, and someone who leaves takes their logins along by stopping their runner.</li>
   <li><b>A pool</b>, if a team wants one: a runner without an owner, next to the server, with a key in its environment. pi's enabled models there are the list, and pi's default there is the default.</li>
-  <li><b>The server holds no secrets.</b> Keys kept on the server would be pooled: one key, everyone spending it, and no way to say whose share was whose.</li>
 </ul>
-<p>Two costs we accept. A machine with no login can't think: give it a key in its environment. And someone has to run <code>pi</code> and <code>/login</code> on a machine once, rather than signing in from the web client. If thinking on the laptop while working on the vps is ever needed, it's one optional field on an agent.</p>
+<p>Two costs we accept: a machine with no login needs a key in its environment, and each machine needs <code>pi</code> and <code>/login</code> once. Thinking on one runner while working on another would be one optional field, if it's ever needed.</p>
 
-<h2 id="whole-picture">The whole picture lives in the thread</h2>
-<p class="caption">Settled: answer 2, below, and built. <code>threads {thread, agent}</code> reads an agent's work in a thread. Any agent may read any agent's work, as any person can already through the API.</p>
-<p>We first asked whether an agent should have one runner or several. That asks about reach, and reach is mostly solved: on your machines an agent's bash can already <code>ssh vps tail /var/log/site.log</code>; the runner fences its file tools, not ssh. Take a task that spans machines: the site on the vps throws errors, and the code behind them is on the laptop. What hurts when two agents share it is that each sees only what the other says, never what it saw.</p>
-<p>So the question is where the whole picture lives. Three answers:</p>
-
-<h3>1. In one agent</h3>
-<p>One agent reaches every machine, through several runners or through ssh. It sees everything, in one long conversation, and the hops between machines hide inside its tool calls.</p>
-
-<h3>2. In the thread</h3>
-<p>An agent on each machine, as today, and one tool that reads any thread and any agent's work in it: not only what an agent said, but the tool calls it made and what they printed, word for word.</p>
+<h3 id="whole-picture">The whole picture lives in the thread</h3>
+<p>When work spans machines, an agent on each one does its part, and any agent can read another's work with <code>threads {thread, agent}</code>: not only what it said, but the tool calls it made and what they printed, word for word. Every hop stays a message you can read, and nobody works from a summary. So each agent keeps one runner; for more reach, its bash has ssh.</p>
 <pre class="mermaid">
 sequenceDiagram
   participant You
@@ -217,26 +277,14 @@ sequenceDiagram
   L->>L: edit and test, in ~/code
   L-->>You: fixed, and why
 </pre>
-
-<h3>3. In you</h3>
-<p>You ask the vps agent and the laptop agent in one thread, and carry what one found to the other. It works today, with no design at all, and it's you doing the work.</p>
-
-<table>
-  <tr><th></th><th>One agent</th><th>The thread</th><th>You</th></tr>
-  <tr><td>Who sees everything</td><td>That agent</td><td>Any agent that looks</td><td>You</td></tr>
-  <tr><td>The hops between machines</td><td>Hidden in tool calls</td><td>Messages in threads</td><td>Messages in a thread</td></tr>
-  <tr><td>Runners per agent</td><td>Several, or ssh</td><td>One</td><td>One</td></tr>
-  <tr><td>What it takes</td><td>A runner on every file and shell tool, or ssh set up</td><td>One tool reads agents' work</td><td>Nothing</td></tr>
-</table>
-
-<h3>The tool</h3>
-<p>The <code>threads</code> tool, from talk.js, already read any thread's messages. It gained one argument: <code>threads {thread, agent}</code> reads that agent's tool calls and what they printed, with <code>query</code> and <code>last</code> to narrow it. Three things it decided:</p>
 <ul>
-  <li><b>A principle changes.</b> "Agents only see messages" becomes "agents are handed messages, and can look up anything". What they're handed stays small; what they can find is everything.</li>
-  <li><b>Whose work an agent may read.</b> Anyone's. Every person who can reach the server can already read every conversation, so a fence for agents alone would guard nothing. If a server ever has accounts, both get the same fence.</li>
-  <li><b>Size.</b> Tool output can be huge. For now a line is cut at 4,000 characters, saying how much is left, and <code>query</code> finds the part that matters. Real paging can come when a task needs it.</li>
+  <li>Agents are handed messages, and can look up anything.</li>
+  <li>Any agent may read any agent's work, as any person already can through the API.</li>
+  <li>Long output is cut at 4,000 characters, saying how much is left; <code>query</code> finds the part that matters.</li>
 </ul>
-<p>So: the thread. Each agent keeps one runner, every hop stays a message you can read, the split knowledge goes, and it was a small change to a tool we already had. One runner or several stopped being a question: one, and ssh for whoever wants more.</p>
+
+<h2 id="open">Open</h2>
+<p>Nothing right now. Bots come here when we start on them.</p>
 
 <h2 id="where-we-are">Where we are</h2>
 <ul class="status">

@@ -3,7 +3,7 @@
 // no agent asks whom the thread last asked. A model is whatever `pi --model` makes of it on the runner.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { answered, answers, api, check, conversationOf, dir, done, runner, server, text } from './lib.js';
+import { answered, answers, api, base, check, conversationOf, dir, done, runner, server, text } from './lib.js';
 
 await server();
 await runner('laptop');
@@ -61,5 +61,8 @@ writeFileSync(path.join(odd, 'settings.json'), JSON.stringify({ defaultProvider:
 await runner('odd', { env: { PI_CODING_AGENT_DIR: odd } });
 const lost = (await api('GET', '/api/runners')).json.find((r) => r.name === 'odd');
 check(!lost?.model && /nowhere/.test(lost?.modelError), 'a default model pi can\'t resolve is reported with why', JSON.stringify(lost));
+
+const concepts = await (await fetch(`${base}/concepts`)).text();
+check(concepts.includes('What it promises'), 'the server serves its promises, words and principles at /concepts');
 
 done();
