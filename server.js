@@ -313,7 +313,7 @@ const setUp = async (tx, agent, threadId, t) => configure(tx, agent, {
   model: { provider: `runner:${t.runner}`, modelId: t.model },
   thinkingLevel: t.effort ?? null,
   cwd: folder((await tx.doc(Runners))[t.runner], t),
-  instructions: `You are ${agentName(t)} in thread ${threadId}, with humans and other agents. Messages come to you as "name: text". Only your final answer goes back to the thread.`,
+  instructions: `You are ${agentName(t)} in thread ${threadId}, with humans and other agents. Messages come to you as "name: text". Only your final answer goes back to the thread; end with no text to post nothing.`,
 });
 
 // An input withdrawn before it was placed: its messages are unseen again.
@@ -333,14 +333,17 @@ async function outcome(threadId, agent, settled, mine) {
   const ids = new Set(done ? (await commit((tx) => Promise.all(group.map((r) => tx.entry(r.entry))))).flatMap((e) => e.data.held) : mine);
   const held = (await messages(threadId)).filter((e) => ids.has(e.id));
   const re = held.filter((e) => e.data.to?.some((t) => agentName(t) === name)).map((e) => e.id);
-  const body = done ? messageText((await commit((tx) => tx.entry(settled.answer)))?.model?.[0]) || '(empty answer)'
+  const body = done ? messageText((await commit((tx) => tx.entry(settled.answer)))?.model?.[0])
     : `gave no answer: ${settled.reason}${settled.detail ? ` (${JSON.stringify(settled.detail)})` : ''}`;
+  // An answer with no text is an agent with nothing to say, such as one that posted and waits: it posts nothing.
+  if (done && !body.trim()) return [];
   const result = done ? { answer: { conversation: agent, entry: settled.answer } } : { error: true };
   const told = [{ thread: threadId, data: { author: name, body, ...(re.length ? { re } : {}), ...result } }];
   const posts = held.filter((e) => e.data.from && !e.data.re);
   if (posts.length && reply) return [...told, ...(await reply(posts, threadId, name, body)).map((r) => ({ ...r, steer: true }))];
   const { parent } = await thread(threadId);
-  if (parent) told.push({ thread: parent, data: { author: name, body: body.split('\n').find(Boolean)?.slice(0, 160) ?? '', from: threadId } });
+  // An answer to replies alone ends the exchange: it stays here.
+  if (parent && !held.every((e) => e.data.re)) told.push({ thread: parent, data: { author: name, body: body.split('\n').find(Boolean)?.slice(0, 160) ?? '', from: threadId } });
   return told;
 }
 

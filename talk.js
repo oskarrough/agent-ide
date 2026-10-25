@@ -33,7 +33,7 @@ export function server(core) {
         return id;
       });
       const who = to.map(agentName).join(', ') || 'nobody';
-      return { output: [{ type: 'text', text: `Posted to thread ${id} for ${who}.${to.length ? ' The answer will come to you here on its own; carry on, or end your turn.' : ''}` }], details: { thread: id } };
+      return { output: [{ type: 'text', text: `Posted to thread ${id} for ${who}.${to.length ? ' The answer will come to you here on its own; carry on, or end your turn with no text: any text you end with is posted.' : ''}` }], details: { thread: id } };
     },
   });
 
@@ -95,7 +95,7 @@ export function server(core) {
   const section = {
     key: 'talk',
     tag: false,
-    render: () => 'A message from another thread says which. To wait for an answer from another thread, end your turn: the answer wakes you. Don\'t sleep or poll.',
+    render: () => 'A message from another thread says which. Whatever text you end a turn with is posted, so while you wait for answers from other threads, end your turn with no text at all, not even to say you are waiting: each answer wakes you. When you have nothing new to tell, end with no text too. Don\'t sleep or poll.',
   };
 
   // An answer to posts goes back to each thread they came from, asking every agent there who posted.

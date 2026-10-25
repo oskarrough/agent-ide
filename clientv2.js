@@ -128,7 +128,7 @@ async function refresh() {
     // A thread that's gone, deleted here or elsewhere, leaves a new one in its place.
     if (t && current && !threads.some((x) => x.id === current)) current = null;
     const home = runners.find((x) => x.online) ?? runners[0];
-    if (!picks.length && home?.model) choose([{ runner: home.name, model: home.model }]);
+    if (!picks.length && home?.model) choose([{ runner: home.name, ...setting(home) }]);
     await Promise.all(family().map(async (id) => details.set(id, (await api(`/api/threads/${id}`).catch(() => null))?.entries ?? details.get(id) ?? [])));
     watchAll();
     render();
@@ -215,13 +215,13 @@ function threadBox(id) {
   const [title, dot] = box.querySelector('header').children;
   title.textContent = t?.title || 'untitled';
   dot.className = `dot${t?.status === 'working' ? ' working' : t?.status === 'blocked' ? ' blocked' : ''}`;
-  // Where it came from, as a link: a fork's thread, or the thread whose agent started it.
-  const origin = forkOf(t) ?? t?.parent;
+  // A fork says where it came from up top; a thread an agent started says it on the question it was asked.
+  const origin = forkOf(t);
   const from = box.querySelector('nav.from');
   const fromSig = JSON.stringify([origin, titleOf(origin)]);
   if (from.dataset.sig !== fromSig) {
     from.dataset.sig = fromSig;
-    from.replaceChildren(...(origin ? [link(origin, `← ${forkOf(t) ? 'forked from' : 'asked from'} ${titleOf(origin)}`)] : []));
+    from.replaceChildren(...(origin ? [link(origin, `← forked from ${titleOf(origin)}`)] : []));
   }
   box.querySelector('form.elsewhere').hidden = id === current;
   // Messages, then any reply still being written; the list keeps its place unless it was at the bottom.
@@ -237,8 +237,10 @@ function threadBox(id) {
     const grew = entries.length + writing.length > list.children.length;
     const stuck = grew || list.scrollTop + list.clientHeight >= list.scrollHeight - 4;
     list.replaceChildren(
-      ...entries.map(({ id: at, data }) => el('li', {},
-        el('small', {}, data.author, ...(data.from && data.from !== id && data.from !== origin ? [' · ', link(data.from, `from ${titleOf(data.from)} →`)] : [])), data.body,
+      // A message from another thread is a card: an answer to a post comes back as a reply, a post arrives as a question.
+      ...entries.map(({ id: at, data }) => el('li', { className: data.from && data.from !== id ? `elsewhere${data.re ? ' reply' : ''}` : '' },
+        data.from && data.from !== id && el('div', { className: 'links' }, link(data.from, `${data.re ? '↩ answer from' : '→ asked from'} ${titleOf(data.from)}`)),
+        el('small', {}, data.author), data.body,
         ...(forksAt.get(at) ?? []).map((f) => el('div', { className: 'links' }, link(f.id, `forked → ${f.title}`))),
         el('button', { className: 'fork', textContent: 'fork', title: 'A new thread from this message', onclick: () => fork(id, at) }))),
       ...writing.map(([who, s]) => el('li', { className: 'writing' }, el('small', { textContent: `${who} · writing` }), s)));
@@ -320,7 +322,8 @@ function render() {
 const chosen = {};
 const setting = (r) => {
   const p = picks.find((x) => x.runner === r.name);
-  return p ? { model: p.model, effort: p.effort } : chosen[r.name] ?? { model: r.model };
+  // Low thinking unless you turn it up: quick answers suit a page you play with.
+  return p ? { model: p.model, effort: p.effort } : chosen[r.name] ?? { model: r.model, effort: 'low' };
 };
 function tune(r, change) {
   const next = Object.fromEntries(Object.entries({ ...setting(r), ...change }).filter(([, v]) => v));
