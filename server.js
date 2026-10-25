@@ -147,6 +147,8 @@ const harness = await Harness.open(storage, {
     const runner = (await read.snapshot(AgentDoc, conversationId, context))?.model?.provider?.replace(/^runner:/, '');
     return runner ? remoteEnv(runners, runner, cwd) : undefined;
   },
+  // A failed run doesn't strand the messages queued behind it: the next run takes them.
+  settings: { afterFailedRun: 'continue' },
   onReport: (error) => console.error('pi-durable:', error),
 }, context);
 // A storage error closes the harness for good; exit, so a supervisor can restart.
@@ -174,11 +176,9 @@ async function collect(scan) {
   return items;
 }
 
-// An agent's conversation has no Thread doc.
-const threadIds = async () => {
-  const all = (await collect((cursor) => commit((tx) => tx.scanConversations({}, 500, cursor)))).map((c) => c.id).sort((a, b) => b - a);
-  return (await Promise.all(all.map(async (id) => (await thread(id)) && id))).filter(Boolean);
-};
+// Newest first. Threads are the only conversations without an owner; an agent's is owned by its Anchor.
+const threadIds = async () =>
+  (await collect((cursor) => commit((tx) => tx.scanConversations({ order: 'descending' }, 500, cursor)))).filter((c) => !c.owner).map((c) => c.id);
 
 const agentName = (to) => to && `${to.model}@${to.runner}`;
 // `model@runner`, or a bare runner for its default model.
@@ -247,16 +247,25 @@ async function agentOf(id) {
   return { runner: name, model: agent.model.modelId, ...(agent.thinkingLevel ? { thinkingLevel: agent.thinkingLevel } : {}), ...(dir ? { dir } : {}) };
 }
 
-// Working while a delivery to it is live.
+// Working while a delivery to it is live; parked once Pi stops running one that crashes kept cutting off.
 /** @returns {Promise<Agent[]>} */
 async function agentsIn(row, live) {
   return Promise.all(Object.entries(row.agents).map(async ([name, conversation]) => {
     const to = await agentOf(conversation);
-    const busy = live.some((t) => t.kind === Deliver.definition.name && t.input.agent === conversation);
-    return { name, conversation, to, status: !busy ? 'idle' : to && runners.isOnline(to.runner) ? 'working' : 'blocked' };
+    const mine = live.filter((t) => t.kind === Deliver.definition.name && t.input.agent === conversation);
+    const status = !mine.length ? 'idle' : mine.some((t) => t.parked) ? 'parked' : to && runners.isOnline(to.runner) ? 'working' : 'blocked';
+    return { name, conversation, to, status };
   }));
 }
-const liveTasks = async () => (await harness.inspect(context)).tasks.map((t) => t.record);
+const liveTasks = async () => (await harness.inspect(context)).tasks.map(({ record, state }) => ({ ...record, parked: state.kind === 'blocked' && state.reason === 'restart_limit' }));
+
+// Runs the thread's parked deliveries and commands again.
+async function retry(id) {
+  await conversation(id);
+  const parked = (await liveTasks()).filter((t) => t.parked && t.conversationId === id);
+  for (const t of parked) await harness.retryTask(t.id, context);
+  return { retried: parked.map((t) => t.id) };
+}
 
 /** @returns {Promise<Entry[]>} */
 // Any conversation's entries, oldest first: a thread's, or an agent's own.
@@ -355,7 +364,8 @@ async function outcome(threadId, agent, settled, mine) {
 }
 
 // With no reader, anyone's read counts. A stopped `$ cmd` is no result.
-async function status(id, reads, agents, shell, reader) {
+async function status(id, reads, agents, shell, parked, reader) {
+  if (parked || agents.some((a) => a.status === 'parked')) return 'parked';
   if (shell || agents.some((a) => a.status === 'working')) return 'working';
   if (agents.some((a) => a.status === 'blocked')) return 'blocked';
   const seen = new Set(reader ? [reads[reader]] : Object.values(reads));
@@ -377,7 +387,8 @@ async function threadRow(id, reader, live) {
   const { reads, ...row } = await thread(id);
   const agents = await agentsIn(row, live);
   const shell = live.some((t) => t.kind === Shell.definition.name && t.conversationId === id);
-  return { id, ...row, agents, shells: [...shells.values()].filter((run) => run.threadId === id), status: await status(id, reads, agents, shell, reader),
+  const parked = live.some((t) => t.parked && t.conversationId === id);
+  return { id, ...row, agents, shells: [...shells.values()].filter((run) => run.threadId === id), status: await status(id, reads, agents, shell, parked, reader),
     conversation: await storage.conversation(id, context) };
 }
 const threadList = async (reader) => {
@@ -553,6 +564,7 @@ const routes = [
   ['POST /api/threads/:id/fork', async (req, id) => forkThread(id, await input(req))],
   ['POST /api/threads/:id/tools', async (req, id) => setTools(id, await input(req))],
   ['POST /api/threads/:id/read', (req, id) => markRead(id, user(req))],
+  ['POST /api/threads/:id/retry', (req, id) => retry(id)],
   // Pi's abort of the thread reaches its tasks, and through each Anchor its agents.
   ['POST /api/threads/:id/stop', async (req, id) => {
     await (await conversation(id)).abort(context);

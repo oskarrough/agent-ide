@@ -41,7 +41,7 @@ curl -fsSL http://127.0.0.1:3000/connect-runner | sh -s -- [the same options] [-
 
 bun cli.js post "hello" --to sonnet@laptop --to desk --thinkingLevel high   # a new thread; answers print as they land
 bun cli.js post "and you?" --thread 3                               # asks whom thread 3 last asked
-bun cli.js threads | runners | read 3 [--last 5] | stop 3          # runner.js and cli.js both read AGENT_IDE_SERVER=url, or --server
+bun cli.js threads | runners | read 3 [--last 5] | stop 3 | retry 3         # runner.js and cli.js both read AGENT_IDE_SERVER=url, or --server
 ```
 
 The client is served at `/`, or by `bun apps/client/client.html` with live reload and `?server=http://…` pointing at a server; [cli.js](cli.js) is the same API from a terminal. `?user=ana` posts as someone else. [apps/matrix-sync](apps/matrix-sync) files GitHub issues from a Matrix mention, without anyone opening the IDE. There is no authentication: anyone who can reach the server can claim any name, so keep it on a trusted network.
@@ -63,6 +63,7 @@ Send `x-user: name` to say who you are. The two POSTs that make something, a thr
 - `POST /api/threads/:id/fork` `{"at": entryId, "title"?}`: a new thread from that entry.
 - `POST /api/threads/:id/read`: marks it read for you, so its last answer stops counting as done.
 - `POST /api/threads/:id/stop`: stops its agents, deliveries and commands, and withdraws their queued inputs.
+- `POST /api/threads/:id/retry`: runs again the deliveries and commands that crashes left parked: a thread whose `status` is `parked`, whose work crashes cut off five times in a row.
 - `DELETE /api/threads/:id`: hides it; Pi Durable keeps everything.
 - `GET /api/threads/:id/memory?zoom=id,n&budget=bytes`: with memory, the thread's memory as `{lines: [{id, n, text}]}`, the lines an agent with `budget` bytes of room reads, or with `zoom` what a line was made from.
 - `GET /api/conversations/:id`: any Pi conversation's view as Pi gives it, such as an agent's: its entries and docs.

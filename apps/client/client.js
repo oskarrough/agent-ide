@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, ...children) => { const e = Object.assign(document.createElement(tag), props); e.append(...children.filter((c) => c != null && c !== false)); return e; };
 const EFFORTS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 // One dot everywhere: grey when there's nothing, green when it's on, pulsing green while it works, amber when it's blocked.
-const light = (state) => `dot${state === 'on' ? ' on' : state === 'working' ? ' working' : state === 'blocked' ? ' blocked' : ''}`;
+const light = (state) => `dot${state === 'on' ? ' on' : state === 'working' ? ' working' : ['blocked', 'parked'].includes(state) ? ' blocked' : ''}`;
 
 // Where the four pieces live, per product. The chips move between the places; hovering one lights it up on the stage.
 const PIECES = { model: 'Claude, GPT, Gemini', loop: 'Pi, Claude Code, Codex', hands: 'where tools run', memory: 'the chat history' };
@@ -364,9 +364,11 @@ function threadBox(id) {
   if (id === current && form.parentNode !== box) box.append(form);
   return box;
 }
-// A thread as a row, the same in the list of all threads and in a thread's family: its light, its name, delete on hover.
+// A thread as a row, the same in the list of all threads and in a thread's family: its light, its name, delete on hover,
+// and retry when crashes left its work parked.
 const threadRow = (t, depth = 0) => el('li', { className: t.id === current ? 'current' : '', title: t.title, style: `--depth: ${depth}`, onclick: () => go(t.id) },
   el('span', { className: light(t.status) }), el('span', { textContent: t.title || 'untitled' }),
+  t.status === 'parked' && el('button', { textContent: 'retry', title: 'Crashes kept cutting this work off; run it again', onclick: (e) => { e.stopPropagation(); api(`/api/threads/${t.id}/retry`, {}); } }),
   el('button', { textContent: 'delete', title: 'Delete this thread', onclick: (e) => { e.stopPropagation(); remove(t.id); } }));
 // An agent goes by its model's own name and where it runs; the full id is on hover.
 const who = (author) => author?.replace(/^(?:[^@]*\/)?([^/@:]+)(?::[^@]*)?@(.+)$/, '$1 · $2') ?? '';
@@ -482,7 +484,7 @@ function runnerCard(r, asked) {
   const on = picks.some((p) => p.runner === r.name);
   const here = asked.filter((a) => a.to.runner === r.name);
   // The busiest agent here decides the dot: working beats blocked, and an idle agent is grey.
-  const stateOf = (list) => list.some((a) => a.status === 'working') ? 'working' : list.some((a) => a.status === 'blocked') ? 'blocked' : '';
+  const stateOf = (list) => list.some((a) => a.status === 'working') ? 'working' : list.some((a) => ['blocked', 'parked'].includes(a.status)) ? 'blocked' : '';
   const row = (model, ...children) => {
     const list = here.filter((a) => a.to.model === model), state = stateOf(list);
     const hands = list.map((a) => handsOf(live.get(`${a.thread} ${a.name}`))).find(Boolean);

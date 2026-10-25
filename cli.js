@@ -17,7 +17,8 @@ const usage = `bun cli.js [--server url] [--as name] <command>
   threads          every thread, with its status and agents
   read <thread>    a thread's messages, or its --last N
   runners          every runner, online or not, and its models
-  stop <thread>    stop its agents and commands`;
+  stop <thread>    stop its agents and commands
+  retry <thread>   run again what crashes left parked`;
 
 const parse = (options) => {
   try { return parseArgs({ allowPositionals: true, options }); } catch (error) { console.error(`${error.message}\n\n${usage}`); process.exit(1); }
@@ -100,6 +101,7 @@ const commands = {
     }
   },
   stop: () => api('POST', `/api/threads/${Number(rest[0])}/stop`),
+  retry: () => api('POST', `/api/threads/${Number(rest[0])}/retry`),
 };
 
 if (o.help || !commands[command]) {
