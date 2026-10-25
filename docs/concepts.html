@@ -40,13 +40,21 @@
   table { border-collapse: collapse; width: 100%; font-size: 0.95rem; margin: 1rem 0; }
   th, td { text-align: left; vertical-align: top; padding: 0.55rem 0.6rem; border-bottom: 1px solid var(--line); }
   th { font: 600 0.85rem ui-sans-serif, system-ui, sans-serif; color: var(--muted); }
-  td:first-child { width: 42%; }
+  td:first-child { width: 24%; color: var(--muted); }
   ul.status { list-style: none; padding: 0; }
   ul.status li { padding: 0.35rem 0 0.35rem 1.7rem; position: relative; }
   ul.status li::before { position: absolute; left: 0; font-family: ui-sans-serif, system-ui, sans-serif; }
   ul.status li.done::before { content: '✓'; color: var(--runner); font-weight: 700; }
   ul.status li.next::before { content: '→'; color: var(--server); font-weight: 700; }
   ul.status li.no::before { content: '×'; color: var(--muted); }
+  nav.toc { display: flex; flex-direction: column; gap: 0.25rem; font: 0.9rem ui-sans-serif, system-ui, sans-serif; margin: 1.5rem 0; padding: 0.9rem 1rem; background: var(--surface); border-radius: 10px; }
+  nav.toc b { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 0.2rem; }
+  nav.toc a { color: var(--fg); text-decoration: none; }
+  nav.toc a:hover { text-decoration: underline; }
+  @media (min-width: 1400px) {
+    nav.toc { position: fixed; top: 3rem; left: calc(50% - 390px - 250px); width: 220px; background: none; padding: 0; }
+  }
+  h2 { scroll-margin-top: 1.5rem; }
   blockquote { margin: 1.5rem 0; padding: 0.2rem 0 0.2rem 1rem; border-left: 3px solid var(--agent); color: #343331; }
 </style>
 </head>
@@ -54,7 +62,17 @@
 <main>
 
 <h1>What agent-ide is made of</h1>
+<nav class="toc">
+  <b>On this page</b>
+  <a href="#words">The words</a>
+  <a href="#one-message">One message, start to finish</a>
+  <a href="#runner-life">A runner's life</a>
+  <a href="#who-pays">Who pays: the runner</a>
+  <a href="#one-runner">Open: one runner per agent, or several?</a>
+  <a href="#where-we-are">Where we are</a>
+</nav>
 <p class="lede">The thinking happens on the server. The work happens on runners, on machines you choose. You look in through any client, from any device. Six words name everything else.</p>
+<p class="caption">This page is our scratchpad: what's settled, what's open, and where we are. It changes as we decide.</p>
 
 <pre class="mermaid">
 flowchart LR
@@ -86,7 +104,7 @@ flowchart LR
 </pre>
 <p class="caption">Everything that must survive lives in the middle box. A runner or a client can vanish at any moment and nothing is lost: threads wait for a runner to come back.</p>
 
-<h2>The words</h2>
+<h2 id="words">The words</h2>
 <p>One word per thing. The test for a word: it names something you can point at in the code or the API, and nothing else in the list overlaps it. After ours come the words we leave out, and why.</p>
 
 <dl class="words">
@@ -134,7 +152,7 @@ flowchart LR
 </div>
 <p class="caption" style="text-align:center">Each part is optional and falls back to pi's defaults on that runner: <code>laptop</code> alone is its default model. The model part is anything <code>pi --model</code> takes, resolved by pi on the runner.</p>
 
-<h2>One message, start to finish</h2>
+<h2 id="one-message">One message, start to finish</h2>
 <pre class="mermaid">
 sequenceDiagram
   participant You as You, in any client
@@ -155,7 +173,7 @@ sequenceDiagram
 </pre>
 <p class="caption">The brain never leaves the server: the agent's loop, its conversation and its memory. The runner is its hands and its voice: it runs the tools, and it carries the model calls on its own logins. If the runner drops mid-way, the agent waits for it and carries on.</p>
 
-<h2>A runner's life</h2>
+<h2 id="runner-life">A runner's life</h2>
 <pre class="mermaid">
 stateDiagram-v2
   direction LR
@@ -188,15 +206,55 @@ flowchart LR
 </ul>
 <p>Two costs we accept. A machine with no login can't think: give it a key in its environment. And someone has to run <code>pi</code> and <code>/login</code> on a machine once, where do-computer signs in from the app. If thinking on the laptop while working on the vps is ever needed, it's one optional field on an agent.</p>
 
-<h2>Open question: one runner per agent, or several?</h2>
-<p id="one-runner">Today an agent has one runner. To work somewhere else, it asks an agent there in a thread, and the answer comes back to it.</p>
-<ul>
-  <li><b>For one:</b> the model never has to pick a machine, so the tools stay the same on every call, and every hop between machines is a message you can read. A bot, when it comes, can still work on the laptop in one thread and on the vps in another.</li>
-  <li><b>For several:</b> a task that spans machines, like "read the logs on the vps, fix it on the laptop", is one agent with one memory of what it found, not two agents passing notes. do-computer chose this: a Dood names the computer on each call.</li>
-</ul>
-<p>My lean: one, until a real task shows the hand-off in a thread is too clumsy.</p>
+<h2 id="one-runner">Open: one runner per agent, or several?</h2>
+<p>Today an agent has one runner. The question is what happens when a task spans machines. Take one: the site on the vps throws errors, and the code that causes them is on the laptop.</p>
 
-<h2>Where we are</h2>
+<h3>One runner each, as today</h3>
+<p>The agent on the laptop asks an agent on the vps, in a child thread, and carries on when the answer comes back.</p>
+<pre class="mermaid">
+sequenceDiagram
+  participant You
+  participant L as sonnet@laptop
+  participant V as sonnet@vps, in a child thread
+  You->>L: the site throws 500s, fix it
+  L->>V: post: the last errors in /var/log/site.log?
+  V->>V: bash: tail, on the vps
+  V-->>L: the answer comes back, once
+  L->>L: edit and test, in ~/code
+  L-->>You: fixed, and why
+</pre>
+
+<h3>Several runners, one agent</h3>
+<p>One agent reaches both machines. Every file and shell tool gains a <code>runner</code> argument, and the model fills it on each call, as do-computer's Doods do.</p>
+<pre class="mermaid">
+sequenceDiagram
+  participant You
+  participant A as sonnet, on laptop and vps
+  participant V as runner vps
+  participant L as runner laptop
+  You->>A: the site throws 500s, fix it
+  A->>V: bash on vps: tail /var/log/site.log
+  V-->>A: the errors
+  A->>L: edit on laptop: the bug
+  A->>L: bash on laptop: bun test
+  L-->>A: passes
+  A-->>You: fixed, and why
+</pre>
+
+<table>
+  <tr><th></th><th>One runner each</th><th>Several runners</th></tr>
+  <tr><td>What the model decides</td><td>What to do. Where is settled before it starts.</td><td>What to do, and where, on every call. Mistakes become "wrong machine" loops.</td></tr>
+  <tr><td>Its tools</td><td>The same on every call, so the prompt cache holds.</td><td>Change as runners come and go.</td></tr>
+  <tr><td>What it remembers</td><td>Two conversations: one asks, one finds out. What the vps agent saw reaches the laptop only as its answer.</td><td>One conversation that saw everything.</td></tr>
+  <tr><td>What you can read</td><td>Every hop between machines is a message in a thread.</td><td>Tool calls inside one agent's run.</td></tr>
+  <tr><td>A machine goes offline</td><td>Only the agent there waits.</td><td>The whole agent waits at its next call there.</td></tr>
+  <tr><td>Who pays</td><td>Each runner, for its own agent.</td><td>One of them has to: so "several runners" also means splitting where an agent thinks from where it works.</td></tr>
+</table>
+
+<p>That last row joins this question to who pays: an agent that works on several runners needs one runner to think with. So both choices sit on one line: an agent that thinks and works on one runner (today), one that thinks on one and works on another, and one that works on several. Each step is one more field on an agent.</p>
+<p>My lean: one, until a real task shows the hand-off in a thread is too clumsy. The thread hand-off is slower, but nothing in it is hidden.</p>
+
+<h2 id="where-we-are">Where we are</h2>
 <ul class="status">
   <li class="done">A server that survives restarts and stops, on Pi Durable.</li>
   <li class="done">Runners: started by hand or with one curl line, self-updating, read-only if you like, with owners.</li>
