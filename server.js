@@ -125,9 +125,10 @@ const clients = new Set();
 const runners = createRunners({ onChange: notify });
 // What each running `$ cmd` has printed so far.
 const shells = new Map();
-// The client: client.html at /, and the modules it loads beside it.
-const page = await readFile(new URL('./client.html', import.meta.url));
-const scripts = Object.fromEntries(await Promise.all(['client.js', 'wires.js', 'agent-memory.js'].map(async (f) => [`/${f}`, await readFile(new URL(`./${f}`, import.meta.url))])));
+// The client: apps/client/client.html at /, and the modules it loads beside it.
+const page = await readFile(new URL('./apps/client/client.html', import.meta.url));
+const scripts = Object.fromEntries(await Promise.all(['client.js', 'wires.js', 'agent-memory.js'].map(async (f) => [`/${f}`, await readFile(new URL(`./apps/client/${f}`, import.meta.url))])));
+const styles = Object.fromEntries(await Promise.all(['client.css'].map(async (f) => [`/${f}`, await readFile(new URL(`./apps/client/${f}`, import.meta.url))])));
 // What agent-ide promises, its words and principles: docs/concepts.html, at /concepts.
 const concepts = await readFile(new URL('./docs/concepts.html', import.meta.url));
 // The runner this server ships, and the updater that fetches it: `curl -fsSL <server>/connect-runner | sh -s -- --dir ~/code`.
@@ -579,6 +580,10 @@ async function handleRequest(req, res) {
   if (req.method === 'GET' && scripts[url.pathname]) {
     res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
     return res.end(scripts[url.pathname]);
+  }
+  if (req.method === 'GET' && styles[url.pathname]) {
+    res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8' });
+    return res.end(styles[url.pathname]);
   }
   if (req.method === 'GET' && url.pathname === '/runner/updater.js') {
     res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });

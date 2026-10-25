@@ -4,15 +4,6 @@ A small agent IDE on [Pi Durable](https://www.npmjs.com/package/@earendil-works/
 
 What it promises, the words it uses, how it fits together, its principles and what's decided: [docs/concepts.html](docs/concepts.html), which every server also serves at `/concepts`. The code is the truth, and [examples/](examples) shows each idea working.
 
-## What you get
-
-- One server that keeps every thread and every agent's conversation in one SQLite file. A restart or a stop loses nothing.
-- Runners that lend it a folder on a machine and the model logins pi has there. Read-only if you like, or owned by one person.
-- Agents named `model:thinking@runner`, each knowing its folder's AGENTS.md and skills.
-- Threads where people and agents talk together. Fork one at any message; start a child thread and its answer comes back once.
-- Clients that store nothing: the web page, the CLI, Matrix rooms. [apps/matrix-sync](apps/matrix-sync) files GitHub issues from a Matrix mention, without anyone opening the IDE.
-- Modules, one file each: agents that post to and read other threads, web search, memory, and more below.
-
 ## Try it
 
 ```sh
@@ -37,9 +28,7 @@ Or read [examples/](examples): one file per idea, each starting its own server a
 bun server.js                          # http://127.0.0.1:3000, stored in agent-ide-3000.sqlite
 HOST=0.0.0.0 PORT=3001 bun server.js   # reachable from other machines
 RUNNER=~/code bun server.js            # lends this machine another folder than the one it starts in; RUNNER=0 lends none
-TALK=0 STATUS=0 CONTEXT=0 bun server.js   # the core alone, without the modules on by default:
-#   talk.js: agents' post and threads tools · status.js: runners report to their terminal
-#   context.js: each agent gets its folder's AGENTS.md and skills, as pi reads them
+TALK=0 STATUS=0 CONTEXT=0 bun server.js   # the core alone, without the modules on by default
 DIRECTOR=1 bun server.js               # director.js asks the agents a message @mentions
 MEMORY=1 MEMORY_MODEL=haiku@laptop bun server.js   # memory.js: threads that never end
 SEARCH=1 bun server.js                 # search.js: agents' web_search, through Exa's free search
@@ -55,7 +44,7 @@ bun cli.js post "and you?" --thread 3                               # asks whom 
 bun cli.js threads | runners | read 3 [--last 5] | stop 3          # runner.js and cli.js both read AGENT_IDE_SERVER=url, or --server
 ```
 
-The client is served at `/`, or by `bun client.html` with live reload and `?server=http://…` pointing at a server; [cli.js](cli.js) is the same API from a terminal. `?user=ana` posts as someone else. There is no authentication: anyone who can reach the server can claim any name, so keep it on a trusted network.
+The client is served at `/`, or by `bun apps/client/client.html` with live reload and `?server=http://…` pointing at a server; [cli.js](cli.js) is the same API from a terminal. `?user=ana` posts as someone else. [apps/matrix-sync](apps/matrix-sync) files GitHub issues from a Matrix mention, without anyone opening the IDE. There is no authentication: anyone who can reach the server can claim any name, so keep it on a trusted network.
 
 ## API
 

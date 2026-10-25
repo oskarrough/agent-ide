@@ -1,24 +1,19 @@
 # AGENTS.md
 
-agent-ide proves that an agent IDE can be small. 
-
-## What agent-ide is
-
-The promises under "What it promises" in [docs/concepts.html](docs/concepts.html), and nothing else. Read it. The sixth is under exploration: a module, off by default, until its examples prove it. A change serves one of them, or it doesn't land.
+agent-ide proves that an agent IDE can be small. A change serves one of the promises in [docs/concepts.html](docs/concepts.html), or it doesn't land. Read it. The sixth is under exploration: a module, off by default, until its examples prove it.
 
 ## What every change keeps
 
 - **Clean.** One name per concept, named in docs/concepts.html. If a change can't be said in one sentence, it isn't understood yet.
 - **Stable.** A restart or a stop at any point loses nothing and duplicates nothing. An action that takes more than one commit is a Pi task or transaction, or it's a bug. Durability, ordering, retries and cancellation belong to Pi Durable, so find its primitive before writing your own.
-- **Fast.** No guardrail yet. Don't make it slower.
-- **Planned.** docs/concepts.html holds the promises, words and principles, and the README how to run it; the code is the truth. Keep them agreeing.
+- **Fast.** Don't make it slower.
+- **Agreeing.** The code is the truth; keep docs/concepts.html and the README saying the same.
 
 ## Before adding anything
 
-1. Which promise does it serve? If none, the answer is no.
-2. Which primitive or principle does it touch? If none can say it, it's not ready.
-3. Can it be a module, off by default? Then make it one.
-4. Is there a version that deletes more than it adds? Build that one.
+1. Which primitive or principle does it touch? If none can say it, it's not ready.
+2. Can it be a module, off by default? Then make it one.
+3. Is there a version that deletes more than it adds? Build that one.
 
 The principles can be wrong. When a clearly better design breaks one, don't bend the design to fit: stop and ask Oskar, saying which principle and why.
 
@@ -34,18 +29,9 @@ A finding counts only if you can reproduce it. Examples prove the promises, not 
 
 ## Checking the UI
 
-A change you can see in client.html gets seen. Run `bun server.js` and `bun runner.js --name laptop --dir .` in the background, then drive the page with [agent-browser](https://github.com/vercel-labs/agent-browser):
+A change you can see in apps/client/client.html gets seen. Run `bun server.js` and `bun runner.js --name laptop --dir .` in the background, then drive the page with [agent-browser](https://github.com/vercel-labs/agent-browser):
 
-```sh
-agent-browser open http://127.0.0.1:3000
-agent-browser snapshot -i            # the page as an accessibility tree, with @refs
-agent-browser click @e9              # act on a ref
-agent-browser fill @e11 hello
-agent-browser screenshot shot.png
-agent-browser close --all
-```
-
-`agent-browser skills get core` is its own guide. Locally, install it with `npm i -g agent-browser && agent-browser install`; in Claude Code on the web, `.claude/hooks/session-start.sh` does it. Examples still prove behaviour; the browser only shows it.
+`agent-browser open http://127.0.0.1:3000`, then `snapshot -i` for the page with @refs to act on; `agent-browser skills get core` is its own guide. Locally, install it with `npm i -g agent-browser && agent-browser install`; in Claude Code on the web, `.claude/hooks/session-start.sh` does it. Examples still prove behaviour; the browser only shows it.
 
 ## Said no
 
@@ -54,6 +40,5 @@ One line each, so nobody proposes them twice.
 - **Unit tests.** `examples/` is the proof, with one file per idea.
 - **TypeScript or a build step.** Plain JS that runs with bun or Node.
 - **UX polish.** Functional UI, not shiny.
-- **Our own durability.** Pi Durable has it.
 - **Rebuilding from the docs.** They're a plan, not a spec. 
 - **Backwards compatibility.** No migrations, shims or old shapes; an old store can be thrown away.
