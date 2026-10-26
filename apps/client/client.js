@@ -125,8 +125,9 @@ function agent(text) {
 }
 const name = ({ model, thinkingLevel, runner, name: called }) =>
 	`${called ? `${called}=` : ''}${model ?? ''}${thinkingLevel ? `:${thinkingLevel}` : ''}@${runner}`
-const key = (runner, model) => `${model}@${runner}`
-const same = (a, b) => a?.runner === b?.runner && a?.model === b?.model
+// An agent's row on its runner's card: its name there, model@runner unless it was given another.
+const slot = ({ runner, model, name }) => `${name ?? model}@${runner}`
+const same = (a, b) => a?.runner === b?.runner && a?.model === b?.model && a?.name === b?.name
 
 let up = false,
 	runners = [],
@@ -871,8 +872,7 @@ function render() {
 
 	// Only the connections live here; wires owns their geometry.
 	const down = { fromSide: 'bottom', toSide: 'top', fromAt: 'to' }
-	const row = (runner, model) =>
-		$('runners').querySelector(`[data-agent="${CSS.escape(key(runner, model))}"]`)
+	const row = (to) => $('runners').querySelector(`[data-agent="${CSS.escape(slot(to))}"]`)
 	const state = (s) => (!s || s === 'idle' ? '' : s)
 	const connections = [
 		{
@@ -906,7 +906,7 @@ function render() {
 			connections.push({
 				...down,
 				from,
-				to: row(a.to.runner, a.to.model),
+				to: row(a.to),
 				toAt: -20,
 				className: state(a.status),
 			})
@@ -917,7 +917,7 @@ function render() {
 		connections.push({
 			...down,
 			from: $pick,
-			to: row(p.runner, p.model),
+			to: row(p),
 			toAt: -20,
 			className: state(mine.find((a) => same(a.to, p))?.status) || 'route',
 		})
@@ -949,7 +949,7 @@ function toggle(r, also) {
 }
 
 // One runner: its light, its folder, the model it asks with and how hard it thinks, and what its hands are doing.
-// Agents the threads asked here with another model get a quiet row of their own, for their wire and light.
+// Agents the threads asked here with another model or name get a quiet row of their own, for their wire and light.
 function runnerCard(r, asked) {
 	const set = setting(r)
 	const on = picks.some((p) => p.runner === r.name)
@@ -961,8 +961,8 @@ function runnerCard(r, asked) {
 			: list.some((a) => ['blocked', 'parked'].includes(a.status))
 				? 'blocked'
 				: ''
-	const row = (model, ...children) => {
-		const list = here.filter((a) => a.to.model === model),
+	const row = (to, ...children) => {
+		const list = here.filter((a) => slot(a.to) === slot(to)),
 			state = stateOf(list)
 		const hands = list.map((a) => handsOf(live.get(`${a.thread} ${a.name}`))).find(Boolean)
 		const li = el(
@@ -972,7 +972,7 @@ function runnerCard(r, asked) {
 			list.length && el('span', { className: light(state), title: state || 'idle' }),
 			hands && el('span', { className: 'hands', textContent: hands, title: hands }),
 		)
-		li.dataset.agent = key(r.name, model)
+		li.dataset.agent = slot(to)
 		return li
 	}
 	const stop = (e) => e.stopPropagation()
@@ -999,7 +999,10 @@ function runnerCard(r, asked) {
 	})
 	knob.onchange = () =>
 		tune(r, { thinkingLevel: knob.value > 0 ? EFFORTS[knob.value - 1] : undefined })
-	const others = [...new Set(here.map((a) => a.to.model))].filter((m) => m !== set.model)
+	const own = { runner: r.name, model: set.model }
+	const others = [...new Map(here.map((a) => [slot(a.to), a.to])).values()].filter(
+		(to) => slot(to) !== slot(own),
+	)
 	return el(
 		'div',
 		{
@@ -1014,8 +1017,10 @@ function runnerCard(r, asked) {
 		el(
 			'ul',
 			{ className: 'models' },
-			models.length && row(set.model, swap, knob),
-			...others.map((m) => row(m, el('span', { className: 'name', textContent: m }))),
+			models.length && row(own, swap, knob),
+			...others.map((to) =>
+				row(to, el('span', { className: 'name', textContent: to.name ?? to.model, title: to.model })),
+			),
 		),
 	)
 }
