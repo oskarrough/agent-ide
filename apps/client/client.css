@@ -632,6 +632,8 @@ agent-memory {
 
 :is(.thread-list > ul, .thread-family) > li {
 	display: flex;
+	/* A grid row is as wide as its title otherwise; this keeps the ellipsis and no sideways scroll. */
+	min-width: 0;
 	align-items: center;
 	gap: 0.4rem;
 	padding: 0.2rem 0.4rem;

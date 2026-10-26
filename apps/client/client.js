@@ -1302,10 +1302,20 @@ const TRIES = {
 		link.searchParams.set('user', 'Ana')
 		open(link, '_blank')
 	},
+	// Every runner, or with one, two agents on it: another model if it offers one, and a name each.
 	two: () => {
 		fresh()
-		choose(defaults())
-		return ask('What machine are you on, and in which folder? One line.')
+		const [first, ...others] = defaults()
+		const other = runners.find((r) => r.name === first?.runner)?.offers?.find((m) => m !== first.model)
+		choose(
+			others.length || !first
+				? [first, ...others].filter(Boolean)
+				: [
+						{ ...first, name: 'first' },
+						{ ...first, ...(other && { model: other }), name: 'second' },
+					],
+		)
+		return ask('What machine are you on, in which folder, and which model are you? One line.')
 	},
 	slow: () => {
 		fresh()
