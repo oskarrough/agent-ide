@@ -1,13 +1,7 @@
 // A thread's memory: one line of at most 512 bytes per message, merged in pairs up a binary tree. Line (l, i) covers
 // messages i·2^l to (i+1)·2^l - 1 by position.
 import { retryAssistantCall, Type } from '@earendil-works/pi-ai'
-import {
-	CompactionTask,
-	defineExtension,
-	defineTask,
-	defineTool,
-	hook,
-} from '@earendil-works/pi-durable'
+import { defineExtension, defineTask, defineTool } from '@earendil-works/pi-durable'
 import { messageText } from './remote.js'
 import { agentTo, collect, said } from './util.js'
 
@@ -188,34 +182,10 @@ export function server(core) {
 		abort: (task, rt, ctx) => rt.commit(() => finished('aborted'), ctx),
 	})
 
-	// The newest thread position the agent's conversation had been given before `firstKept`, or -1.
-	async function cutPosition(agent, firstKept, threadId) {
-		const newest = Math.max(-1, ...(await core.seenBy(agent, firstKept - 1)))
-		return (await core.messages(threadId)).findIndex((e) => e.id === newest)
-	}
-
 	// As many bytes as the model has tokens: about a quarter of its window.
 	async function budget(agent) {
 		const to = await core.agentOf(agent)
 		return (to && core.models.getModel(`runner:${to.runner}`, to.model)?.contextWindow) || PANEL
-	}
-
-	// Compaction's summary is the thread's memory up to the cut; no model writes it.
-	const beforeCompact = async ({ firstKept }, api) => {
-		const home = await core.home(api.conversationId)
-		if (!home?.thread) return undefined
-		const T = (await cutPosition(api.conversationId, firstKept, home.thread)) + 1
-		return T > 0
-			? {
-					summary: render(
-						memory(
-							await core.commit((tx) => lines(tx, home.thread)),
-							T,
-							await budget(api.conversationId),
-						),
-					),
-				}
-			: undefined
 	}
 
 	// The newest messages whole, at least the last, as far as the budget goes; the older ones as memory.
@@ -291,7 +261,6 @@ export function server(core) {
 			tasks: [Line],
 			tools: [zoom],
 			sections: [{ key: 'memory', tag: false, render: () => SECTION }],
-			hooks: [hook(CompactionTask, { beforeCompact })],
 		}),
 		posted: (tx, threadId, entry) => tx.createTask(Line, { entry: entry.id }, background(threadId)),
 		catchUp,
