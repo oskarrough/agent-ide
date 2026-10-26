@@ -1276,6 +1276,11 @@ body.chat {
 	margin: 0 0.6rem;
 }
 
+/* Soul follows Tools as Tools follows the thread, not as a first heading. */
+.thread-details .bot > h3:first-child {
+	margin-top: 1rem;
+}
+
 .thread-details .bot > .forget {
 	margin-top: 1rem;
 }

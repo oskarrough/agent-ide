@@ -1028,8 +1028,8 @@ function render() {
 	$('pill').lastChild.textContent = current ? here?.title || 'untitled' : 'New thread'
 	$('pill').firstChild.className = light(here?.status)
 	$('pill').classList.toggle('hands-off', Boolean(current ? here?.tools : fresh_tools))
-	if (!sideHands.contains(document.activeElement))
-		sideHands.show(current ? here?.tools : fresh_tools)
+	// show keeps the field as typed while it has the cursor.
+	sideHands.show(current ? here?.tools : fresh_tools)
 	const depth = (id) => {
 		let d = 0
 		for (let t = threads.find((x) => x.id === id); d < 20; d++) {
