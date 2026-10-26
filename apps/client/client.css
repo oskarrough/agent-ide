@@ -1250,15 +1250,33 @@ body.chat {
 	font-size: 12px;
 }
 
+/* The soul is written like a message: the composer's box, growing with what's in it. */
 .thread-details .soul {
+	display: block;
 	width: calc(100% - 1.2rem);
 	box-sizing: border-box;
-	font:
-		12px ui-monospace,
-		monospace;
+	field-sizing: content;
+	min-height: 4lh;
+	resize: none;
+	padding: 0.4rem 0.6rem;
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	background: var(--tint);
+	color: inherit;
+	font: inherit;
+	font-size: 14px;
+
+	&:focus {
+		outline: none;
+		border-color: var(--mute);
+	}
 }
 
-.thread-details .forget {
+.thread-details #members {
+	margin: 0 0.6rem;
+}
+
+.thread-details .bot > .forget {
 	margin-top: 1rem;
 }
 

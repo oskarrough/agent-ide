@@ -289,7 +289,7 @@ const botSheet = el(
 	el('textarea', {
 		className: 'soul',
 		rows: 8,
-		placeholder: 'Who it is. It writes this itself as you talk, or you can.',
+		placeholder: 'Who it is, in its words or yours',
 		onchange: (e) => saveBot({ name: botAt(current).name, instructions: e.target.value }),
 	}),
 	el('h3', { textContent: 'Model' }),
@@ -307,7 +307,7 @@ const botSheet = el(
 		el('span', { className: light('on') }),
 		el('span'),
 	),
-	el('h3', { textContent: 'Also in' }),
+	el('h3', { className: 'also', textContent: 'Also in' }),
 	el('ul', { className: 'thread-family' }),
 	el('button', {
 		type: 'button',
@@ -330,13 +330,11 @@ function sheetFor(bot) {
 	const soul = botSheet.querySelector('.soul')
 	if (document.activeElement !== soul) soul.value = bot.instructions
 	botSheet.querySelector('.pick').lastChild.textContent = short(bot.to)
-	botSheet
-		.querySelector('ul')
-		.replaceChildren(
-			...threads
-				.filter((t) => t.id !== bot.home && !t.hidden && t.agents.some((a) => a.name === bot.name))
-				.map((t) => threadRow(t)),
-		)
+	const elsewhere = threads.filter(
+		(t) => t.id !== bot.home && !t.hidden && t.agents.some((a) => a.name === bot.name),
+	)
+	botSheet.querySelector('h3.also').hidden = !elsewhere.length
+	botSheet.querySelector('ul').replaceChildren(...elsewhere.map((t) => threadRow(t)))
 }
 // A thread's name opens its sheet in the chat, and writes in it on the page with the story.
 const header = (id) => () =>
