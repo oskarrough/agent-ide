@@ -93,8 +93,7 @@ export async function runner({ name, server }) {
 		reported = next
 	}
 	return {
-		told({ op, threads }) {
-			if (op !== 'status') return
+		told({ threads }) {
 			const working = threads.filter((t) => t.status === 'working').length
 			report(
 				{

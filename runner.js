@@ -105,11 +105,11 @@ async function connect() {
 		models,
 		resolve,
 		echo,
-		ops: Object.assign({}, ...modules.map((m) => m.ops)),
+		ops: Object.fromEntries(modules.filter((m) => m.call).map((m) => [m.name, m.call])),
 		readOnly: args['read-only'],
 		send: (text) => socket.readyState === WebSocket.OPEN && socket.send(text),
 		onTell: (message) =>
-			message.op === 'update' ? update() : modules.forEach((m) => m.told?.(message)),
+			message.op === 'update' ? update() : modules.find((m) => m.name === message.op)?.told?.(message),
 	})
 	const from = args.owner ? `, to ${[args.owner, ...args.allow].join(', ')}` : ''
 	socket.onopen = () =>

@@ -311,7 +311,7 @@ export function remoteEnv(runners, name, cwd) {
 }
 
 // `resolve(pattern)` is pi's `--model pattern`: { model, thinkingLevel? }. `echo/echo` answers from a queue, one per request.
-// `ops` are the modules' own; an op nobody serves answers null. A read-only runner reads its folder and changes nothing.
+// `ops` are the modules' own, each under its name; an op nobody serves answers null. A read-only runner reads its folder and changes nothing.
 export function serveRunner({
 	name,
 	dir,

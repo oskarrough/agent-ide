@@ -57,5 +57,5 @@ export function runner(core) {
 		]
 		return parts.filter(Boolean).join('\n\n') || null
 	}
-	return { ops: { context } }
+	return { call: context }
 }
