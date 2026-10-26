@@ -138,7 +138,7 @@ check(
 	'the fork is left alone',
 	brief(f3after),
 )
-await api('POST', `/api/threads/${f2}/entries`, { body: '@laptop again' }, 'di')
+await api('POST', `/api/threads/${f2}/entries`, { body: '@echo/echo@laptop again' }, 'di')
 const f2after = await answered(f2, 3)
 check(
 	Boolean(f2after?.entries.find((e) => e.data.author === 'di')?.data.to),

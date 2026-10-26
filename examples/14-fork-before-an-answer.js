@@ -56,10 +56,10 @@ check(
 	'the inherited agent stays idle after restart',
 )
 const routed = await api('POST', `/api/threads/${fork.id}/entries`, {
-	body: '@bot try another way',
+	body: '@echo/echo@bot try another way',
 })
 check(
-	routed.json.to?.[0]?.endsWith('@bot'),
+	routed.json.to?.[0] === 'echo/echo@bot',
 	'the director can address the inherited agent',
 	JSON.stringify(routed.json),
 )
@@ -69,7 +69,7 @@ const inputs = (await conversationOf(settled ?? (await view(fork.id)), 'echo/ech
 	.filter((e) => e.kind === 'agent-ide.delivery')
 	.map((e) => text(e.model[0]))
 check(
-	JSON.stringify(inputs) === JSON.stringify(['oskar: try this\n\noskar: @bot try another way']),
+	JSON.stringify(inputs) === JSON.stringify(['oskar: try this\n\noskar: @echo/echo@bot try another way']),
 	'its first input carries the inherited question exactly once',
 	JSON.stringify(inputs),
 )

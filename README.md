@@ -29,7 +29,7 @@ bun server.js                          # http://127.0.0.1:3000, stored in agent-
 HOST=0.0.0.0 PORT=3001 bun server.js   # reachable from other machines
 RUNNER=~/code bun server.js            # lends this machine another folder than the one it starts in; RUNNER=0 lends none
 MODULES=-talk,-status,-context bun server.js   # modules are picked as Pi picks tools: +name and -name change the defaults, names alone replace them, a path is a module of your own
-MODULES=+director bun server.js        # director.js asks the agents a message @mentions
+MODULES=+director bun server.js        # director.js asks the agents a message @mentions by name, as @echo/echo@laptop or @reviewer
 MODULES=+memory MEMORY_MODEL=haiku@laptop bun server.js   # memory.js: threads that never end
 MODULES=+search bun server.js          # search.js: agents' web_search, through Exa's free search
 MODULES=+matrix MATRIX_TOKEN=… MATRIX_ROOMS=… bun server.js   # matrix.js: Matrix rooms as threads; its top says how
