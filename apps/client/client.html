@@ -13,12 +13,25 @@
 	<main class="page">
 		<section data-focus="all">
 			<h1>agent-ide</h1>
-			<p>A server that keeps your agents' threads, and keeps them going while you're away.</p>
 			<p>
-				The model thinks at OpenAI, Anthropic or whoever you pick. The loop that drives it, and the
-				memory of every thread, live on your server, which stays on. Its hands, the tools it calls,
-				run on whichever computer you lend it.
+				Why use this over ChatGPT, Claude, T3 and the rest? Maybe you wouldn't. I do, because I like
+				being able to change absolutely everything.
 			</p>
+			<p>
+				agent-ide is a minimal, stable base for building on AI. It's the chat app you know, with many
+				threads and any model you like, plus a few things on top:
+			</p>
+			<ul>
+				<li>
+					It runs on your own computer. Nothing third-party except the model, from whoever you pick.
+				</li>
+				<li>
+					Bots, @mentions, Matrix rooms, memory and search are modules you switch on, or write
+					yourself.
+				</li>
+				<li>About five thousand lines. Fork it, point your AI at it, change it.</li>
+			</ul>
+			<p>The rest of this page walks you through it.</p>
 		</section>
 
 		<section data-focus="server">
@@ -108,7 +121,7 @@
 			</p>
 		</section>
 
-		<section class="draft" data-focus="memory">
+		<section data-focus="memory">
 			<h2>Memory</h2>
 			<p>
 				A thread that never has to end. Each message gets one short line, pairs of lines merge into

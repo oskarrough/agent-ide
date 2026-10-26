@@ -2,7 +2,25 @@
 
 A small agent IDE on [Pi Durable](https://www.npmjs.com/package/@earendil-works/pi-durable), built to show how little it takes. One server keeps every thread. Runners on your machines lend it their model logins and a folder. Runs with bun or Node.js 24+, no build step.
 
-What it promises, the words it uses, how it fits together, its principles and what's decided: [docs/concepts.html](docs/concepts.html), which every server also serves at `/concepts`. The code is the truth, and [examples/](examples) shows each idea working.
+## What's in it
+
+- Threads with many authors. You, your friends and any number of agents talk in one thread, and each agent can be any model pi can name.
+- One server that stays on. It keeps every thread in one SQLite file, and a restart or a stop loses nothing.
+- Runners: your machines lend the server a folder, their tools and their model logins, so agents work where your code is.
+- Multiplayer without accounts: send the link and you're in.
+- Forks: start a new thread from any message, with the same agents.
+- Hands off: take a thread's tools away, so its agents only read and ask others.
+- Threads that talk: agents post to other threads and read them back (talk, on by default).
+- Modules you switch on with `MODULES=+name`, or write your own:
+  - director: @mention an agent by name and it answers.
+  - bots: one name in many threads, with a home thread and its own instructions.
+  - matrix: Matrix rooms as threads, so you can talk to your agents from any Matrix client.
+  - memory: threads that never have to end (an experiment).
+  - search: web search for agents, through Exa.
+- A browser client, a CLI and an HTTP API.
+- About five thousand lines of plain JS, no build step. Fork it and change it.
+
+What it promises, the words it uses, how it fits together and its principles: [docs/concepts.html](docs/concepts.html), which every server also serves at `/concepts`. The code is the truth, and [examples/](examples) shows each idea working.
 
 ## Try it
 
@@ -12,13 +30,7 @@ npx github:oskarrough/agent-ide
 
 It lends the folder it starts in to its agents, as a runner named after this machine. From a clone, `bun install && bun server.js` does the same. On another machine, nothing to clone: `bun cli.js key desk` on the server prints the line that connects it, `curl -fsSL http://yourbox:3000/connect-runner | AGENT_IDE_KEY=air_… sh -s -- --name desk --dir ~/code`.
 
-Open http://127.0.0.1:3000 and:
-
-1. Click **New thread**.
-2. Pick this machine's runner and the model `echo/echo`. Send `hello`. Echo answers at once, which proves the loop works.
-3. Pick the default model, pi's own on that runner, and ask something real. Run `pi` and `/login` on the runner once if you haven't. **+ agent** asks a second one.
-4. Send `$ ls` to run a command in the runner's folder.
-5. Tick **Show structure** to see the JSON behind it all.
+Open http://127.0.0.1:3000 and the page walks you through it, beside the app itself.
 
 Or read [examples/](examples): one file per idea, each starting its own server and runner, checking what it claims. `bun run examples` runs them all, `bun examples/05-fork.js` one. Those named `real-model` use a real model through your pi login, so they only run on their own or with `REAL=1 bun run examples`.
 

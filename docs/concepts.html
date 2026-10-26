@@ -213,33 +213,6 @@
 				width: 24%;
 				color: var(--muted);
 			}
-			ul.status {
-				list-style: none;
-				padding: 0;
-			}
-			ul.status li {
-				padding: 0.35rem 0 0.35rem 1.7rem;
-				position: relative;
-			}
-			ul.status li::before {
-				position: absolute;
-				left: 0;
-				font-family: ui-sans-serif, system-ui, sans-serif;
-			}
-			ul.status li.done::before {
-				content: '✓';
-				color: var(--runner);
-				font-weight: 700;
-			}
-			ul.status li.next::before {
-				content: '→';
-				color: var(--server);
-				font-weight: 700;
-			}
-			ul.status li.no::before {
-				content: '×';
-				color: var(--muted);
-			}
 			nav.toc {
 				display: flex;
 				flex-direction: column;
@@ -303,15 +276,12 @@
 				<a href="#principles">Principles</a>
 				<a href="#runner-life">A runner's life</a>
 				<a href="#modules">Modules</a>
-				<a href="#decided">Decided</a>
-				<a href="#where-we-are">Where we are</a>
+				<a href="#who-pays">Who pays</a>
+				<a href="#whole-picture">The whole picture</a>
 			</nav>
 			<p class="lede">
 				The thinking happens on the server. The work happens on runners, on machines you choose. You
 				look in through any client, from any device. Six words name everything else.
-			</p>
-			<p class="caption">
-				This page is our scratchpad: what's settled and where we are. It changes as we decide.
 			</p>
 
 			<pre class="mermaid">
@@ -670,8 +640,7 @@ stateDiagram-v2
 				<dd>One name in many threads: see Bot, above.</dd>
 			</dl>
 
-			<h2 id="decided">Decided</h2>
-			<h3 id="who-pays">Who pays: the runner</h3>
+			<h2 id="who-pays">Who pays: the runner</h2>
 			<p>
 				An agent's model calls go out through the pi logins on its runner, so whoever lends a runner
 				pays for the thinking on it. agent-ide is for one person and for teams alike, and this
@@ -707,7 +676,7 @@ flowchart LR
 				working on another would be one optional field, if it's ever needed.
 			</p>
 
-			<h3 id="whole-picture">The whole picture lives in the thread</h3>
+			<h2 id="whole-picture">The whole picture lives in the thread</h2>
 			<p>
 				When work spans machines, an agent on each one does its part, and any agent can read
 				another's work with <code>threads {thread, agent}</code>: not only what it said, but the
@@ -735,16 +704,6 @@ sequenceDiagram
 				<li>
 					Long output is cut at 4,000 characters, saying how much is left; <code>query</code> finds
 					the part that matters.
-				</li>
-			</ul>
-
-			<h2 id="where-we-are">Where we are</h2>
-			<ul class="status">
-				<li class="next">Bots, once the rest is rock solid.</li>
-				<li class="next">Memory, a thread that never has to end, still being explored.</li>
-				<li class="no">
-					A desktop app, a phone app, cloud machine kinds, accounts. Each is a shell around what's
-					already here.
 				</li>
 			</ul>
 		</main>
