@@ -200,11 +200,16 @@ export function server(core) {
 			"A message from another thread says which. Whatever text you end a turn with is posted, so while you wait for answers from other threads, end your turn with no text at all, not even to say you are waiting: each answer wakes you. When you have nothing new to tell, end with no text too. Don't sleep or poll.",
 	}
 
-	// An answer to posts goes back to each thread they came from, asking every agent there who posted.
+	// An answer to posts goes back to each thread they came from, asking every agent there who posted. A post the
+	// agent already answered with its post tool gets no second answer.
 	async function reply(posts, answeredIn, agent, body) {
 		const replies = []
 		for (const from of new Set(posts.map((p) => p.data.from))) {
-			const mine = posts.filter((p) => p.data.from === from)
+			const answered = new Set(
+				(await core.messages(from)).filter((e) => e.data.from === answeredIn).flatMap((e) => e.data.re ?? []),
+			)
+			const mine = posts.filter((p) => p.data.from === from && !answered.has(p.id))
+			if (!mine.length) continue
 			const { agents } = await core.thread(from)
 			const askers = (
 				await Promise.all(

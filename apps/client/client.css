@@ -1220,7 +1220,7 @@ body.chat {
 }
 
 /* A bot's part of the sheet, and its + new, sized like the hands toggle and its tools. */
-.thread-details .bot > :is(textarea, button) {
+.thread-details .bot > :is(textarea, input, button) {
 	margin: 0 0.6rem;
 }
 
@@ -1229,8 +1229,25 @@ body.chat {
 	font-size: 12px;
 }
 
-/* The soul is written like a message: the composer's box, growing with what's in it. */
-.thread-details .soul {
+/* Its model is written as the tools beside it are. */
+.thread-details .bot > input.model {
+	display: block;
+	width: calc(100% - 1.2rem);
+	border: 0;
+	padding: 0;
+	font:
+		12px ui-monospace,
+		monospace;
+	color: var(--mute);
+	background: none;
+
+	&.bad {
+		color: var(--wait);
+	}
+}
+
+/* Its instructions are written like a message: the composer's box, growing with what's in it. */
+.thread-details .instructions {
 	display: block;
 	width: calc(100% - 1.2rem);
 	box-sizing: border-box;
@@ -1259,7 +1276,7 @@ body.chat {
 	line-height: 1.3;
 }
 
-/* Soul follows Tools as Tools follows the thread, not as a first heading. */
+/* Instructions follow Tools as Tools follows the thread, not as a first heading. */
 .thread-details .bot > h3:first-child {
 	margin-top: 1rem;
 }
