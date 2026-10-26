@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process'
+import { createHash, randomBytes } from 'node:crypto'
 import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
@@ -54,6 +55,14 @@ const base = () => true
 // Every runner that ever connected, with the models pi resolved on it.
 const Runners = defineDoc({
 	kind: 'agent-ide.runners',
+	version: 1,
+	scope: 'session',
+	checkpointWhen: base,
+	initial: () => ({}),
+})
+// Each runner's key, as its sha256: a runner dials in with its own, and taking it away keeps the runner out.
+const Keys = defineDoc({
+	kind: 'agent-ide.keys',
 	version: 1,
 	scope: 'session',
 	checkpointWhen: base,
@@ -918,6 +927,8 @@ const routes = [
 				outdated: Boolean(runner.version) && runner.version !== bundle.version,
 			})),
 	],
+	['POST /api/runners', async (req) => mintKey(String((await input(req)).name ?? ''), origin(req))],
+	['DELETE /api/runners/:name', (req, name) => revoke(name)],
 	['GET /runner/bundle', () => bundle],
 	['GET /api/threads', (req) => threadList(user(req))],
 	['POST /api/threads', async (req) => createThread(user(req), await input(req))],
@@ -943,7 +954,10 @@ const routes = [
 			`GET /api/threads/:id/${m.name}`,
 			(req, id, url) => m.serve(id, url.searchParams),
 		]),
-].map(([key, handle]) => [new RegExp(`^${key.replace(':id', '(\\d+)')}$`), handle])
+].map(([key, handle]) => [
+	new RegExp(`^${key.replace(':id', '(\\d+)').replace(':name', '([^/]+)')}$`),
+	handle,
+])
 
 function send(res, status, value) {
 	res.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
@@ -978,11 +992,7 @@ async function handleRequest(req, res) {
 	}
 	if (req.method === 'GET' && url.pathname === '/connect-runner') {
 		res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' })
-		return res.end(
-			runnerScript(
-				`${req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http'}://${String(req.headers.host).replace(/[^\w.:\[\]-]/g, '')}`,
-			),
-		)
+		return res.end(runnerScript(origin(req)))
 	}
 	const key = `${req.method} ${url.pathname}`
 	for (const [pattern, handle] of routes) {
@@ -992,7 +1002,11 @@ async function handleRequest(req, res) {
 			send(
 				res,
 				req.method === 'POST' ? 201 : 200,
-				await handle(req, match[1] && Number(match[1]), url),
+				await handle(
+					req,
+					match[1] && (/^\d+$/.test(match[1]) ? Number(match[1]) : decodeURIComponent(match[1])),
+					url,
+				),
 			)
 		} catch (error) {
 			send(res, error.status ?? 400, { error: error.message })
@@ -1004,13 +1018,17 @@ async function handleRequest(req, res) {
 
 // Finds bun or Node, then hands over to the updater, which keeps the runner up to date with this server.
 const runnerScript = (server) => `#!/bin/sh
-# Lends this machine to the agent-ide server at ${server}:
-#   curl -fsSL ${server}/connect-runner | sh -s -- --dir ~/code [--name laptop] [--read-only] [--no-update]
+# Lends this machine to the agent-ide server at ${server}, with a key from \`bun cli.js key laptop\` there:
+#   curl -fsSL ${server}/connect-runner | AGENT_IDE_KEY=air_… sh -s -- --dir ~/code [--name laptop] [--read-only] [--no-update]
 set -e
 if command -v bun >/dev/null 2>&1; then run=bun; elif command -v node >/dev/null 2>&1; then run=node; else
   echo "agent-ide's runner needs bun (curl -fsSL https://bun.sh/install | bash) or Node.js 24 or newer"; exit 1
 fi
 mkdir -p "$HOME/.agent-ide"
+if [ -n "$AGENT_IDE_KEY" ]; then
+  config="\${XDG_CONFIG_HOME:-$HOME/.config}/agent-ide"
+  mkdir -p "$config" && (umask 077 && printf %s "$AGENT_IDE_KEY" > "$config/key")
+fi
 curl -fsSL "${server}/runner/updater.js" -o "$HOME/.agent-ide/runner-updater.js"
 echo "Next time, without curl: $run ~/.agent-ide/runner-updater.js ${server} $*"
 exec "$run" "$HOME/.agent-ide/runner-updater.js" "${server}" "$@"
@@ -1079,6 +1097,35 @@ async function follow(socket, w) {
 	}
 }
 
+// The address this request reached the server at, as a runner on another machine dials it.
+const origin = (req) =>
+	`${req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http'}://${String(req.headers.host).replace(/[^\w.:\[\]-]/g, '')}`
+const sha256 = (text) => createHash('sha256').update(text).digest('hex')
+
+// A new key for a runner, replacing its old one, whose runner is cut off; the server keeps only its hash.
+async function mintKey(name, server) {
+	if (!/^[\w.-]+$/.test(name))
+		throw new Error('name the runner: letters, digits, dot, dash or underscore')
+	const key = `air_${randomBytes(24).toString('base64url')}`
+	await commit(async (tx) => {
+		;(await tx.doc(Keys))[name] = sha256(key)
+	})
+	sockets.get(name)?.close(4001, `${name}'s key was replaced`)
+	return {
+		name,
+		key,
+		connect: `curl -fsSL ${server}/connect-runner | AGENT_IDE_KEY=${key} sh -s -- --name ${name} --dir ~/code`,
+	}
+}
+// Takes a runner's key away: it goes offline, stops dialling back, and stays out until it gets a new one.
+async function revoke(name) {
+	await commit(async (tx) => {
+		delete (await tx.doc(Keys))[name]
+	})
+	sockets.get(name)?.close(4001, `${name} was revoked`)
+	return { revoked: name }
+}
+
 const sockets = new Map()
 const wss = new WebSocketServer({ noServer: true })
 async function upgrade(req, raw, head) {
@@ -1108,6 +1155,18 @@ async function upgrade(req, raw, head) {
 	if (!name) {
 		listen((text) => watch(socket, JSON.parse(text).watch))
 		return clients.add(socket)
+	}
+	// A runner shows its key before it counts, so nobody can take its name; 4001 tells it to stop dialling.
+	const given = /^Bearer (.+)$/.exec(req.headers.authorization ?? '')?.[1]
+	const held = ((await harness.snapshot(Keys, context)) ?? {})[name]
+	if (!given || held !== sha256(given)) {
+		console.log(`runner ${name} turned away: ${given ? 'wrong or revoked key' : 'no key'}`)
+		return socket.close(
+			4001,
+			given
+				? `${name}'s key is wrong or was revoked; on the server: bun cli.js key ${name}`
+				: `${name} needs a key; on the server: bun cli.js key ${name}`,
+		)
 	}
 	// A reconnecting runner replaces its old socket, whose calls fail.
 	if (sockets.has(name)) {
@@ -1148,14 +1207,17 @@ async function upgrade(req, raw, head) {
 
 // The server lends this machine too, the folder it starts in or RUNNER=~/code: its own runner.js, one more process,
 // which stops with the server. RUNNER=0 lends nothing.
+// It gets a fresh key each start.
 let lent
-function lend(url) {
+async function lend(url) {
 	const dir = process.env.RUNNER ?? process.cwd()
 	if (dir === '0' || lent) return
+	lent = true
+	const { key } = await mintKey(os.hostname(), url)
 	lent = spawn(
 		process.execPath,
 		[new URL('./runner.js', import.meta.url).pathname, '--server', url, '--dir', dir],
-		{ stdio: 'inherit' },
+		{ stdio: 'inherit', env: { ...process.env, AGENT_IDE_KEY: key } },
 	)
 	for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => lent.kill(signal))
 }
@@ -1185,6 +1247,8 @@ for (const host of process.env.HOST ? [process.env.HOST] : ['127.0.0.1', '::1'])
 			console.log(
 				`http://${address}:${server.address().port} on ${file}, modules: ${modules.map((m) => m.name).join(', ') || 'none'}`,
 			)
-		lend(`http://${host === '0.0.0.0' ? '127.0.0.1' : addresses[0]}:${server.address().port}`)
+		lend(
+			`http://${host === '0.0.0.0' ? '127.0.0.1' : addresses[0]}:${server.address().port}`,
+		).catch((error) => console.error(error))
 	})
 }

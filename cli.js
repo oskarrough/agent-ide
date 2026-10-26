@@ -17,6 +17,8 @@ const usage = `bun cli.js [--server url] [--as name] <command>
   threads          every thread, with its status and agents
   read <thread>    a thread's messages, or its --last N
   runners          every runner, online or not, and its models
+  key <runner>     a new key for a runner, replacing its old one, and the line that connects it
+  revoke <runner>  take its key away: it goes offline and stays out
   stop <thread>    stop its agents and commands
   retry <thread>   run again what crashes left parked`
 
@@ -142,6 +144,16 @@ const commands = {
 			)
 			for (const m of r.offers) console.log(`  ${m}@${r.name}`)
 		}
+	},
+	async key() {
+		const { key, connect } = await api('POST', '/api/runners', { name: rest[0] })
+		console.log(
+			`AGENT_IDE_KEY=${key}\n\nOn the runner's machine:\n  ${connect}\nor from a clone:\n  AGENT_IDE_KEY=${key} bun runner.js --server ${o.server} --name ${rest[0]} --dir .`,
+		)
+	},
+	async revoke() {
+		await api('DELETE', `/api/runners/${encodeURIComponent(rest[0] ?? '')}`)
+		console.log(`${rest[0]} revoked`)
 	},
 	stop: () => api('POST', `/api/threads/${Number(rest[0])}/stop`),
 	retry: () => api('POST', `/api/threads/${Number(rest[0])}/retry`),

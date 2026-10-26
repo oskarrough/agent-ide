@@ -405,7 +405,7 @@ flowchart LR
 					A program on a machine that lends the server two things: a folder and the model logins pi
 					has there. Started by hand, or installed with one line,
 					<code>curl -fsSL &lt;server&gt;/connect-runner | sh</code>, after which it keeps itself up
-					to date. It can be read-only, and it can have an owner.
+					to date. It dials in with its own key. It can be read-only, and it can have an owner.
 					<small
 						>What you might call a machine, a computer or a daemon. A machine is where runners run,
 						one per folder if you like, and a cloud sandbox is just another machine. The daemon is
@@ -604,15 +604,23 @@ sequenceDiagram
 					A runner started <code>--read-only</code> lends its folder to read: writes and commands
 					come back as errors.
 				</li>
+				<li>
+					A runner shows its key when it dials in, so nobody can take its name. The server mints a
+					key per runner and keeps only its hash; a new key cuts off the old one. Revoking takes
+					the key away: the runner goes offline and stops dialling back. People have no keys yet,
+					so anyone who can reach the server can mint one.
+				</li>
 			</ul>
 
 			<h2 id="runner-life">A runner's life</h2>
 			<pre class="mermaid">
 stateDiagram-v2
   direction LR
-  [*] --> Online: curl …/connect-runner | sh
+  [*] --> Online: curl …/connect-runner | sh, with its key
   Online --> Offline: machine sleeps, network drops
   Offline --> Online: dials back by itself
+  Online --> Revoked: its key is taken away
+  Revoked --> [*]
   Online --> Updating: new runner on the server, and it's idle
   Updating --> Online: fetched, installed, restarted
 </pre>

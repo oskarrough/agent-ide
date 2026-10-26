@@ -29,7 +29,7 @@ A finding counts only if you can reproduce it. Examples prove the promises, not 
 
 ## Checking the UI
 
-A change you can see in apps/client/client.html gets seen. Run `bun server.js` and `bun runner.js --name laptop --dir .` in the background, then drive the page with [agent-browser](https://github.com/vercel-labs/agent-browser):
+A change you can see in apps/client/client.html gets seen. Run `bun server.js` in the background, which lends this folder as a runner named after the machine (another runner needs a key: `bun cli.js key laptop` prints how to connect it), then drive the page with [agent-browser](https://github.com/vercel-labs/agent-browser):
 
 `agent-browser open http://127.0.0.1:3000`, then `snapshot -i` for the page with @refs to act on; `agent-browser skills get core` is its own guide. Locally, install it with `npm i -g agent-browser && agent-browser install`; in Claude Code on the web, `.claude/hooks/session-start.sh` does it. Examples still prove behaviour; the browser only shows it.
 

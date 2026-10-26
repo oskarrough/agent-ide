@@ -63,6 +63,7 @@ export async function server(env = {}, { cwd } = {}) {
 export async function runner(name, { args = [], env = {}, wait = true } = {}) {
 	const p = start('runner.js', ['--server', base, '--name', name, '--dir', dir, ...args], {
 		HOME: home,
+		AGENT_IDE_KEY: await keyFor(name),
 		...env,
 	})
 	if (wait)
@@ -71,6 +72,9 @@ export async function runner(name, { args = [], env = {}, wait = true } = {}) {
 		)
 	return p
 }
+
+// A new key for a runner, which the store keeps across restarts.
+export const keyFor = async (name) => (await api('POST', '/api/runners', { name })).json.key
 
 export async function api(method, route, body, user = 'oskar') {
 	const res = await fetch(base + route, {
@@ -128,9 +132,11 @@ export async function localRunner(
 ) {
 	let socket,
 		closing = false
+	const key = await keyFor(name)
 	const connect = () => {
 		socket = new WebSocket(
 			`ws://127.0.0.1:${port}/ws?${new URLSearchParams([['runner', name], ['dir', dir], ['model', model], ...query, ...(readOnly ? [['readOnly', '1']] : [])])}`,
+			{ headers: { authorization: `Bearer ${key}` } },
 		)
 		const r = serveRunner({
 			name,

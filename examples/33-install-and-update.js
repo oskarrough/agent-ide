@@ -5,7 +5,20 @@ import { spawn } from 'node:child_process'
 import { cpSync, mkdirSync, readFileSync, readdirSync, appendFileSync, symlinkSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { answered, api, base, check, db, dir, done, repo, runner, server, until } from './lib.js'
+import {
+	answered,
+	api,
+	base,
+	check,
+	db,
+	dir,
+	done,
+	keyFor,
+	repo,
+	runner,
+	server,
+	until,
+} from './lib.js'
 
 const tmp = path.dirname(db)
 const HOME = path.join(tmp, 'installed-home')
@@ -37,8 +50,9 @@ const ask = async (id, n) => {
 
 let srv = await server()
 const port = new URL(base).port
+const key = await keyFor('fresh')
 start('sh', ['-c', `curl -fsSL ${base}/connect-runner | sh -s -- --dir ${dir} --name fresh`], {
-	env: { ...process.env, HOME },
+	env: { ...process.env, HOME, XDG_CONFIG_HOME: '', AGENT_IDE_KEY: key },
 })
 check(
 	await until(async () => (await runnerOf('fresh'))?.online, 60000),
@@ -46,6 +60,10 @@ check(
 )
 const before = readFileSync(path.join(installed, 'version'), 'utf8')
 check(!(await runnerOf('fresh')).outdated, "it runs the server's own runner")
+check(
+	readFileSync(path.join(HOME, '.config', 'agent-ide', 'key'), 'utf8') === key,
+	'and keeps its key in ~/.config/agent-ide, for starts without curl',
+)
 const {
 	json: { id },
 } = await api('POST', '/api/threads', { title: 'installed' })

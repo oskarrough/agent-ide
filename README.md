@@ -10,7 +10,7 @@ What it promises, the words it uses, how it fits together, its principles and wh
 npx github:oskarrough/agent-ide
 ```
 
-It lends the folder it starts in to its agents, as a runner named after this machine. From a clone, `bun install && bun server.js` does the same. On another machine, nothing to clone: `curl -fsSL http://yourbox:3000/connect-runner | sh -s -- --name desk --dir ~/code`.
+It lends the folder it starts in to its agents, as a runner named after this machine. From a clone, `bun install && bun server.js` does the same. On another machine, nothing to clone: `bun cli.js key desk` on the server prints the line that connects it, `curl -fsSL http://yourbox:3000/connect-runner | AGENT_IDE_KEY=air_… sh -s -- --name desk --dir ~/code`.
 
 Open http://127.0.0.1:3000 and:
 
@@ -37,15 +37,17 @@ echo '{"modules": {"memory": true, "../bots.js": true}}' > agent-ide.json   # th
 bun scripts/replay-pi.js ~/.pi/agent/sessions/FOLDER   # pi sessions, or one .jsonl, as one long thread
 DB_PATH=other.sqlite bun server.js     # another store; only one server may use a file
 
-bun runner.js --server http://127.0.0.1:3000 --name laptop [--alias "Oskar's laptop"] --dir ~/code [--owner oskar [--allow ana --allow @desktop]] [--read-only]
-curl -fsSL http://127.0.0.1:3000/connect-runner | sh -s -- [the same options] [--no-update]   # into ~/.agent-ide, kept up to date
+bun cli.js key laptop                  # a new key for runner laptop, replacing its old one, and the lines that connect it
+bun cli.js revoke laptop               # takes its key away: it goes offline and stays out
+AGENT_IDE_KEY=air_… bun runner.js --server http://127.0.0.1:3000 --name laptop [--alias "Oskar's laptop"] --dir ~/code [--owner oskar [--allow ana --allow @desktop]] [--read-only]
+curl -fsSL http://127.0.0.1:3000/connect-runner | AGENT_IDE_KEY=air_… sh -s -- [the same options] [--no-update]   # into ~/.agent-ide, kept up to date; the key goes in ~/.config/agent-ide/key
 
 bun cli.js post "hello" --to sonnet@laptop --to desk --thinkingLevel high   # a new thread; answers print as they land
 bun cli.js post "and you?" --thread 3                               # asks whom thread 3 last asked
 bun cli.js threads | runners | read 3 [--last 5] | stop 3 | retry 3         # runner.js and cli.js both read AGENT_IDE_SERVER=url, or --server
 ```
 
-The client is served at `/`, or by `bun apps/client/client.html` with live reload and `?server=http://…` pointing at a server; [cli.js](cli.js) is the same API from a terminal. `?user=ana` posts as someone else. [apps/matrix-sync](apps/matrix-sync) files GitHub issues from a Matrix mention, without anyone opening the IDE. There is no authentication: anyone who can reach the server can claim any name, so keep it on a trusted network.
+The client is served at `/`, or by `bun apps/client/client.html` with live reload and `?server=http://…` pointing at a server; [cli.js](cli.js) is the same API from a terminal. `?user=ana` posts as someone else. [apps/matrix-sync](apps/matrix-sync) files GitHub issues from a Matrix mention, without anyone opening the IDE. A runner needs its key to connect, so nobody can take its name, and a revoked one stays out. People have no keys yet: anyone who can reach the server can claim any name, and mint a key, so keep it on a trusted network.
 
 ## API
 
