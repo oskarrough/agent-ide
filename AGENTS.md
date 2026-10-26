@@ -13,9 +13,9 @@ agent-ide proves that an agent IDE can be small. A change serves one of the prom
 
 1. Which primitive or principle does it touch? If none of them describes it, it's not ready.
 2. Can it be a module, off by default? Then make it one.
-3. Is there a version that deletes more than it adds? Build that one.
+3. Is there a version with fewer concepts? Build that one, once you can name what the code it drops was the only path to. Lines don't count; concepts do.
 
-The principles can be wrong. When a clearly better design breaks one, don't bend the design to fit: stop and ask Oskar, saying which principle and why.
+The principles can be wrong. When a clearly better design breaks one, don't bend the design to fit: stop and ask Oskar, saying which principle and why. Ideas can be wrong too, Oskar's included: argue before building, not after.
 
 ## Reviewing
 
