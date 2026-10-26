@@ -17,87 +17,11 @@ const EFFORTS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
 const light = (state) =>
 	`dot${state === 'on' ? ' on' : state === 'working' ? ' working' : ['blocked', 'parked'].includes(state) ? ' blocked' : ''}`
 
-// Where the four pieces live, per product. The chips move between the places; hovering one lights it up on the stage.
-const PIECES = {
-	model: 'Claude, GPT, Gemini',
-	loop: 'Pi, Claude Code, Codex',
-	hands: 'where tools run',
-	memory: 'the chat history',
-}
-const PRODUCTS = {
-	chatgpt: {
-		model: 'lab',
-		loop: 'lab',
-		hands: 'lab',
-		memory: 'lab',
-		caption: "All of it runs at OpenAI, so there's nothing to set up and none of it is yours.",
-	},
-	'claude-code': {
-		model: 'lab',
-		loop: 'laptop',
-		hands: 'laptop',
-		memory: 'laptop',
-		caption: 'Everything but the model runs on your laptop, so it stops when you close the lid.',
-	},
-	'agent-ide': {
-		model: 'lab',
-		loop: 'server',
-		hands: 'anywhere',
-		memory: 'server',
-		caption:
-			'The loop and the memory live on a box that stays on, and the hands on whichever computer you lend it.',
-	},
-}
-const chips = Object.fromEntries(
-	Object.entries(PIECES).map(([piece, hint]) => [
-		piece,
-		el('span', {
-			className: 'chip',
-			title: hint,
-			textContent: piece[0].toUpperCase() + piece.slice(1),
-		}),
-	]),
-)
-for (const [piece, chip] of Object.entries(chips)) {
-	chip.onmouseenter = () => {
-		$('stage').dataset.focus = piece
-	}
-	chip.onmouseleave = () => {
-		$('stage').dataset.focus = seen
-	}
-}
-function product(name) {
-	const before = new Map(Object.values(chips).map((c) => [c, c.getBoundingClientRect()]))
-	for (const [piece, place] of Object.entries(PRODUCTS[name]).filter(([k]) => k in PIECES))
-		document.querySelector(`[data-place=${place}]`).append(chips[piece])
-	for (const place of document.querySelectorAll('.place'))
-		place.classList.toggle('used', place.querySelector('.chip') !== null)
-	// Each chip glides from where it was.
-	for (const [chip, was] of before) {
-		const now = chip.getBoundingClientRect()
-		if (was.width)
-			chip.animate(
-				[
-					{ transform: `translate(${was.left - now.left}px, ${was.top - now.top}px)` },
-					{ transform: 'none' },
-				],
-				{ duration: 450, easing: 'cubic-bezier(.2,.8,.2,1)' },
-			)
-	}
-	for (const b of document.querySelectorAll('[data-product]'))
-		b.setAttribute('aria-pressed', b.dataset.product === name)
-	$('caption').textContent = PRODUCTS[name].caption
-}
-for (const b of document.querySelectorAll('[data-product]'))
-	b.onclick = () => product(b.dataset.product)
-product('chatgpt')
-
 // The section in view says what the stage should show.
-let seen = 'all'
 const sections = new IntersectionObserver(
 	(list) => {
 		for (const e of list)
-			if (e.isIntersecting) $('stage').dataset.focus = seen = e.target.dataset.focus
+			if (e.isIntersecting) $('stage').dataset.focus = e.target.dataset.focus
 	},
 	{ rootMargin: '-45% 0px -45% 0px' },
 )

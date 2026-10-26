@@ -371,64 +371,6 @@ agent-memory {
 	margin: 1rem 0;
 }
 
-/* Where the four pieces live, per product. The chips move between the places. */
-.products {
-	display: flex;
-	gap: 0.25rem;
-	margin: 1.5rem 0 0.75rem;
-}
-
-.places {
-	display: grid;
-	grid-template-columns: repeat(4, 1fr);
-	gap: 0.5rem;
-	font-size: 14px;
-}
-
-.place {
-	border: 1px dashed var(--line);
-	border-radius: 8px;
-	padding: 0.5rem;
-	min-height: 7.5rem;
-	display: flex;
-	flex-direction: column;
-	gap: 0.3rem;
-	transition:
-		border-color 0.3s,
-		background 0.3s;
-
-	> small {
-		color: var(--mute);
-	}
-
-	&.used {
-		border-style: solid;
-		background: var(--tint);
-	}
-}
-
-.chip {
-	display: block;
-	padding: 0.25rem 0.5rem;
-	border-radius: 6px;
-	background: Canvas;
-	border: 1px solid var(--edge);
-	font-weight: 600;
-	cursor: default;
-
-	small {
-		display: block;
-		font-weight: 400;
-		color: var(--mute);
-		font-size: 12px;
-	}
-}
-
-.caption {
-	min-height: 3.2em;
-	margin-top: 0.75rem;
-}
-
 :is(.thread, .thread-details) > .hands {
 	display: flex;
 	gap: 0.4rem;
