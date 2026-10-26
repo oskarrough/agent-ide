@@ -19,6 +19,8 @@ import {
 } from '@earendil-works/pi-durable'
 import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node'
 import { CodingTools } from '@earendil-works/pi-durable/tools'
+import { createCodemodeExtension } from '@earendil-works/pi-durable/codemode'
+import { CodemodeSandbox } from '@earendil-works/pi-codemode'
 import { load } from './modules.js'
 import { WebSocketServer } from 'ws'
 import { createRunners, messageText, remoteEnv, runnerBundle, runnerProvider } from './remote.js'
@@ -264,6 +266,12 @@ const updater = await readFile(new URL('./runner-updater.js', import.meta.url))
 const models = createModels()
 const registry = createRegistry()
 registry.install(CodingTools)
+// Scripts that call the other tools, so a run of calls costs the model one turn; a thread can drop it with -codemode.
+registry.install(
+	createCodemodeExtension({
+		sandbox: new CodemodeSandbox({ memoryLimitBytes: 256 * 1024 * 1024 }),
+	}),
+)
 registry.install(defineExtension({ name: 'agent-ide', tasks: [Anchor, Deliver, Shell] }))
 const storage = await openNodeSqliteStorage(file)
 const harness = await Harness.open(
