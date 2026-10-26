@@ -87,17 +87,21 @@ await api('POST', `/api/threads/${desk}/entries`, {
 v = await answered(id, 6)
 const asked = v.entries.find((e) => e.data.from === desk)
 check(
-	asked?.data.to?.[0]?.name === 'reviewer' && answers(v).at(-1).data.author === 'reviewer',
+	asked?.data.to?.join() === 'reviewer' && answers(v).at(-1).data.author === 'reviewer',
 	"an agent's post to thread/name reaches that agent",
 	brief(v),
 )
 await until(async () => (await view(desk)).entries.some((e) => e.data.from === id))
 
-// An agent keeps its runner and model: the same name with another recipe is refused, not a silent move.
+// A recipe makes an agent once: the same name with another recipe reaches that agent as it was made.
 const moving = await post('over to the desk', { runner: 'desk', model: 'echo/echo', name: 'reviewer' })
+v = await answered(id, 7)
 check(
-	moving.status === 400 && (await view(id)).agents.find((a) => a.name === 'reviewer').to.runner === 'laptop',
-	'the same name with another recipe is refused, and the agent stays where it was',
+	moving.status === 201 &&
+		v.agents.length === 2 &&
+		v.agents.find((a) => a.name === 'reviewer').to.runner === 'laptop' &&
+		answers(v).at(-1).data.author === 'reviewer',
+	'the same name with another recipe reaches the agent as it was made',
 	JSON.stringify(moving.json),
 )
 

@@ -47,7 +47,7 @@ const show = (v) =>
 	v.entries
 		.map(
 			({ id, data: m }) =>
-				`  #${id} ${m.author}${m.from ? ` [from ${m.from}${m.re ? ` re #${m.re}` : ''}]` : ''}${m.to ? ` → ${m.to.map((t) => t.runner).join(', ')}` : ''}: ${m.body.slice(0, 300)}`,
+				`  #${id} ${m.author}${m.from ? ` [from ${m.from}${m.re ? ` re #${m.re}` : ''}]` : ''}${m.to ? ` → ${m.to.join(', ')}` : ''}: ${m.body.slice(0, 300)}`,
 		)
 		.join('\n')
 console.log(`parent #${id}:\n${show(heard ?? (await view(id)))}`)

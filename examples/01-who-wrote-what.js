@@ -36,8 +36,7 @@ const input = view?.entries.find((e) => e.id === posted.json.entry)
 const answer = answers(view ?? { entries: [] })[0]
 check(
 	input?.data.author === 'oskar' &&
-		input.data.to?.[0].model === 'echo/echo' &&
-		input.data.to[0].runner === 'laptop',
+		input.data.to?.join() === 'echo/echo@laptop',
 	'the message says who wrote it and whom it asks',
 	JSON.stringify(input),
 )
@@ -81,7 +80,7 @@ await api('POST', `/api/threads/${id}/entries`, { body: 'me too' }, 'ana')
 const v2 = await answered(id, 2)
 const ana = v2?.entries.find((e) => e.data.author === 'ana')
 check(
-	ana?.data.to?.[0].runner === 'laptop',
+	ana?.data.to?.join() === 'echo/echo@laptop',
 	'no `to` asks whom the thread last asked',
 	JSON.stringify(ana),
 )
@@ -91,7 +90,8 @@ check(
 	JSON.stringify(v2?.entries.at(-1)),
 )
 
-// Cy names the model as pi would let him, by its id with a thinking level: pi resolves it to the same agent.
+// Cy names the model as pi would let him, by its id with a thinking level: pi resolves it to the same agent, which
+// keeps the thinking it was made with.
 await api(
 	'POST',
 	`/api/threads/${id}/entries`,
@@ -101,9 +101,9 @@ await api(
 const v3 = await answered(id, 3)
 const cy = v3?.entries.find((e) => e.data.author === 'cy')
 check(
-	cy?.data.to?.[0].model === 'echo/echo' && cy.data.to[0].thinkingLevel === 'high',
-	'pi resolves a pattern and its thinking level',
-	JSON.stringify(cy?.data.to),
+	cy?.data.to?.join() === 'echo/echo@laptop' && !v3.agents[0].to.thinkingLevel,
+	'pi resolves a pattern to the agent of that name, as it was made',
+	JSON.stringify([cy?.data.to, v3?.agents]),
 )
 check(v3?.agents.length === 1, 'the same model is the same agent', JSON.stringify(v3?.agents))
 

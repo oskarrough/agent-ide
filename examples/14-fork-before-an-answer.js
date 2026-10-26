@@ -59,7 +59,7 @@ const routed = await api('POST', `/api/threads/${fork.id}/entries`, {
 	body: '@bot try another way',
 })
 check(
-	routed.json.to?.[0]?.runner === 'bot',
+	routed.json.to?.[0]?.endsWith('@bot'),
 	'the director can address the inherited agent',
 	JSON.stringify(routed.json),
 )

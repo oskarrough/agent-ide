@@ -76,7 +76,7 @@ const asks = kid.entries.filter((e) => e.data.from === parent)
 check(
 	asks.length === 1 &&
 		asks[0].data.author === 'echo/echo@bot' &&
-		asks[0].data.to?.[0].model === 'echo/echo',
+		asks[0].data.to?.join() === 'echo/echo@bot',
 	'one post in the child, by the parent agent',
 	brief(kid),
 )
@@ -84,7 +84,7 @@ check(answers(kid).length === 1, 'the child answered once', brief(kid))
 const p = await view(parent)
 const replies = p.entries.filter((e) => e.data.from === child.id && e.data.re)
 check(
-	replies.length === 1 && replies[0].data.to?.[0].runner === 'bot',
+	replies.length === 1 && replies[0].data.to?.join() === 'echo/echo@bot',
 	"one reply in the parent, from the child's agent, asking the parent's",
 	brief(p),
 )

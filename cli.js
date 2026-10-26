@@ -77,7 +77,7 @@ function show({ id, data: m }) {
 			.filter(Boolean)
 			.join('\n')
 	console.log(
-		`#${id} ${m.author}${m.to ? ` → ${m.to.map((t) => t.name ?? `${t.model}@${t.runner}`).join(', ')}` : ''}${m.from ? ` (from thread ${m.from})` : ''}\n${m.body}${shell ? `\n${shell}` : ''}\n`,
+		`#${id} ${m.author}${m.to ? ` → ${m.to.join(', ')}` : ''}${m.from ? ` (from thread ${m.from})` : ''}\n${m.body}${shell ? `\n${shell}` : ''}\n`,
 	)
 }
 

@@ -141,7 +141,7 @@ export function server(core) {
 				)
 				for (const { id, data: m } of found.slice(-(args.last ?? 20))) {
 					lines.push(
-						`#${id} ${m.author}${m.from ? ` from thread ${m.from}` : ''}${m.to ? ` to ${m.to.map(agentName).join(', ')}` : ''}: ${m.body.slice(0, 2000)}`,
+						`#${id} ${m.author}${m.from ? ` from thread ${m.from}` : ''}${m.to ? ` to ${m.to.join(', ')}` : ''}: ${m.body.slice(0, 2000)}`,
 					)
 				}
 			}

@@ -126,7 +126,7 @@ const roomThread = async () => (await all()).find((t) => t.title === 'matrix #ro
 const messages = async (id) => (await view(id)).entries.map((e) => e.data)
 const bodies = async (id) =>
 	(await messages(id)).map((m) => `${m.to ? 'ASK ' : ''}${m.author}: ${m.body.slice(0, 40)}`)
-const asked = (m) => m.to?.[0]?.runner === 'bot'
+const asked = (m) => m.to?.[0]?.endsWith('@bot')
 
 const old = said('@oskar:fake', '@bot an old question, from before the bridge')
 let srv = await server(env)
