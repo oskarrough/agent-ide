@@ -60,7 +60,7 @@ const fact = (k) =>
 	`logged ${(k * 11) % 60} minutes, and asked whether the ${teams[(k + 3) % 8]} rota for week ${k % 52} still stands.`
 const body = (k) => (k === NEEDLE ? `${fact(k)} Also: the locker code is ${CODE}.` : fact(k))
 
-const srv = await server({ MEMORY: '1', MEMORY_MODEL: `${writer}@laptop` })
+const srv = await server({ MODULES: '+memory', MEMORY_MODEL: `${writer}@laptop` })
 await localRunner('laptop', { models, resolve, echo })
 const {
 	json: { id },

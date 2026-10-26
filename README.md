@@ -28,12 +28,12 @@ Or read [examples/](examples): one file per idea, each starting its own server a
 bun server.js                          # http://127.0.0.1:3000, stored in agent-ide-3000.sqlite
 HOST=0.0.0.0 PORT=3001 bun server.js   # reachable from other machines
 RUNNER=~/code bun server.js            # lends this machine another folder than the one it starts in; RUNNER=0 lends none
-TALK=0 STATUS=0 CONTEXT=0 bun server.js   # the core alone, without the modules on by default
-DIRECTOR=1 bun server.js               # director.js asks the agents a message @mentions
-MEMORY=1 MEMORY_MODEL=haiku@laptop bun server.js   # memory.js: threads that never end
-SEARCH=1 bun server.js                 # search.js: agents' web_search, through Exa's free search
-MATRIX=1 MATRIX_TOKEN=… MATRIX_ROOMS=… bun server.js   # matrix.js: Matrix rooms as threads; its top says how
-echo '{"modules": {"memory": true, "../bots.js": true}}' > agent-ide.json   # the same switches in the folder it starts in; a path is a module of your own, and an env var beats the file
+MODULES=-talk,-status,-context bun server.js   # modules are picked as Pi picks tools: +name and -name change the defaults, names alone replace them, a path is a module of your own
+MODULES=+director bun server.js        # director.js asks the agents a message @mentions
+MODULES=+memory MEMORY_MODEL=haiku@laptop bun server.js   # memory.js: threads that never end
+MODULES=+search bun server.js          # search.js: agents' web_search, through Exa's free search
+MODULES=+matrix MATRIX_TOKEN=… MATRIX_ROOMS=… bun server.js   # matrix.js: Matrix rooms as threads; its top says how
+echo '{"modules": ["+memory", "+../bots.js"]}' > agent-ide.json   # the same, in the folder it starts in; MODULES then changes what the file picked
 bun scripts/replay-pi.js ~/.pi/agent/sessions/FOLDER   # pi sessions, or one .jsonl, as one long thread
 DB_PATH=other.sqlite bun server.js     # another store; only one server may use a file
 

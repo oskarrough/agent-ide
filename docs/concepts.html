@@ -635,8 +635,10 @@ stateDiagram-v2
 
 			<h2 id="modules">Modules</h2>
 			<p>
-				Anything optional is a module: one file, switched by an env var of the same name or in
-				<code>agent-ide.json</code>, which also takes a path to a module of your own.
+				Anything optional is a module: one file. They're picked the way Pi picks tools, in
+				<code>agent-ide.json</code> or <code>MODULES=+search,-talk</code>: names replace the
+				defaults, <code>+name</code> and <code>-name</code> change them, and a path is a module of
+				your own.
 			</p>
 			<dl class="words">
 				<dt>talk.js <span class="tag server">on</span></dt>

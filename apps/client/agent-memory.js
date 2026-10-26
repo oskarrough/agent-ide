@@ -63,7 +63,7 @@ class AgentMemory extends HTMLElement {
 		if (!this.modules?.includes('memory'))
 			return this.say(
 				'This server runs without memory. Start it with ',
-				el('code', { textContent: 'MEMORY=1 MEMORY_MODEL=model@runner' }),
+				el('code', { textContent: 'MODULES=+memory MEMORY_MODEL=model@runner' }),
 				'.',
 			)
 		const id = this.thread

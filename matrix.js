@@ -8,7 +8,7 @@
 //          "identifier":{"type":"m.id.user","user":"BOT"},"password":"PASSWORD"}'
 //      Its `access_token` is MATRIX_TOKEN.
 //   2. Invite it to a room without end-to-end encryption, which the bridge can't read.
-//   3. MATRIX=1 MATRIX_TOKEN=… MATRIX_ROOMS='#room:matrix.org' MATRIX_USERS='@you:matrix.org' \
+//   3. MODULES=+matrix MATRIX_TOKEN=… MATRIX_ROOMS='#room:matrix.org' MATRIX_USERS='@you:matrix.org' \
 //        MATRIX_AGENT=sonnet@laptop MATRIX_BRIEF='File it with `gh issue create`; answer with the link.' bun server.js
 //      ROOMS and USERS take several, comma-separated. AGENT is model@runner, or a runner for its default model.
 //   4. Write `@BOT …` in the room. Its thread shows up in the client, titled `matrix #room:matrix.org: …`.
@@ -60,7 +60,7 @@ export function server(core) {
 	const names = list('MATRIX_ROOMS')
 	const users = new Set(list('MATRIX_USERS').map(speaker))
 	if (!token || !names.length)
-		throw new Error('MATRIX=1 needs MATRIX_TOKEN and MATRIX_ROOMS: see matrix.js')
+		throw new Error('matrix needs MATRIX_TOKEN and MATRIX_ROOMS: see matrix.js')
 
 	async function request(method, route, body, signal) {
 		const res = await fetch(`${home.replace(/\/$/, '')}/_matrix/client${route}`, {

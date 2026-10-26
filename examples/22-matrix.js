@@ -108,7 +108,7 @@ const hs = Bun.serve({
 })
 
 const env = {
-	MATRIX: '1',
+	MODULES: '+matrix',
 	MATRIX_HOMESERVER: `http://127.0.0.1:${hs.port}`,
 	MATRIX_TOKEN: 'test-token',
 	MATRIX_ROOMS: '#room:fake',

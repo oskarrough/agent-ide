@@ -25,7 +25,7 @@ const route = (request) => {
 const filler = (k) => `filler ${k} ${'z'.repeat(500 - `filler ${k} `.length)}`
 const agent = { runner: 'bot', model: 'echo/echo' }
 
-const srv = await server({ MEMORY: '1', MEMORY_MODEL: 'echo/echo@bot' })
+const srv = await server({ MODULES: '+memory', MEMORY_MODEL: 'echo/echo@bot' })
 await scriptedRunner('bot', route, { model: { contextWindow: 40000 } })
 const {
 	json: { id },

@@ -13,7 +13,7 @@ import {
 	view,
 } from './lib.js'
 
-let srv = await server({ DIRECTOR: '1' })
+let srv = await server({ MODULES: '+director' })
 const bot = await scriptedRunner('bot', (request) =>
 	say(
 		text(request.messages.findLast((m) => m.role === 'user')).includes('@bot')
@@ -50,7 +50,7 @@ await api('POST', `/api/threads/${id}/stop`, {})
 const exited = new Promise((resolve) => srv.once('exit', resolve))
 srv.kill('SIGKILL')
 await exited
-srv = await server({ DIRECTOR: '1' })
+srv = await server({ MODULES: '+director' })
 check(
 	(await view(fork.id)).agents[0]?.status === 'idle',
 	'the inherited agent stays idle after restart',

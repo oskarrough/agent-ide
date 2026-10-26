@@ -23,7 +23,7 @@ const route = (request) =>
 	)
 const long = (k) => `message ${k} ${'y'.repeat(1000 - `message ${k} `.length)}`
 
-let srv = await server({ MEMORY: '1', MEMORY_MODEL: 'echo/echo@bot' })
+let srv = await server({ MODULES: '+memory', MEMORY_MODEL: 'echo/echo@bot' })
 const bot = await scriptedRunner('bot', route)
 const {
 	json: { id },

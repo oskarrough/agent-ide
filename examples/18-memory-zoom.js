@@ -1,5 +1,5 @@
 // With memory, an agent zooms a line into the two it was made from, and down to a message whole, a long one in pages
-// that say where to go on; a line that isn't in the tree is an error. The prompt tells it to zoom before it guesses, and that an agent's word is only a claim. With MEMORY=0, neither the tool nor the prompt.
+// that say where to go on; a line that isn't in the tree is an error. The prompt tells it to zoom before it guesses, and that an agent's word is only a claim. Without it, neither the tool nor the prompt.
 import { rmSync } from 'node:fs'
 import { getCurrentTools } from '@earendil-works/pi-ai/utils/transcript'
 import {
@@ -63,7 +63,7 @@ async function round(env) {
 	} = await api('POST', '/api/threads', { title: 'zoom' })
 	for (const body of [...bodies, long])
 		await api('POST', `/api/threads/${id}/entries`, { body, to: null })
-	if (env.MEMORY === '1')
+	if (env.MODULES === '+memory')
 		await until(async () => (await linesOf(id)).some((x) => x.l === 2 && x.i === 0), 15000)
 	await api('POST', `/api/threads/${id}/entries`, {
 		body: 'what was the secret?',
@@ -84,7 +84,7 @@ async function round(env) {
 	return { offered, prompt, results: results ?? [] }
 }
 
-const on = await round({ MEMORY: '1', MEMORY_MODEL: 'echo/echo@bot' })
+const on = await round({ MODULES: '+memory', MEMORY_MODEL: 'echo/echo@bot' })
 const [one, two, three, four, five] = on.results
 const rows = text(one ?? {}).split('\n')
 check(
@@ -120,7 +120,7 @@ check(
 	JSON.stringify(on.offered),
 )
 
-const off = await round({ MEMORY: '0' })
+const off = await round({})
 check(
 	!off.offered.includes('zoom') && !off.prompt.includes('Zoom is your way into the tree'),
 	'memory off: neither',

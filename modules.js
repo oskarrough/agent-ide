@@ -8,8 +8,10 @@ import { pathToFileURL } from 'node:url'
 //           catchUp(threadId, held, all, agent) → the content of a Deliver task's input to that agent's conversation,
 //           serve(threadId, query) → what GET /api/threads/:id/<module name> answers
 //   runner: told(message), disconnected(), ops: { [op]: (message, context) → what the runner answers the server's call }
-// Which are on: the defaults, then `modules` in agent-ide.json in the folder it starts in, then an env var of the
-// module's name. A name with a slash is a module of your own, a path from that folder, named after its file.
+// Which are on, the way Pi picks its tools: the defaults, then `modules` in agent-ide.json in the folder it starts in,
+// then MODULES, comma-separated. A list of names replaces what's on; a list of only +name and -name changes it, in
+// order. A name with a slash is a module of your own, a path from that folder, named after its file. A name only the
+// other end has is skipped, so one MODULES serves the server and the runner it lends.
 export async function load(end, defaults, core) {
 	const file = path.resolve('agent-ide.json')
 	const text = await readFile(file, 'utf8').catch((error) => {
@@ -22,11 +24,15 @@ export async function load(end, defaults, core) {
 	} catch (error) {
 		throw new Error(`${file}: ${error.message}`)
 	}
-	const all = { ...defaults, ...config.modules }
-	const on = Object.keys(all).filter((name) => {
-		const value = !name.includes('/') && process.env[name.toUpperCase()]
-		return value ? value !== '0' : all[name]
-	})
+	let on = Object.keys(defaults).filter((name) => defaults[name])
+	for (const [where, list] of [
+		[file, config.modules],
+		['MODULES', process.env.MODULES ? process.env.MODULES.split(',') : undefined],
+	])
+		if (list) on = pick(on, list, where)
+	const theirs = (name) => !name.includes('/') && !(name in defaults)
+	if (end === 'server' && on.some(theirs)) throw new Error(`no module named ${on.find(theirs)}`)
+	on = on.filter((name) => !theirs(name))
 	const modules = []
 	for (const name of on) {
 		const own = name.includes('/')
@@ -37,4 +43,16 @@ export async function load(end, defaults, core) {
 		if (make) modules.push({ name: named, ...(await make(core)) })
 	}
 	return modules
+}
+
+function pick(on, list, where) {
+	if (!Array.isArray(list)) throw new Error(`${where}: modules is a list, like ["+search", "-talk"]`)
+	const changes = list.filter((name) => /^[+-]/.test(name))
+	if (!changes.length) return list
+	if (changes.length < list.length) throw new Error(`${where}: names can't be mixed with +name or -name`)
+	return changes.reduce(
+		(on, change) =>
+			change[0] === '+' ? [...new Set([...on, change.slice(1)])] : on.filter((name) => name !== change.slice(1)),
+		on,
+	)
 }

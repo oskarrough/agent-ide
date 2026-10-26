@@ -1,4 +1,4 @@
-// SEARCH=1 gives agents `web_search`. Off by default, the model isn't offered it. Here a stand-in answers the way Exa does.
+// MODULES=+search gives agents `web_search`. Off by default, the model isn't offered it. Here a stand-in answers the way Exa does.
 import http from 'node:http'
 import { rmSync } from 'node:fs'
 import { getCurrentTools } from '@earendil-works/pi-ai/utils/transcript'
@@ -60,8 +60,8 @@ check(
 	'by default agents have no web_search',
 	JSON.stringify(off.offered),
 )
-const on = await round({ SEARCH: '1', SEARCH_URL })
-check(on.offered.includes('web_search'), 'SEARCH=1 offers it')
+const on = await round({ MODULES: '+search', SEARCH_URL })
+check(on.offered.includes('web_search'), 'MODULES=+search offers it')
 check(
 	asked[0]?.query === 'pi durable' && on.answer.includes('https://earendil.com/posts/pi-durable/'),
 	'a search goes out, and the agent reads the pages it found',

@@ -28,7 +28,7 @@ const route = (request) => {
 const fact = (k) =>
 	`ticket ${1000 + k}: moved crate ${400 + k} to bay ${k % 31}. ${'Notes on the move. '.repeat(40).trim()}`
 
-const srv = await server({ MEMORY: '1', MEMORY_MODEL: 'echo/echo@bot' })
+const srv = await server({ MODULES: '+memory', MEMORY_MODEL: 'echo/echo@bot' })
 await scriptedRunner('bot', route)
 const {
 	json: { id },

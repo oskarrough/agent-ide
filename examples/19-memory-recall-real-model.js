@@ -49,7 +49,7 @@ function resolve(pattern) {
 	}
 }
 
-const srv = await server({ MEMORY: '1', MEMORY_MODEL: `${writer}@laptop` })
+const srv = await server({ MODULES: '+memory', MEMORY_MODEL: `${writer}@laptop` })
 await localRunner('laptop', { models, resolve, echo })
 const {
 	json: { id },

@@ -1,4 +1,4 @@
-// SEARCH=1 gives agents `web_search`: Exa's free search, which needs no key and is rate limited. Enough to find pages;
+// MODULES=+search gives agents `web_search`: Exa's free search, which needs no key and is rate limited. Enough to find pages;
 // an agent reads one whole with curl. SEARCH_URL points it at anything else that answers Exa's MCP call.
 import { Type } from '@earendil-works/pi-ai'
 import { defineExtension, defineTool } from '@earendil-works/pi-durable'

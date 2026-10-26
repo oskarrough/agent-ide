@@ -1,5 +1,5 @@
 // An agent reads what pi would read in its folder: the AGENTS.md files and the skills, found on its runner. An edit
-// counts from the next request. CONTEXT=0 leaves them out.
+// counts from the next request. MODULES=-context leaves them out.
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import {
@@ -65,11 +65,11 @@ srv.kill()
 laptop.kill()
 await sleep(300)
 for (const f of [db, `${db}-wal`, `${db}-shm`]) rmSync(f, { force: true })
-srv = await server({ CONTEXT: '0' })
+srv = await server({ MODULES: '-context' })
 laptop = await runner('laptop')
 const {
 	json: { id: off },
 } = await api('POST', '/api/threads', { title: 'no context' })
 await ask(off, 'hello', 1)
-check(!(await prompt(off)).includes('Always answer'), 'CONTEXT=0: no AGENTS.md in the prompt')
+check(!(await prompt(off)).includes('Always answer'), 'MODULES=-context: no AGENTS.md in the prompt')
 done()

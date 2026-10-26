@@ -124,7 +124,7 @@ check(
 // Restart with the director: the queued input is followed in the source, not the fork.
 srv.kill()
 await sleep(500)
-srv = await server({ DIRECTOR: '1' })
+srv = await server({ MODULES: '+director' })
 laptop = await runner('laptop', { wait: false })
 const after = await answered(a, 3, 15000)
 check(

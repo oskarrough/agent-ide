@@ -1,5 +1,6 @@
-// Modules turn off whole: TALK=0 and STATUS=0 remove talk and status. Each check runs with the module on first,
-// so the off case proves something. agent-ide.json does the same without env vars, and loads modules of your own.
+// Modules turn off whole, picked the way Pi picks tools: MODULES=-talk,-status removes talk and status. Each check runs
+// with the module on first, so the off case proves something. agent-ide.json takes the same list, where names replace
+// the defaults and loads modules of your own; MODULES then changes what it picked.
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -96,10 +97,10 @@ check(
 	'status on: the runner is told how its threads stand',
 )
 
-const off = await round({ TALK: '0', STATUS: '0', CONTEXT: '0' })
+const off = await round({ MODULES: '-talk,-status,-context' })
 check(
 	off.modules.length === 0,
-	'TALK=0 STATUS=0 CONTEXT=0: no modules',
+	'MODULES=-talk,-status,-context: no modules',
 	JSON.stringify(off.modules),
 )
 check(
@@ -116,12 +117,13 @@ check(
 check(off.children.length === 0, 'talk off: no child thread')
 check(off.told.length === 0, 'status off: no status pushes', JSON.stringify(off.told))
 
-// The runner end: STATUS=1 reports even to a pipe; STATUS=0 drops the module.
+// The runner end: STATUS=1 reports even to a pipe; MODULES=-status drops the module, so even STATUS=1 reports nothing.
 fresh()
 const srv = await server()
 for (const status of ['1', '0']) {
 	let out = ''
-	const r = await runner(`laptop${status}`, { env: { STATUS: status }, wait: false })
+	const env = status === '1' ? { STATUS: '1' } : { STATUS: '1', MODULES: '-status' }
+	const r = await runner(`laptop${status}`, { env, wait: false })
 	r.stdout.on('data', (d) => {
 		out += d
 	})
@@ -134,30 +136,30 @@ for (const status of ['1', '0']) {
 	r.kill()
 	check(
 		out.includes('\x1b]7501;') === (status === '1'),
-		`runner STATUS=${status}: ${status === '1' ? 'reports' : 'no'} OSC 7501`,
+		`runner ${JSON.stringify(env)}: ${status === '1' ? 'reports' : 'no'} OSC 7501`,
 		JSON.stringify(out.slice(-200)),
 	)
 }
 srv.kill()
 await sleep(300)
 
-// agent-ide.json in the folder the server starts in: context off, search and a module of its own on, and an env var
-// still beats it.
+// agent-ide.json in the folder the server starts in: its names replace the defaults, so status and context are off and
+// search and a module of its own on; MODULES then adds status back.
 fresh()
 const own = mkdtempSync(path.join(os.tmpdir(), 'agent-ide-own-'))
 writeFileSync(
 	path.join(own, 'agent-ide.json'),
-	JSON.stringify({ modules: { status: false, context: false, search: true, './mine.js': true } }),
+	JSON.stringify({ modules: ['talk', 'search', './mine.js'] }),
 )
 writeFileSync(
 	path.join(own, 'mine.js'),
 	'export const server = ({ thread }) => ({ serve: async (id) => ({ title: (await thread(id)).title }) })',
 )
-const configured = await server({ STATUS: '1' }, { cwd: own })
+const configured = await server({ MODULES: '+status' }, { cwd: own })
 const listed = (await api('GET', '/api/server')).json.modules
 check(
-	listed.join() === 'talk,status,search,mine',
-	'agent-ide.json turns context off and search on, STATUS=1 beats its status: false',
+	listed.join() === 'talk,search,mine,status',
+	'agent-ide.json picks talk, search and mine; MODULES=+status adds status',
 	JSON.stringify(listed),
 )
 const made = (await api('POST', '/api/threads', { title: 'mine' })).json.id

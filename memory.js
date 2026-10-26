@@ -82,7 +82,7 @@ The memory is yours. A person's latest word on a thing is the truth; an agent's 
 
 export function server(core) {
 	const name = process.env.MEMORY_MODEL
-	if (!name?.includes('@')) throw new Error('MEMORY=1 needs MEMORY_MODEL=model@runner')
+	if (!name?.includes('@')) throw new Error('memory needs MEMORY_MODEL=model@runner')
 	const writer = agentTo(name)
 
 	// Its own lines, then those of the thread it forked from that end before the fork. Reads only: call before writing.

@@ -15,7 +15,7 @@ import {
 	view,
 } from './lib.js'
 
-const env = { MEMORY: '1', MEMORY_MODEL: 'echo/echo@bot' }
+const env = { MODULES: '+memory', MEMORY_MODEL: 'echo/echo@bot' }
 const requests = []
 let n = 0
 const line = (size) => {
