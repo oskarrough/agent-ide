@@ -714,6 +714,7 @@ const handsOf = (state) => {
 
 // One box per thread on screen; the composer sits in the current one.
 const boxes = new Map()
+const opened = new Set() // `${thread} ${entry}` of the answers opened to read in full
 function threadBox(id) {
 	const t = threads.find((x) => x.id === id)
 	let box = boxes.get(id)
@@ -816,18 +817,37 @@ function threadBox(id) {
 										? 'same'
 										: '',
 					},
-					data.from &&
-						data.from !== id &&
-						el(
-							'div',
-							{ className: 'links' },
-							link(
-								data.from,
-								`${data.re ? '↩ answer from' : '→ asked from'} ${titleOf(data.from)}`,
-							),
-						),
-					el('small', { title: data.author, style: colorOf(data.author) }, who(data.author)),
-					el('span', { className: 'body' }, data.body),
+					...(data.from && data.from !== id && data.re
+						? // An answer to a post is the post's result: one line, like a tool call, opened on click.
+							[
+								el(
+									'details',
+									{
+										open: opened.has(`${id} ${at}`),
+										ontoggle: (e) =>
+											opened[e.target.open ? 'add' : 'delete'](`${id} ${at}`),
+									},
+									el(
+										'summary',
+										{},
+										el('span', { style: colorOf(data.author) }, who(data.author)),
+										' answered in ',
+										link(data.from, titleOf(data.from)),
+									),
+									el('span', { className: 'body' }, data.body),
+								),
+							]
+						: [
+								data.from &&
+									data.from !== id &&
+									el(
+										'div',
+										{ className: 'links' },
+										link(data.from, `→ asked from ${titleOf(data.from)}`),
+									),
+								el('small', { title: data.author, style: colorOf(data.author) }, who(data.author)),
+								el('span', { className: 'body' }, data.body),
+							]),
 					...(forksAt.get(at) ?? []).map((f) =>
 						el('div', { className: 'links' }, link(f.id, `forked → ${f.title}`)),
 					),
