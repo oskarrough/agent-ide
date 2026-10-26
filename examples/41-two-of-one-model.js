@@ -93,6 +93,14 @@ check(
 )
 await until(async () => (await view(desk)).entries.some((e) => e.data.from === id))
 
+// A seat keeps its runner and model: the same label with another recipe is refused, not a silent move.
+const moving = await post('over to the desk', { runner: 'desk', model: 'echo/echo', label: 'reviewer' })
+check(
+	moving.status === 400 && (await view(id)).agents.find((a) => a.name === 'reviewer').to.runner === 'laptop',
+	'the same label with another recipe is refused, and the seat stays where it was',
+	JSON.stringify(moving.json),
+)
+
 // Fork after the reviewer's answer: the same seats, and a message with no `to` asks the reviewer there too.
 const reviewer = v.agents.find((a) => a.name === 'reviewer')
 const f = (await api('POST', `/api/threads/${id}/fork`, { at: answers(v).at(-1).id })).json.id

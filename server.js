@@ -408,13 +408,14 @@ function folder(runner, to) {
 	return cwd
 }
 
-async function agentOf(id) {
+// `named`, the seat's name when the caller has it, saves reading the agent's home.
+async function agentOf(id, named) {
 	const agent = await harness.snapshot(AgentDoc, id, context)
 	const name = agent?.model?.provider?.match(/^runner:(.+)$/)?.[1]
 	if (!name) return null
 	const runner = (await known())[name]
 	const dir = runner && agent.cwd ? path.relative(runner.dir, agent.cwd) : ''
-	const label = (await home(id))?.name
+	const label = named ?? (await home(id))?.name
 	return {
 		runner: name,
 		model: agent.model.modelId,
@@ -429,7 +430,7 @@ async function agentOf(id) {
 async function agentsIn(row, live) {
 	return Promise.all(
 		Object.entries(row.agents).map(async ([name, conversation]) => {
-			const to = await agentOf(conversation)
+			const to = await agentOf(conversation, name)
 			const mine = live.filter(
 				(t) => t.kind === Deliver.definition.name && t.input.agent === conversation,
 			)
@@ -493,6 +494,13 @@ async function post(tx, threadId, data, { steer = false, empty = false } = {}) {
 					.filter((e) => e.kind === KIND)
 					.map((e) => e.id)
 			: []
+	// A seat keeps the runner and model it was made with: another recipe under its label is refused, not a move.
+	for (const t of to) {
+		const agent = row.agents[agentName(t)]
+		const was = agent && (await tx.doc(AgentDoc, agent)).model
+		if (was && (was.provider !== `runner:${t.runner}` || was.modelId !== t.model))
+			throw new Error(`${agentName(t)} runs ${was.modelId} on ${was.provider.slice(7)}; pick another label`)
+	}
 	const entry = await tx.appendEntry(threadId, { kind: KIND, data })
 	for (const m of posted) await m(tx, threadId, entry)
 	for (const [name, agent] of Object.entries(row.agents))
