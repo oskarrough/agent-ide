@@ -117,19 +117,23 @@ export function server(core) {
 		key: 'bot',
 		render: async ({ conversationId, read }) => {
 			const at = await core.home(conversationId)
-			const bot = at && (await read.snapshot(Bots, context))?.[at.name]
+			const all = at && ((await read.snapshot(Bots, context)) ?? {})
+			const bot = all?.[at.name]
 			if (!bot) return undefined
 			const threads = (await core.threadList(at.name)).filter(
 				(t) => t.id !== at.thread && t.agents.some((a) => a.name === at.name),
 			)
 			const where = threads.map((t) => `${t.id} "${t.title}"${t.id === bot.home ? ' (home)' : ''}`)
 			const home = at.thread === bot.home
+			const others = Object.keys(all).filter((n) => n !== at.name)
 			return [
 				bot.instructions ||
 					(home
 						? "You're new: you have no instructions yet. Find out with the person here who you are, and write it down with your bot tool."
 						: ''),
 				`You are the bot ${at.name}, one person in every thread you're in.${where.length ? ` You're also in thread${where.length > 1 ? 's' : ''} ${where.join(', ')}; read one when it matters.` : ''}`,
+				others.length &&
+					`The other bot${others.length > 1 ? 's are' : ' is'} ${others.join(', ')}: post with \`to\` set to a name to ask one.`,
 				home && 'This is your home. Ask before you change your model.',
 			]
 				.filter(Boolean)
