@@ -31,7 +31,10 @@ export async function load(end, defaults, core) {
 	for (const name of on) {
 		const own = name.includes('/')
 		const make = (await import(own ? pathToFileURL(path.resolve(name)).href : `./${name}.js`))[end]
-		if (make) modules.push({ name: own ? path.basename(name, '.js') : name, ...(await make(core)) })
+		const named = own ? path.basename(name, '.js') : name
+		// Two modules of one name would answer one route; that's a mistake, not an order.
+		if (modules.some((m) => m.name === named)) throw new Error(`${file}: two modules are named ${named}; rename one`)
+		if (make) modules.push({ name: named, ...(await make(core)) })
 	}
 	return modules
 }
