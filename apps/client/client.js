@@ -1049,6 +1049,10 @@ function render() {
 	const mineNow = threads.find((t) => t.id === current)?.agents ?? []
 	const busyNow = picks.some((p) => mineNow.some((a) => same(a.to, p) && a.status === 'working'))
 	$pick.children[1].textContent = picks.length ? picks.map(short).join(' + ') : 'Pick a model'
+	// Whom it asks is the whole invite: asked once, an agent is in the thread.
+	form.querySelector('input').placeholder = picks.length
+		? `Ask ${picks.map((p) => (p.runner ? short(p) : p.name)).join(' and ')}`
+		: 'Pick whom to ask, below'
 	$pick.firstChild.className = picks.length ? light(busyNow ? 'working' : 'on') : light()
 	$pick.title = $to.value
 	const online = runners.filter((r) => r.online).length
