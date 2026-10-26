@@ -28,7 +28,8 @@ import { agentName, agentTo, collect, field, said, speaker } from './util.js'
 import { createRunners, messageText, remoteEnv, runnerBundle, runnerProvider } from './remote.js'
 
 /**
- * @typedef {{ runner: string, model: string, thinkingLevel?: string, dir?: string }} To  An agent, named `provider/id@runner`.
+ * @typedef {{ runner: string, model: string, thinkingLevel?: string, dir?: string, label?: string }} To  An agent: its seat in
+ *   the thread is its `label`, or `provider/id@runner`; the rest is the recipe it runs on.
  * @typedef {object} Message  The data of every thread entry.
  * @property {string} author  A human's name, or an agent's.
  * @property {string} body
@@ -345,11 +346,29 @@ async function address(to, command = false) {
 	}
 	for (const key of ['thinkingLevel', 'dir'])
 		if (typeof to[key] === 'string' && to[key].trim()) clean[key] = to[key].trim()
+	if (to.label !== undefined) {
+		if (typeof to.label !== 'string' || !/^[\w.-]{1,40}$/.test(to.label))
+			throw new Error('A label is 1 to 40 letters, digits, _ . or -')
+		if ((await known())[to.label]) throw new Error(`${to.label} is a runner; pick another label`)
+		clean.label = to.label
+	}
 	folder(runner, clean)
 	return clean
 }
-const addresses = (to, command) =>
-	Promise.all((to === null ? [] : [to].flat()).map((t) => address(t, command)))
+// Whom `to` asks in a thread: objects are recipes, strings name a seat there by its label, as `label` or
+// `thread/label`, and are recipes when no seat has that label.
+const addresses = (to, command, threadId) =>
+	Promise.all(
+		(to === null ? [] : [to].flat()).map((t) =>
+			typeof t === 'string' ? seat(threadId, t, command) : address(t, command),
+		),
+	)
+async function seat(threadId, text, command = false) {
+	const [, at, label = text] = text.match(/^(\d+)\/(.+)$/) ?? []
+	if (at && Number(at) !== threadId) throw new Error(`${text} sits in thread ${at}, not ${threadId}`)
+	const sitting = threadId !== undefined && (await thread(threadId))?.agents[label]
+	return sitting ? agentOf(sitting) : address(agentTo(label), command)
+}
 
 // What `pi --model asked` makes of it on the runner, kept with its models; offline, only one it resolved before.
 async function modelOn(name, runner, asked) {
@@ -395,11 +414,13 @@ async function agentOf(id) {
 	if (!name) return null
 	const runner = (await known())[name]
 	const dir = runner && agent.cwd ? path.relative(runner.dir, agent.cwd) : ''
+	const label = (await home(id))?.name
 	return {
 		runner: name,
 		model: agent.model.modelId,
 		...(agent.thinkingLevel ? { thinkingLevel: agent.thinkingLevel } : {}),
 		...(dir ? { dir } : {}),
+		...(label && label !== `${agent.model.modelId}@${name}` ? { label } : {}),
 	}
 }
 
@@ -451,6 +472,9 @@ async function messages(id) {
 }
 const lastAsked = async (id) => (await messages(id)).findLast((e) => e.data.to)?.data.to ?? []
 
+// A seat's own answer, which it never reads back: a person or a post from another thread under its name is news to it.
+const ownAnswer = ({ data: m }, name) => m.author === name && !m.from && Boolean(m.answer || m.error)
+
 /**
  * Writes a message, inside the caller's commit, and gives each agent it asks a Deliver task with all it hasn't seen.
  * A new agent reads the thread, which a commit can't do after writing: post first, or pass `empty` for a new thread.
@@ -472,7 +496,7 @@ async function post(tx, threadId, data, { steer = false, empty = false } = {}) {
 	const entry = await tx.appendEntry(threadId, { kind: KIND, data })
 	for (const m of posted) await m(tx, threadId, entry)
 	for (const [name, agent] of Object.entries(row.agents))
-		if (name !== data.author || data.from) (await tx.doc(AgentHome, agent)).unseen.push(entry.id)
+		if (!ownAnswer({ data }, name)) (await tx.doc(AgentHome, agent)).unseen.push(entry.id)
 	for (const t of to) {
 		const name = agentName(t)
 		row.agents[name] ??= await newAgent(tx, threadId, name, [...prior, entry.id])
@@ -597,10 +621,17 @@ const threadList = async (reader) => {
 		(row) => !row.hidden,
 	)
 }
-const threadView = async (id, reader) => ({
-	...(await threadRow(id, reader, await liveTasks())),
-	entries: await messages(id),
-})
+// Who's in a thread, with no state of its own: its agents, and the people who wrote or read there.
+const threadView = async (id, reader) => {
+	const entries = await messages(id)
+	const wrote = entries.filter((e) => !e.data.answer && !e.data.error && !e.data.from)
+	const { reads } = await thread(id)
+	return {
+		...(await threadRow(id, reader, await liveTasks())),
+		people: [...new Set([...wrote.map((e) => e.data.author), ...Object.keys(reads)])],
+		entries,
+	}
+}
 
 const home = (conversationId) => harness.snapshot(AgentHome, conversationId, context)
 
@@ -628,7 +659,7 @@ async function postEntry(id, author, input) {
 	const command = body.match(/^\$\s+([\s\S]+)/)?.[1]
 	const routed = route && !command
 	let to =
-		'to' in input ? await addresses(input.to, Boolean(command)) : routed ? [] : await lastAsked(id)
+		'to' in input ? await addresses(input.to, Boolean(command), id) : routed ? [] : await lastAsked(id)
 	if (routed)
 		to = await addresses(
 			route(
@@ -739,7 +770,7 @@ async function forkThread(id, { at, title }) {
 				name,
 				answer,
 				unseen: shown
-					.filter((e) => !seen.has(e.id) && (e.data.author !== name || e.data.from))
+					.filter((e) => !seen.has(e.id) && !ownAnswer(e, name))
 					.map((e) => e.id),
 			}
 		}),
@@ -762,7 +793,7 @@ async function forkThread(id, { at, title }) {
 						tx,
 						forkId,
 						name,
-						shown.filter((e) => e.data.author !== name || e.data.from).map((e) => e.id),
+						shown.filter((e) => !ownAnswer(e, name)).map((e) => e.id),
 					)
 					await setUp(tx, row[name], forkId, t)
 				}
@@ -779,6 +810,7 @@ const core = {
 	runners,
 	known,
 	address,
+	seat,
 	reach,
 	agentOf,
 	conversation,

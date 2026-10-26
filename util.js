@@ -11,11 +11,18 @@ export async function collect(scan) {
 	return items
 }
 
-export const agentName = (to) => to && `${to.model}@${to.runner}`
-// `model@runner`, or a bare runner for its default model.
+// An agent's seat in its thread: its label, or `model@runner` by default.
+export const agentName = (to) => to && (to.label ?? `${to.model}@${to.runner}`)
+// `model@runner`, or a bare runner for its default model; `label=model@runner` names the seat it makes.
 export const agentTo = (name) => {
-	const at = name.lastIndexOf('@')
-	return { runner: name.slice(at + 1), model: at < 0 ? '' : name.slice(0, at) }
+	const eq = name.indexOf('=')
+	const recipe = name.slice(eq + 1)
+	const at = recipe.lastIndexOf('@')
+	return {
+		runner: recipe.slice(at + 1),
+		model: at < 0 ? '' : recipe.slice(0, at),
+		...(eq > 0 ? { label: name.slice(0, eq) } : {}),
+	}
 }
 // A person's name as one line of printable text, so no author can write a speaker line of their own.
 export const speaker = (name) =>

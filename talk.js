@@ -2,7 +2,7 @@
 import { Type } from '@earendil-works/pi-ai'
 import { defineExtension, defineTool } from '@earendil-works/pi-durable'
 import { messageText } from './remote.js'
-import { agentName, agentTo, field, said } from './util.js'
+import { agentName, field, said } from './util.js'
 
 export function server(core) {
 	const { agentOf, home } = core
@@ -22,39 +22,41 @@ export function server(core) {
 			to: Type.Optional(
 				Type.String({
 					description:
-						'Who should answer: model@runner, where model is anything `pi --model` takes, a runner for its default model, or "nobody". Leave out for whom the thread last asked; in a new thread, yourself.',
+						'Who should answer. An agent already in the thread by its label, or thread/label from anywhere, which also picks the thread. Or a recipe for a new one: model@runner, where model is anything `pi --model` takes, a runner for its default model, label=model@runner to name it. Or "nobody". Leave out for whom the thread last asked; in a new thread, yourself.',
 				}),
 			),
 		}),
 		replay: 'safe',
 		execute: async (args, api) => {
 			const { thread: from, name } = await home(api.conversationId)
-			if (args.thread === from) throw new Error('That is your own thread; just answer')
+			// `to` as thread/label picks the thread too.
+			const thread = args.thread ?? (Number(args.to?.match(/^(\d+)\//)?.[1]) || undefined)
+			if (thread === from) throw new Error('That is your own thread; just answer')
 			// A replay would run it twice, and its output would never reach the agent.
 			if (/^\$\s/.test(args.body))
 				throw new Error('Run commands with your own bash tool, not as a post')
-			const title = args.thread === undefined ? field(args.title, 'title') : ''
-			if (args.thread !== undefined) await core.conversation(args.thread)
+			const title = thread === undefined ? field(args.title, 'title') : ''
+			if (thread !== undefined) await core.conversation(thread)
 			// Posting to a thread that asked you something answers it, so the answer to that ends the exchange.
 			const asked =
-				args.thread === undefined
+				thread === undefined
 					? undefined
-					: (await core.messages(from)).findLast((e) => e.data.from === args.thread && !e.data.re)
+					: (await core.messages(from)).findLast((e) => e.data.from === thread && !e.data.re)
 			const asker =
-				asked && (await agentOf((await core.thread(args.thread)).agents[asked.data.author]))
+				asked && (await agentOf((await core.thread(thread)).agents[asked.data.author]))
 			const to =
 				args.to === 'nobody'
 					? []
 					: args.to !== undefined
-						? [await core.address(agentTo(args.to))]
-						: args.thread === undefined
+						? [await core.seat(thread, args.to)]
+						: thread === undefined
 							? [await agentOf(api.conversationId)]
 							: asker
 								? [asker]
-								: await core.lastAsked(args.thread)
-			await core.reach(to, `@${agentTo(name).runner}`)
+								: await core.lastAsked(thread)
+			await core.reach(to, `@${(await agentOf(api.conversationId)).runner}`)
 			const id = await core.once(`post ${api.taskId}`, 'post', async (tx) => {
-				const id = args.thread ?? (await core.startThread(tx, name, title, from))
+				const id = thread ?? (await core.startThread(tx, name, title, from))
 				await core.post(
 					tx,
 					id,
@@ -65,7 +67,7 @@ export function server(core) {
 						from,
 						...(asked ? { re: [asked.id] } : {}),
 					},
-					{ empty: args.thread === undefined },
+					{ empty: thread === undefined },
 				)
 				return id
 			})
@@ -100,7 +102,7 @@ export function server(core) {
 			),
 			agent: Type.Optional(
 				Type.String({
-					description: 'An agent in that thread, as model@runner or any unique part of it',
+					description: 'An agent in that thread, by its label or any unique part of it, or thread/label',
 				}),
 			),
 			last: Type.Optional(Type.Number({ description: 'How many entries, 20 by default' })),
@@ -112,8 +114,11 @@ export function server(core) {
 		execute: async (args, api) => {
 			const { thread: mine, name } = await home(api.conversationId)
 			const lines = []
-			if (args.agent !== undefined)
-				return { output: [{ type: 'text', text: await work(args.thread ?? mine, args) }] }
+			if (args.agent !== undefined) {
+				const [, at, agent = args.agent] = args.agent.match(/^(\d+)\/(.+)$/) ?? []
+				const text = await work(Number(at) || args.thread || mine, { ...args, agent })
+				return { output: [{ type: 'text', text }] }
+			}
 			if (args.thread === undefined && args.query === undefined) {
 				for (const row of await core.threadList(name)) {
 					const parts = [
