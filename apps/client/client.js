@@ -211,9 +211,17 @@ const go = (id) => {
 	else next.searchParams.delete('thread')
 	history.replaceState(null, '', next)
 	focus = true
-	if (botAt(id)) choose([{ name: botAt(id).name }])
+	// A bot's home asks the bot; leaving it gives back whom you asked before.
+	if (botAt(id)) {
+		beforeHome ??= picks
+		choose([{ name: botAt(id).name }])
+	} else if (beforeHome) {
+		choose(beforeHome)
+		beforeHome = null
+	}
 	refresh()
 }
+let beforeHome = null // whom the composer asked before a bot's home took it over
 let focus = false // the next render puts the cursor in the composer
 // Hides it; Pi keeps everything.
 async function remove(id) {
@@ -592,6 +600,11 @@ async function refresh() {
 		if (t && current && !threads.some((x) => x.id === current)) current = null
 		const home = runners.find((x) => x.online) ?? runners[0]
 		if (!picks.length && home?.model) choose([{ runner: home.name, ...setting(home) }])
+		// Opened straight at a bot's home, as from a link.
+		if (botAt(current) && !beforeHome) {
+			beforeHome = picks
+			choose([{ name: botAt(current).name }])
+		}
 		await Promise.all(
 			family().map(async (id) => {
 				const view = await api(`/api/threads/${id}`).catch(() => null)
