@@ -842,20 +842,19 @@ const core = {
 	commit,
 	once,
 }
-const modules = await load(
-	'server',
-	{
-		director: false,
-		talk: true,
-		status: true,
-		memory: false,
-		matrix: false,
-		context: true,
-		search: false,
-		bots: false,
-	},
-	core,
-)
+const defaults = {
+	director: false,
+	talk: true,
+	status: true,
+	memory: false,
+	matrix: false,
+	context: true,
+	search: false,
+	bots: false,
+}
+const modules = await load('server', defaults, core)
+// A list of names alone replaces the defaults, so the start line says which of them it turned off.
+const dropped = Object.keys(defaults).filter((n) => defaults[n] && !modules.some((m) => m.name === n))
 for (const m of modules) if (m.extension) registry.install(m.extension)
 // One module answers each of these; two claiming one is a mistake, not an order.
 const hook = (name) => {
@@ -1254,7 +1253,7 @@ for (const host of process.env.HOST ? [process.env.HOST] : ['127.0.0.1', '::1'])
 				: [host === '::1' ? '[::1]' : host]
 		for (const address of addresses)
 			console.log(
-				`http://${address}:${server.address().port} on ${file}, modules: ${modules.map((m) => m.name).join(', ') || 'none'}`,
+				`http://${address}:${server.address().port} on ${file}, modules: ${modules.map((m) => m.name).join(', ') || 'none'}${dropped.length ? ` (off, though on by default: ${dropped.join(', ')})` : ''}`,
 			)
 		lend(
 			`http://${host === '0.0.0.0' ? '127.0.0.1' : addresses[0]}:${server.address().port}`,

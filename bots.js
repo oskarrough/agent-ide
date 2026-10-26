@@ -115,7 +115,7 @@ export function server(core) {
 
 	const section = {
 		key: 'bot',
-		render: async ({ conversationId, read }) => {
+		render: async ({ conversationId, agent, read }) => {
 			const at = await core.home(conversationId)
 			const all = at && ((await read.snapshot(Bots, context)) ?? {})
 			const bot = all?.[at.name]
@@ -133,6 +133,7 @@ export function server(core) {
 						: ''),
 				`You are the bot ${at.name}, one person in every thread you're in.${where.length ? ` You're also in thread${where.length > 1 ? 's' : ''} ${where.join(', ')}; read one when it matters.` : ''}`,
 				others.length &&
+					agent.tools.some((t) => t.name === 'post') &&
 					`The other bot${others.length > 1 ? 's are' : ' is'} ${others.join(', ')}: post with \`to\` set to a name to ask one.`,
 				home && 'This is your home. Ask before you change your model.',
 			]

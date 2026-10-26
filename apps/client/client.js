@@ -425,9 +425,17 @@ $picker.addEventListener('toggle', (e) => {
 function pickerRows() {
 	const online = runners.filter((r) => r.online),
 		several = online.length > 1
+	// Setting a bot's recipe, the rows show and change the bot's, not the composer's.
+	const bot = recipeFor && bots.find((b) => b.name === recipeFor)
+	const recipe = (r, { model, thinkingLevel }) =>
+		saveBot({ name: recipeFor, to: { runner: r.name, model, ...(thinkingLevel && { thinkingLevel }) } })
 	const rows = online.map((r) => {
-		const set = setting(r),
-			on = picks.some((p) => p.runner === r.name)
+		const set = bot
+				? bot.to.runner === r.name
+					? { model: bot.to.model, thinkingLevel: bot.to.thinkingLevel }
+					: { model: r.model }
+				: setting(r),
+			on = bot ? bot.to.runner === r.name : picks.some((p) => p.runner === r.name)
 		const models = [...new Set([set.model, r.model, ...(r.offers ?? [])].filter(Boolean))]
 		// A model is a row: click to ask it here, shift-click to ask it too. Thinking is a row of steps; the lit one again goes back to default.
 		const model = (o) =>
@@ -437,12 +445,11 @@ function pickerRows() {
 					type: 'button',
 					className: `model${on && o === set.model ? ' on' : ''}`,
 					onclick: (e) => {
-						tune(r, { model: o })
-						if (recipeFor) {
-							const { thinkingLevel } = setting(r)
-							saveBot({ name: recipeFor, to: { runner: r.name, model: o, ...(thinkingLevel && { thinkingLevel }) } })
+						if (bot) {
+							recipe(r, { ...set, model: o })
 							return $picker.hidePopover()
 						}
+						tune(r, { model: o })
 						if (!on || !(e.shiftKey || picks.length > 1)) toggle(r, e.shiftKey)
 						if (!e.shiftKey) $picker.hidePopover()
 					},
@@ -456,7 +463,11 @@ function pickerRows() {
 				textContent: { minimal: 'min', medium: 'med' }[x] ?? x,
 				title: x,
 				ariaPressed: String(set.thinkingLevel === x),
-				onclick: () => tune(r, { thinkingLevel: set.thinkingLevel === x ? undefined : x }),
+				onclick: () => {
+					const thinkingLevel = set.thinkingLevel === x ? undefined : x
+					if (bot) recipe(r, { ...set, thinkingLevel })
+					else tune(r, { thinkingLevel })
+				},
 			})
 		return el(
 			'li',
@@ -468,6 +479,7 @@ function pickerRows() {
 				el('b', { textContent: r.name }),
 				el('small', { textContent: r.dir, title: r.dir }),
 				several &&
+					!bot &&
 					el('button', {
 						type: 'button',
 						className: 'also',
@@ -874,7 +886,7 @@ function threadBox(id) {
 	return box
 }
 // A thread as a row, the same in the list of all threads and in a thread's family: its light, its name, delete on hover,
-// and retry when crashes left its work parked.
+// and retry when crashes left its work parked. A bot's home has no delete: hidden, it would strand the bot; forget it.
 const threadRow = (t, depth = 0) =>
 	el(
 		'li',
@@ -895,14 +907,15 @@ const threadRow = (t, depth = 0) =>
 					api(`/api/threads/${t.id}/retry`, {})
 				},
 			}),
-		el('button', {
-			textContent: 'delete',
-			title: 'Delete this thread',
-			onclick: (e) => {
-				e.stopPropagation()
-				remove(t.id)
-			},
-		}),
+		!botAt(t.id) &&
+			el('button', {
+				textContent: 'delete',
+				title: 'Delete this thread',
+				onclick: (e) => {
+					e.stopPropagation()
+					remove(t.id)
+				},
+			}),
 	)
 // A bot as a row: lit while an agent of its name works anywhere, its name in its color; it opens its home.
 const botRow = (b) => {
@@ -919,9 +932,10 @@ const botRow = (b) => {
 		el('span', { textContent: b.name, style: colorOf(b.name) }),
 	)
 }
-// A new bot: its name first, which is how anyone asks it; it starts on the model the composer would ask.
+// A new bot: its name first, which is how anyone asks it; it starts on the model the composer would ask, a bot's own
+// when it asks a bot.
 function nameBot() {
-	const pick = picks.find((p) => p.runner)
+	const pick = picks.map((p) => (p.runner ? p : bots.find((b) => b.name === p.name)?.to)).find(Boolean)
 	const field = el('input', {
 		placeholder: 'a name',
 		spellcheck: false,
