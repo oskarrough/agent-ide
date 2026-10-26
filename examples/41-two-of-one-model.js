@@ -1,6 +1,6 @@
-// An agent's seat in a thread is its label: model@runner unless you name it, so two of one model sit side by side.
-// A recipe reaches the seat of its name, or makes one; the label reaches it in its thread, thread/label from anywhere.
-// A fork keeps the labels, so what a message asked still means the same seat there, with nothing remapped.
+// An agent's name in a thread is model@runner unless you give it another, so two of one model work side by side.
+// A recipe reaches the agent of its name, or makes one; the name reaches it in its thread, thread/name from anywhere.
+// A fork keeps the names, so what a message asked still means the same agent there, with nothing remapped.
 import {
 	answered,
 	answers,
@@ -22,17 +22,17 @@ import {
 await server()
 await runner('laptop')
 const echo = { runner: 'laptop', model: 'echo/echo' }
-const id = (await api('POST', '/api/threads', { title: 'seats' })).json.id
+const id = (await api('POST', '/api/threads', { title: 'names' })).json.id
 const post = (body, to, who) => api('POST', `/api/threads/${id}/entries`, { body, to }, who)
 
 await post('hello', echo)
 await answered(id)
-await post('look again', { ...echo, label: 'reviewer' })
+await post('look again', { ...echo, name: 'reviewer' })
 let v = await answered(id, 2)
 check(
 	v.agents.map((a) => a.name).join() === 'echo/echo@laptop,reviewer' &&
 		v.agents[0].conversation !== v.agents[1].conversation,
-	'label=model@runner makes a second seat with the same model, in a conversation of its own',
+	'name=model@runner makes a second agent with the same model, in a conversation of its own',
 	JSON.stringify(v.agents),
 )
 check(
@@ -45,7 +45,7 @@ await post('and you?', echo)
 v = await answered(id, 3)
 check(
 	v.agents.length === 2 && answers(v).at(-1).data.author === 'echo/echo@laptop',
-	'the recipe again reaches the seat of its name',
+	'the recipe again reaches the agent of its name',
 	brief(v),
 )
 await post('you again', 'reviewer', 'ana')
@@ -55,14 +55,14 @@ check(
 	answers(v)
 		.slice(-2)
 		.every((e) => e.data.author === 'reviewer') && v.agents.length === 2,
-	'its label reaches the seat, and so does thread/label',
+	'its name reaches the agent, and so does thread/name',
 	brief(v),
 )
 const elsewhere = await post('wrong thread', `${id + 1000}/reviewer`)
-const bad = await post('bad', { ...echo, label: 'two words' })
+const bad = await post('bad', { ...echo, name: 'two words' })
 check(
 	elsewhere.status === 400 && bad.status === 400,
-	'thread/label of another thread is refused here, and so is a label with a space',
+	'thread/name of another thread is refused here, and so is a name with a space',
 	JSON.stringify([elsewhere.json, bad.json]),
 )
 await api('POST', `/api/threads/${id}/read`, {}, 'ben')
@@ -72,7 +72,7 @@ check(
 	JSON.stringify((await view(id)).people),
 )
 
-// An agent elsewhere asks the reviewer by its address; the answer goes to the reviewer's seat and comes back.
+// An agent elsewhere asks the reviewer by its address; the reviewer answers and the answer comes back.
 await scriptedRunner('desk', (request) => {
 	const last = request.messages.findLast((m) => m.role !== 'system')
 	return last.role === 'user' && text(last).includes('ask the reviewer')
@@ -87,21 +87,21 @@ await api('POST', `/api/threads/${desk}/entries`, {
 v = await answered(id, 6)
 const asked = v.entries.find((e) => e.data.from === desk)
 check(
-	asked?.data.to?.[0]?.label === 'reviewer' && answers(v).at(-1).data.author === 'reviewer',
-	"an agent's post to thread/label reaches that seat",
+	asked?.data.to?.[0]?.name === 'reviewer' && answers(v).at(-1).data.author === 'reviewer',
+	"an agent's post to thread/name reaches that agent",
 	brief(v),
 )
 await until(async () => (await view(desk)).entries.some((e) => e.data.from === id))
 
-// A seat keeps its runner and model: the same label with another recipe is refused, not a silent move.
-const moving = await post('over to the desk', { runner: 'desk', model: 'echo/echo', label: 'reviewer' })
+// An agent keeps its runner and model: the same name with another recipe is refused, not a silent move.
+const moving = await post('over to the desk', { runner: 'desk', model: 'echo/echo', name: 'reviewer' })
 check(
 	moving.status === 400 && (await view(id)).agents.find((a) => a.name === 'reviewer').to.runner === 'laptop',
-	'the same label with another recipe is refused, and the seat stays where it was',
+	'the same name with another recipe is refused, and the agent stays where it was',
 	JSON.stringify(moving.json),
 )
 
-// Fork after the reviewer's answer: the same seats, and a message with no `to` asks the reviewer there too.
+// Fork after the reviewer's answer: the same agents, and a message with no `to` asks the reviewer there too.
 const reviewer = v.agents.find((a) => a.name === 'reviewer')
 const f = (await api('POST', `/api/threads/${id}/fork`, { at: answers(v).at(-1).id })).json.id
 await api('POST', `/api/threads/${f}/entries`, { body: 'in the fork' })
@@ -111,7 +111,7 @@ check(
 	fv.agents.map((a) => a.name).join() === 'echo/echo@laptop,reviewer' &&
 		answers(fv).at(-1).data.author === 'reviewer' &&
 		forked.conversation?.parent?.conversationId === reviewer.conversation,
-	'a fork keeps the labels: the last asked is still the reviewer, forked from its conversation',
+	'a fork keeps the names: the last asked is still the reviewer, forked from its conversation',
 	brief(fv),
 )
 done()

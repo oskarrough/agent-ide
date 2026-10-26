@@ -104,10 +104,10 @@ const sections = new IntersectionObserver(
 document.querySelectorAll('.page > section').forEach((s) => sections.observe(s))
 
 // model:thinking@runner, as pi names a model: the last @ splits off the runner, a last :thinkingLevel the thinking.
-// label=model@runner names the seat it makes; a label alone is that seat in this thread.
+// name=model@runner names the agent it makes; a name alone is that agent in this thread.
 function agent(text) {
-	const seat = threads.find((t) => t.id === current)?.agents.find((a) => a.name === text)
-	if (seat?.to) return seat.to
+	const there = threads.find((t) => t.id === current)?.agents.find((a) => a.name === text)
+	if (there?.to) return there.to
 	const eq = text.indexOf('='),
 		name = text.slice(eq + 1)
 	const at = name.lastIndexOf('@')
@@ -120,11 +120,11 @@ function agent(text) {
 		runner: at < 0 ? '' : name.slice(at + 1),
 		...(model && { model }),
 		...(thinkingLevel && { thinkingLevel }),
-		...(eq > 0 && { label: text.slice(0, eq) }),
+		...(eq > 0 && { name: text.slice(0, eq) }),
 	}
 }
-const name = ({ model, thinkingLevel, runner, label }) =>
-	`${label ? `${label}=` : ''}${model ?? ''}${thinkingLevel ? `:${thinkingLevel}` : ''}@${runner}`
+const name = ({ model, thinkingLevel, runner, name: called }) =>
+	`${called ? `${called}=` : ''}${model ?? ''}${thinkingLevel ? `:${thinkingLevel}` : ''}@${runner}`
 const key = (runner, model) => `${model}@${runner}`
 const same = (a, b) => a?.runner === b?.runner && a?.model === b?.model
 

@@ -28,8 +28,8 @@ import { agentName, agentTo, collect, field, said, speaker } from './util.js'
 import { createRunners, messageText, remoteEnv, runnerBundle, runnerProvider } from './remote.js'
 
 /**
- * @typedef {{ runner: string, model: string, thinkingLevel?: string, dir?: string, label?: string }} To  An agent: its seat in
- *   the thread is its `label`, or `provider/id@runner`; the rest is the recipe it runs on.
+ * @typedef {{ runner: string, model: string, thinkingLevel?: string, dir?: string, name?: string }} To  An agent: its name in
+ *   the thread, `provider/id@runner` unless `name` gives another; the rest is the recipe it runs on.
  * @typedef {object} Message  The data of every thread entry.
  * @property {string} author  A human's name, or an agent's.
  * @property {string} body
@@ -88,15 +88,15 @@ const Thread = defineDoc({
 		tools: null,
 	}),
 })
-// On an agent's conversation: its thread, its name there, and the messages it hasn't seen.
-const AgentHome = defineDoc({
+// On an agent's conversation: the thread messages it hasn't seen.
+const Unseen = defineDoc({
 	kind: 'agent-ide.agent',
 	version: 1,
 	scope: 'conversation',
 	history: 'latest',
 	fork: 'initial',
 	checkpointWhen: base,
-	initial: () => ({ thread: 0, name: '', unseen: [] }),
+	initial: () => ({ unseen: [] }),
 })
 // By request id: the command a request made and what it answered, written in the commit that did the work.
 const Receipts = defineDocFamily({
@@ -346,28 +346,28 @@ async function address(to, command = false) {
 	}
 	for (const key of ['thinkingLevel', 'dir'])
 		if (typeof to[key] === 'string' && to[key].trim()) clean[key] = to[key].trim()
-	if (to.label !== undefined) {
-		if (typeof to.label !== 'string' || !/^[\w.-]{1,40}$/.test(to.label))
-			throw new Error('A label is 1 to 40 letters, digits, _ . or -')
-		if ((await known())[to.label]) throw new Error(`${to.label} is a runner; pick another label`)
-		clean.label = to.label
+	if (to.name !== undefined) {
+		if (typeof to.name !== 'string' || !/^[\w.-]{1,40}$/.test(to.name))
+			throw new Error('A name is 1 to 40 letters, digits, _ . or -')
+		if ((await known())[to.name]) throw new Error(`${to.name} is a runner; pick another name`)
+		clean.name = to.name
 	}
 	folder(runner, clean)
 	return clean
 }
-// Whom `to` asks in a thread: objects are recipes, strings name a seat there by its label, as `label` or
-// `thread/label`, and are recipes when no seat has that label.
+// Whom `to` asks in a thread: objects are recipes, strings name an agent there, as `name` or `thread/name`, and are
+// recipes when no agent has that name.
 const addresses = (to, command, threadId) =>
 	Promise.all(
 		(to === null ? [] : [to].flat()).map((t) =>
-			typeof t === 'string' ? seat(threadId, t, command) : address(t, command),
+			typeof t === 'string' ? whom(threadId, t, command) : address(t, command),
 		),
 	)
-async function seat(threadId, text, command = false) {
-	const [, at, label = text] = text.match(/^(\d+)\/(.+)$/) ?? []
-	if (at && Number(at) !== threadId) throw new Error(`${text} sits in thread ${at}, not ${threadId}`)
-	const sitting = threadId !== undefined && (await thread(threadId))?.agents[label]
-	return sitting ? agentOf(sitting) : address(agentTo(label), command)
+async function whom(threadId, text, command = false) {
+	const [, at, name = text] = text.match(/^(\d+)\/(.+)$/) ?? []
+	if (at && Number(at) !== threadId) throw new Error(`${text} is in thread ${at}, not ${threadId}`)
+	const there = threadId !== undefined && (await thread(threadId))?.agents[name]
+	return there ? agentOf(there, name) : address(agentTo(name), command)
 }
 
 // What `pi --model asked` makes of it on the runner, kept with its models; offline, only one it resolved before.
@@ -408,20 +408,20 @@ function folder(runner, to) {
 	return cwd
 }
 
-// `named`, the seat's name when the caller has it, saves reading the agent's home.
+// `named`, the agent's name when the caller has it, saves looking it up.
 async function agentOf(id, named) {
 	const agent = await harness.snapshot(AgentDoc, id, context)
-	const name = agent?.model?.provider?.match(/^runner:(.+)$/)?.[1]
-	if (!name) return null
-	const runner = (await known())[name]
+	const runnerName = agent?.model?.provider?.match(/^runner:(.+)$/)?.[1]
+	if (!runnerName) return null
+	const runner = (await known())[runnerName]
 	const dir = runner && agent.cwd ? path.relative(runner.dir, agent.cwd) : ''
-	const label = named ?? (await home(id))?.name
+	const name = named ?? (await home(id))?.name
 	return {
-		runner: name,
+		runner: runnerName,
 		model: agent.model.modelId,
 		...(agent.thinkingLevel ? { thinkingLevel: agent.thinkingLevel } : {}),
 		...(dir ? { dir } : {}),
-		...(label && label !== `${agent.model.modelId}@${name}` ? { label } : {}),
+		...(name && name !== `${agent.model.modelId}@${runnerName}` ? { name } : {}),
 	}
 }
 
@@ -473,7 +473,7 @@ async function messages(id) {
 }
 const lastAsked = async (id) => (await messages(id)).findLast((e) => e.data.to)?.data.to ?? []
 
-// A seat's own answer, which it never reads back: a person or a post from another thread under its name is news to it.
+// An agent's own answer, which it never reads back: a person or a post from another thread under its name is news to it.
 const ownAnswer = ({ data: m }, name) => m.author === name && !m.from && Boolean(m.answer || m.error)
 
 /**
@@ -494,23 +494,23 @@ async function post(tx, threadId, data, { steer = false, empty = false } = {}) {
 					.filter((e) => e.kind === KIND)
 					.map((e) => e.id)
 			: []
-	// A seat keeps the runner and model it was made with: another recipe under its label is refused, not a move.
+	// An agent keeps the runner and model it was made with: another recipe under its name is refused, not a move.
 	for (const t of to) {
 		const agent = row.agents[agentName(t)]
 		const was = agent && (await tx.doc(AgentDoc, agent)).model
 		if (was && (was.provider !== `runner:${t.runner}` || was.modelId !== t.model))
-			throw new Error(`${agentName(t)} runs ${was.modelId} on ${was.provider.slice(7)}; pick another label`)
+			throw new Error(`${agentName(t)} runs ${was.modelId} on ${was.provider.slice(7)}; pick another name`)
 	}
 	const entry = await tx.appendEntry(threadId, { kind: KIND, data })
 	for (const m of posted) await m(tx, threadId, entry)
 	for (const [name, agent] of Object.entries(row.agents))
-		if (!ownAnswer({ data }, name)) (await tx.doc(AgentHome, agent)).unseen.push(entry.id)
+		if (!ownAnswer({ data }, name)) (await tx.doc(Unseen, agent)).unseen.push(entry.id)
 	for (const t of to) {
 		const name = agentName(t)
 		row.agents[name] ??= await newAgent(tx, threadId, name, [...prior, entry.id])
 		const agent = row.agents[name]
 		await setUp(tx, agent, threadId, t)
-		const home = await tx.doc(AgentHome, agent)
+		const home = await tx.doc(Unseen, agent)
 		const held = [...home.unseen]
 		home.unseen = []
 		if (held.length)
@@ -526,7 +526,7 @@ async function newAgent(tx, threadId, name, unseen, from) {
 	const { id } = from
 		? await tx.forkConversation(from.conversation, from.entry, ownership)
 		: await tx.createConversation(ownership)
-	Object.assign(await tx.doc(AgentHome, id), { thread: threadId, name, unseen })
+	;(await tx.doc(Unseen, id)).unseen = unseen
 	return id
 }
 
@@ -543,7 +543,7 @@ const setUp = async (tx, agent, threadId, t) => {
 
 // An input withdrawn before it was placed: its messages are unseen again.
 async function restore(tx, agent, held) {
-	const home = await tx.doc(AgentHome, agent)
+	const home = await tx.doc(Unseen, agent)
 	home.unseen = [...new Set([...home.unseen, ...held])].sort((a, b) => a - b)
 }
 
@@ -641,7 +641,13 @@ const threadView = async (id, reader) => {
 	}
 }
 
-const home = (conversationId) => harness.snapshot(AgentHome, conversationId, context)
+// An agent's thread owns its conversation, through its Anchor; its name is its key in that thread's agents.
+async function home(conversationId) {
+	const threadId = (await storage.conversation(conversationId, context))?.owner?.conversationId
+	const row = threadId && (await thread(threadId))
+	const name = row && Object.keys(row.agents).find((n) => row.agents[n] === conversationId)
+	return name ? { thread: threadId, name } : null
+}
 
 // Does `work` once per request id, or every time without one; a retry gets the first result.
 const once = (requestId, command, work) =>
@@ -672,7 +678,9 @@ async function postEntry(id, author, input) {
 		to = await addresses(
 			route(
 				{ body, to },
-				(await Promise.all(Object.values((await thread(id)).agents).map(agentOf))).filter(Boolean),
+				(
+					await Promise.all(Object.entries((await thread(id)).agents).map(([n, c]) => agentOf(c, n)))
+				).filter(Boolean),
 			),
 		)
 	if (command && !to.length) throw new Error('Pick a runner to run the command on')
@@ -818,7 +826,7 @@ const core = {
 	runners,
 	known,
 	address,
-	seat,
+	whom,
 	reach,
 	agentOf,
 	conversation,

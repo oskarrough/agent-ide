@@ -1,11 +1,11 @@
 import { agentName } from './util.js'
 
-// Whom a message asks: every agent of the thread it @mentions (by its label, or as @openai/gpt-6.1-sol@laptop,
+// Whom a message asks: every agent of the thread it @mentions (by its name, or as @openai/gpt-6.1-sol@laptop,
 // @gpt-6.1-sol@laptop, @gpt-6.1-sol or @laptop); else its own `to`, or nobody.
 export const server = () => ({ route })
 
 function route({ body, to }, agents) {
-	// Each seat's own name first, so a labelled seat never takes the name of one with the same model.
+	// Each agent's own name first, so a named agent never takes the name of one with the same model.
 	const named = new Map(agents.map((agent) => [agentName(agent), agent]))
 	for (const agent of agents) {
 		const id = agent.model.slice(agent.model.indexOf('/') + 1)

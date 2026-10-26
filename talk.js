@@ -22,14 +22,14 @@ export function server(core) {
 			to: Type.Optional(
 				Type.String({
 					description:
-						'Who should answer. An agent already in the thread by its label, or thread/label from anywhere, which also picks the thread. Or a recipe for a new one: model@runner, where model is anything `pi --model` takes, a runner for its default model, label=model@runner to name it. Or "nobody". Leave out for whom the thread last asked; in a new thread, yourself.',
+						'Who should answer. An agent already in the thread by its name, or thread/name from anywhere, which also picks the thread. Or a recipe for a new one: model@runner, where model is anything `pi --model` takes, a runner for its default model, name=model@runner to name it. Or "nobody". Leave out for whom the thread last asked; in a new thread, yourself.',
 				}),
 			),
 		}),
 		replay: 'safe',
 		execute: async (args, api) => {
 			const { thread: from, name } = await home(api.conversationId)
-			// `to` as thread/label picks the thread too.
+			// `to` as thread/name picks the thread too.
 			const thread = args.thread ?? (Number(args.to?.match(/^(\d+)\//)?.[1]) || undefined)
 			if (thread === from) throw new Error('That is your own thread; just answer')
 			// A replay would run it twice, and its output would never reach the agent.
@@ -43,12 +43,13 @@ export function server(core) {
 					? undefined
 					: (await core.messages(from)).findLast((e) => e.data.from === thread && !e.data.re)
 			const asker =
-				asked && (await agentOf((await core.thread(thread)).agents[asked.data.author]))
+				asked &&
+				(await agentOf((await core.thread(thread)).agents[asked.data.author], asked.data.author))
 			const to =
 				args.to === 'nobody'
 					? []
 					: args.to !== undefined
-						? [await core.seat(thread, args.to)]
+						? [await core.whom(thread, args.to)]
 						: thread === undefined
 							? [await agentOf(api.conversationId)]
 							: asker
@@ -102,7 +103,7 @@ export function server(core) {
 			),
 			agent: Type.Optional(
 				Type.String({
-					description: 'An agent in that thread, by its label or any unique part of it, or thread/label',
+					description: 'An agent in that thread, by its name or any unique part of it, or thread/name',
 				}),
 			),
 			last: Type.Optional(Type.Number({ description: 'How many entries, 20 by default' })),
@@ -204,7 +205,9 @@ export function server(core) {
 			const { agents } = await core.thread(from)
 			const askers = (
 				await Promise.all(
-					[...new Set(mine.map((p) => agents[p.data.author]))].filter(Boolean).map(agentOf),
+					[...new Set(mine.map((p) => p.data.author))]
+						.filter((name) => agents[name])
+						.map((name) => agentOf(agents[name], name)),
 				)
 			).filter(Boolean)
 			replies.push({
