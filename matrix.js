@@ -13,6 +13,7 @@
 //      ROOMS and USERS take several, comma-separated. AGENT is model@runner, or a runner for its default model.
 //   4. Write `@BOT …` in the room. Its thread shows up in the client, titled `matrix #room:matrix.org: …`.
 import { defineDoc, defineExtension, defineTask } from '@earendil-works/pi-durable'
+import { agentTo, speaker } from './util.js'
 
 // `threads` keys a room by its id and a Matrix thread by its root event; `last` is each room's newest send.
 const MatrixBridge = defineDoc({
@@ -57,7 +58,7 @@ export function server(core) {
 		MATRIX_BRIEF: brief,
 	} = process.env
 	const names = list('MATRIX_ROOMS')
-	const users = new Set(list('MATRIX_USERS').map(core.speaker))
+	const users = new Set(list('MATRIX_USERS').map(speaker))
 	if (!token || !names.length)
 		throw new Error('MATRIX=1 needs MATRIX_TOKEN and MATRIX_ROOMS: see matrix.js')
 
@@ -174,10 +175,10 @@ export function server(core) {
 		return {
 			id: e.event_id,
 			room,
-			author: core.speaker(e.sender),
+			author: speaker(e.sender),
 			body: clean(e.content.body),
 			root: relation?.rel_type === 'm.thread' ? relation.event_id : e.event_id,
-			asks: Boolean(agent && mentions && users.has(core.speaker(e.sender))),
+			asks: Boolean(agent && mentions && users.has(speaker(e.sender))),
 		}
 	}
 
@@ -268,7 +269,7 @@ export function server(core) {
 
 	// A runner that never connected can't name its model yet, so this waits for it.
 	async function address() {
-		const asked = core.agentTo(agent)
+		const asked = agentTo(agent)
 		return core
 			.address(asked)
 			.catch(async () => (await core.runners.online(asked.runner), core.address(asked)))

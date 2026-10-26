@@ -2,9 +2,10 @@
 import { Type } from '@earendil-works/pi-ai'
 import { defineExtension, defineTool } from '@earendil-works/pi-durable'
 import { messageText } from './remote.js'
+import { agentName, agentTo, field, said } from './util.js'
 
 export function server(core) {
-	const { agentName, agentOf, home } = core
+	const { agentOf, home } = core
 
 	const post = defineTool({
 		name: 'post',
@@ -32,7 +33,7 @@ export function server(core) {
 			// A replay would run it twice, and its output would never reach the agent.
 			if (/^\$\s/.test(args.body))
 				throw new Error('Run commands with your own bash tool, not as a post')
-			const title = args.thread === undefined ? core.field(args.title, 'title') : ''
+			const title = args.thread === undefined ? field(args.title, 'title') : ''
 			if (args.thread !== undefined) await core.conversation(args.thread)
 			// Posting to a thread that asked you something answers it, so the answer to that ends the exchange.
 			const asked =
@@ -45,13 +46,13 @@ export function server(core) {
 				args.to === 'nobody'
 					? []
 					: args.to !== undefined
-						? [await core.address(core.agentTo(args.to))]
+						? [await core.address(agentTo(args.to))]
 						: args.thread === undefined
 							? [await agentOf(api.conversationId)]
 							: asker
 								? [asker]
 								: await core.lastAsked(args.thread)
-			await core.reach(to, `@${core.agentTo(name).runner}`)
+			await core.reach(to, `@${agentTo(name).runner}`)
 			const id = await core.once(`post ${api.taskId}`, 'post', async (tx) => {
 				const id = args.thread ?? (await core.startThread(tx, name, title, from))
 				await core.post(
@@ -127,7 +128,7 @@ export function server(core) {
 			} else {
 				const query = args.query?.toLowerCase()
 				const found = (await core.messages(args.thread ?? mine)).filter(
-					(e) => !query || core.said(e).toLowerCase().includes(query),
+					(e) => !query || said(e).toLowerCase().includes(query),
 				)
 				for (const { id, data: m } of found.slice(-(args.last ?? 20))) {
 					lines.push(

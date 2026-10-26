@@ -9,6 +9,7 @@ import {
 	hook,
 } from '@earendil-works/pi-durable'
 import { messageText } from './remote.js'
+import { agentTo, collect, said } from './util.js'
 
 const KIND = 'agent-ide.line'
 const RETRY = { enabled: true, maxRetries: 10, baseDelayMs: 2000 }
@@ -82,19 +83,19 @@ The memory is yours. A person's latest word on a thing is the truth; an agent's 
 export function server(core) {
 	const name = process.env.MEMORY_MODEL
 	if (!name?.includes('@')) throw new Error('MEMORY=1 needs MEMORY_MODEL=model@runner')
-	const writer = core.agentTo(name)
+	const writer = agentTo(name)
 
 	// Its own lines, then those of the thread it forked from that end before the fork. Reads only: call before writing.
 	async function lines(tx, threadId) {
 		const map = new Map()
-		const own = await core.collect((cursor) =>
+		const own = await collect((cursor) =>
 			tx.scanEntries({ conversationId: threadId, order: 'ascending' }, 500, cursor),
 		)
 		for (const { kind, data } of own)
 			if (kind === KIND && !map.has(key(data.l, data.i))) map.set(key(data.l, data.i), data)
 		const { parent } = await tx.conversation(threadId)
 		if (!parent) return map
-		const upTo = await core.collect((cursor) =>
+		const upTo = await collect((cursor) =>
 			tx.scanEntries(
 				{ conversationId: parent.conversationId, maxEntryId: parent.at, order: 'ascending' },
 				500,
@@ -161,7 +162,7 @@ export function server(core) {
 					const limit = `into one line of at most ${LINE} bytes (about 70 words), the length of this ruler:\n${RULER}`
 					let source, task
 					if (!l) {
-						source = core.said(all[i])
+						source = said(all[i])
 						task = `${render(memory(have, i, CONTEXT))}\n\n${ask} ${limit}\n<input>\n${source}\n</input>`
 					} else {
 						const [a, b] = [have.get(key(l - 1, 2 * i)), have.get(key(l - 1, 2 * i + 1))]
@@ -221,10 +222,10 @@ export function server(core) {
 	async function catchUp(threadId, held, all, agent) {
 		const most = await budget(agent)
 		let k = held.length - 1,
-			size = bytes(core.said(held[k]))
-		while (k > 0 && size + bytes(core.said(held[k - 1])) + 2 <= most)
-			size += bytes(core.said(held[--k])) + 2
-		const whole = held.slice(k).map(core.said).join('\n\n')
+			size = bytes(said(held[k]))
+		while (k > 0 && size + bytes(said(held[k - 1])) + 2 <= most)
+			size += bytes(said(held[--k])) + 2
+		const whole = held.slice(k).map(said).join('\n\n')
 		if (!k) return whole
 		const at = (e) => all.findIndex((x) => x.id === e.id)
 		const older = memory(
@@ -242,7 +243,7 @@ export function server(core) {
 		const l = Math.log2(n)
 		if (!Number.isInteger(l) || !Number.isInteger(id) || id < 0 || id % n || id >= all.length)
 			throw new Error(`No line ${id}+${n}; zoom one from your memory`)
-		if (n === 1) return core.said(all[id])
+		if (n === 1) return said(all[id])
 		const have = await core.commit((tx) => lines(tx, thread))
 		const half = (j) => have.get(key(l - 1, j)) ?? unwritten(l - 1, j)
 		return [half(2 * (id / n)), half(2 * (id / n) + 1)].filter((x) => (x.i * n) / 2 < all.length)

@@ -24,6 +24,7 @@ import { createCodemodeExtension } from '@earendil-works/pi-durable/codemode'
 import { CodemodeSandbox } from '@earendil-works/pi-codemode'
 import { load } from './modules.js'
 import { WebSocketServer } from 'ws'
+import { agentName, agentTo, collect, field, said, speaker } from './util.js'
 import { createRunners, messageText, remoteEnv, runnerBundle, runnerProvider } from './remote.js'
 
 /**
@@ -319,17 +320,6 @@ const conversation = async (id) => {
 	return found
 }
 
-async function collect(scan) {
-	const items = []
-	let cursor
-	do {
-		const page = await scan(cursor)
-		items.push(...page.items)
-		cursor = page.next
-	} while (cursor)
-	return items
-}
-
 // Newest first. Threads are the only conversations without an owner; an agent's is owned by its Anchor.
 const threadIds = async () =>
 	(
@@ -340,30 +330,7 @@ const threadIds = async () =>
 		.filter((c) => !c.owner)
 		.map((c) => c.id)
 
-const agentName = (to) => to && `${to.model}@${to.runner}`
-// `model@runner`, or a bare runner for its default model.
-const agentTo = (name) => {
-	const at = name.lastIndexOf('@')
-	return { runner: name.slice(at + 1), model: at < 0 ? '' : name.slice(0, at) }
-}
-// A person's name as one line of printable text, so no author can write a speaker line of their own.
-const speaker = (name) =>
-	[
-		...String(name ?? '')
-			.normalize('NFKC')
-			.replace(/[\p{Cc}\p{Cf}]/gu, ' ')
-			.replace(/\s+/g, ' ')
-			.trim(),
-	]
-		.slice(0, 40)
-		.join('')
-		.trim() || 'anon'
 const user = (req) => speaker(req.headers['x-user'])
-
-function field(value, name) {
-	if (typeof value !== 'string' || !value.trim()) throw new Error(`${name} is required`)
-	return value.trim()
-}
 
 // A command needs no model.
 async function address(to, command = false) {
@@ -483,19 +450,6 @@ async function messages(id) {
 	return (await entries(id)).filter((e) => e.kind === KIND)
 }
 const lastAsked = async (id) => (await messages(id)).findLast((e) => e.data.to)?.data.to ?? []
-
-// A message as an agent reads it: a speaker line, then its later lines indented, so no body can start a line that
-// looks like someone speaking. Agents are marked by what they wrote, never by their name: an answer, or a post.
-function said({ data: m }) {
-	const agent = Boolean(m.answer || m.error || m.from)
-	const who = agent
-		? `${m.author} (agent${m.from ? `, ${m.re ? 'answering' : 'writing'} from thread ${m.from}` : ''})`
-		: m.author
-	const output = m.shell
-		? `\n${[`exit ${m.shell.code ?? m.shell.error}`, m.shell.stdout, m.shell.stderr].filter(Boolean).join('\n')}`
-		: ''
-	return `${who}: ${`${m.body}${output}`.replace(/\n/g, '\n  ')}`
-}
 
 /**
  * Writes a message, inside the caller's commit, and gives each agent it asks a Deliver task with all it hasn't seen.
@@ -821,14 +775,11 @@ async function forkThread(id, { at, title }) {
 }
 
 const core = {
-	speaker,
 	models,
 	runners,
 	known,
 	address,
 	reach,
-	agentName,
-	agentTo,
 	agentOf,
 	conversation,
 	thread,
@@ -837,13 +788,10 @@ const core = {
 	entries,
 	messages,
 	lastAsked,
-	field,
 	startThread,
 	post,
-	said,
 	seenBy,
 	commit,
-	collect,
 	once,
 }
 const modules = await load(
@@ -860,7 +808,12 @@ const modules = await load(
 	core,
 )
 for (const m of modules) if (m.extension) registry.install(m.extension)
-const hook = (name) => modules.find((m) => m[name])?.[name]
+// One module answers each of these; two claiming one is a mistake, not an order.
+const hook = (name) => {
+	const [first, second] = modules.filter((m) => m[name])
+	if (second) throw new Error(`${name}: ${first.name} and ${second.name} both answer it; turn one off`)
+	return first?.[name]
+}
 const posted = modules.flatMap((m) => m.posted ?? [])
 const [route, reply, catchUp] = ['route', 'reply', 'catchUp'].map(hook)
 
