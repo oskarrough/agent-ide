@@ -70,7 +70,7 @@ const Keys = defineDoc({
 	checkpointWhen: base,
 	initial: () => ({}),
 })
-// `agents`: name → Pi conversation.
+// `agents`: an agent's name → its Pi conversation, and the thread messages not yet handed to it.
 const Thread = defineDoc({
 	kind: 'agent-ide.thread',
 	version: 1,
@@ -87,16 +87,6 @@ const Thread = defineDoc({
 		agents: {},
 		tools: null,
 	}),
-})
-// On an agent's conversation: the thread messages it hasn't seen.
-const Unseen = defineDoc({
-	kind: 'agent-ide.agent',
-	version: 1,
-	scope: 'conversation',
-	history: 'latest',
-	fork: 'initial',
-	checkpointWhen: base,
-	initial: () => ({ unseen: [] }),
 })
 // By request id: the command a request made and what it answered, written in the commit that did the work.
 const Receipts = defineDocFamily({
@@ -154,16 +144,16 @@ const Deliver = defineTask({
 			const told = await outcome(threadId, agent, settled, held)
 			await rt.commit(async (tx) => {
 				for (const { thread, data, steer } of told) await post(tx, thread, data, { steer })
-				if (settled.entry === undefined) await restore(tx, agent, held)
+				if (settled.entry === undefined) await restore(tx, threadId, agent, held)
 				return finished()
 			}, ctx)
 		},
 	},
 	// Pi's abort of the thread withdrew its input if still queued.
-	abort: ({ id, input: { agent, held } }, rt, ctx) =>
+	abort: ({ id, conversationId: threadId, input: { agent, held } }, rt, ctx) =>
 		rt.commit(async (tx) => {
 			if ((await tx.submissionByRequest(agent, String(id)))?.entry === undefined)
-				await restore(tx, agent, held)
+				await restore(tx, threadId, agent, held)
 			return finished('aborted')
 		}, ctx),
 })
@@ -367,7 +357,7 @@ async function whom(threadId, text, command = false) {
 	const [, at, name = text] = text.match(/^(\d+)\/(.+)$/) ?? []
 	if (at && Number(at) !== threadId) throw new Error(`${text} is in thread ${at}, not ${threadId}`)
 	const there = threadId !== undefined && (await thread(threadId))?.agents[name]
-	return there ? agentOf(there, name) : address(agentTo(name), command)
+	return there ? agentOf(there.conversation, name) : address(agentTo(name), command)
 }
 
 // What `pi --model asked` makes of it on the runner, kept with its models; offline, only one it resolved before.
@@ -429,7 +419,7 @@ async function agentOf(id, named) {
 /** @returns {Promise<Agent[]>} */
 async function agentsIn(row, live) {
 	return Promise.all(
-		Object.entries(row.agents).map(async ([name, conversation]) => {
+		Object.entries(row.agents).map(async ([name, { conversation }]) => {
 			const to = await agentOf(conversation, name)
 			const mine = live.filter(
 				(t) => t.kind === Deliver.definition.name && t.input.agent === conversation,
@@ -496,7 +486,7 @@ async function post(tx, threadId, data, { steer = false, empty = false } = {}) {
 			: []
 	// An agent keeps the runner and model it was made with: another recipe under its name is refused, not a move.
 	for (const t of to) {
-		const agent = row.agents[agentName(t)]
+		const agent = row.agents[agentName(t)]?.conversation
 		const was = agent && (await tx.doc(AgentDoc, agent)).model
 		if (was && (was.provider !== `runner:${t.runner}` || was.modelId !== t.model))
 			throw new Error(`${agentName(t)} runs ${was.modelId} on ${was.provider.slice(7)}; pick another name`)
@@ -504,30 +494,31 @@ async function post(tx, threadId, data, { steer = false, empty = false } = {}) {
 	const entry = await tx.appendEntry(threadId, { kind: KIND, data })
 	for (const m of posted) await m(tx, threadId, entry)
 	for (const [name, agent] of Object.entries(row.agents))
-		if (!ownAnswer({ data }, name)) (await tx.doc(Unseen, agent)).unseen.push(entry.id)
+		if (!ownAnswer({ data }, name)) agent.unseen.push(entry.id)
 	for (const t of to) {
 		const name = agentName(t)
-		row.agents[name] ??= await newAgent(tx, threadId, name, [...prior, entry.id])
-		const agent = row.agents[name]
-		await setUp(tx, agent, threadId, t)
-		const home = await tx.doc(Unseen, agent)
-		const held = [...home.unseen]
-		home.unseen = []
+		row.agents[name] ??= await newAgent(tx, threadId, [...prior, entry.id])
+		const { conversation, unseen: held } = row.agents[name]
+		await setUp(tx, conversation, threadId, t)
+		row.agents[name].unseen = []
 		if (held.length)
-			await tx.createTask(Deliver, { agent, held, steer }, { ...own, conversationId: threadId })
+			await tx.createTask(
+				Deliver,
+				{ agent: conversation, held, steer },
+				{ ...own, conversationId: threadId },
+			)
 	}
 	return { entry: entry.id, to }
 }
 
 // Owned by an Anchor in the thread; with `from`, Pi's fork of another agent's conversation at an entry.
-async function newAgent(tx, threadId, name, unseen, from) {
+async function newAgent(tx, threadId, unseen, from) {
 	const anchor = await tx.createTask(Anchor, null, { ...own, conversationId: threadId })
 	const ownership = { ownership: { kind: 'task', taskId: anchor } }
 	const { id } = from
 		? await tx.forkConversation(from.conversation, from.entry, ownership)
 		: await tx.createConversation(ownership)
-	;(await tx.doc(Unseen, id)).unseen = unseen
-	return id
+	return { conversation: id, unseen }
 }
 
 const setUp = async (tx, agent, threadId, t) => {
@@ -542,9 +533,11 @@ const setUp = async (tx, agent, threadId, t) => {
 }
 
 // An input withdrawn before it was placed: its messages are unseen again.
-async function restore(tx, agent, held) {
-	const home = await tx.doc(Unseen, agent)
-	home.unseen = [...new Set([...home.unseen, ...held])].sort((a, b) => a - b)
+async function restore(tx, threadId, conversation, held) {
+	const agent = Object.values((await tx.doc(Thread, threadId)).agents).find(
+		(a) => a.conversation === conversation,
+	)
+	agent.unseen = [...new Set([...agent.unseen, ...held])].sort((a, b) => a - b)
 }
 
 // What a settled input posts, and where. Inputs sharing one answer post it once, by the first; posts from other
@@ -645,7 +638,7 @@ const threadView = async (id, reader) => {
 async function home(conversationId) {
 	const threadId = (await storage.conversation(conversationId, context))?.owner?.conversationId
 	const row = threadId && (await thread(threadId))
-	const name = row && Object.keys(row.agents).find((n) => row.agents[n] === conversationId)
+	const name = row && Object.keys(row.agents).find((n) => row.agents[n].conversation === conversationId)
 	return name ? { thread: threadId, name } : null
 }
 
@@ -679,7 +672,9 @@ async function postEntry(id, author, input) {
 			route(
 				{ body, to },
 				(
-					await Promise.all(Object.entries((await thread(id)).agents).map(([n, c]) => agentOf(c, n)))
+					await Promise.all(
+						Object.entries((await thread(id)).agents).map(([n, a]) => agentOf(a.conversation, n)),
+					)
 				).filter(Boolean),
 			),
 		)
@@ -764,8 +759,8 @@ async function setTools(id, { tools }) {
 	return commit(async (tx) => {
 		const row = await tx.doc(Thread, id)
 		row.tools = tools
-		for (const agent of Object.values(row.agents))
-			await configure(tx, agent, { tools: toolsOf(tools) })
+		for (const { conversation } of Object.values(row.agents))
+			await configure(tx, conversation, { tools: toolsOf(tools) })
 		return { tools }
 	})
 }
@@ -803,15 +798,14 @@ async function forkThread(id, { at, title }) {
 				;(await tx.doc(Thread, forkId)).tools = source.tools
 				const row = {}
 				for (const { name, answer, unseen } of agents)
-					row[name] = await newAgent(tx, forkId, name, unseen, answer)
+					row[name] = await newAgent(tx, forkId, unseen, answer)
 				for (const [name, t] of fresh) {
 					row[name] = await newAgent(
 						tx,
 						forkId,
-						name,
 						shown.filter((e) => !ownAnswer(e, name)).map((e) => e.id),
 					)
-					await setUp(tx, row[name], forkId, t)
+					await setUp(tx, row[name].conversation, forkId, t)
 				}
 				Object.assign(await tx.doc(Thread, forkId), { title: named, createdAt: now(), agents: row })
 			},
@@ -1076,7 +1070,7 @@ async function rewatch(socket, id) {
 // Starts a stream for the thread and for each agent not followed yet; the post that asks a new agent is a thread event,
 // which follows it from the commit that made it.
 async function follow(socket, w) {
-	const agents = Object.entries((await thread(w.thread)).agents).map(([name, c]) => [c, name])
+	const agents = Object.entries((await thread(w.thread)).agents).map(([name, a]) => [a.conversation, name])
 	for (const [c, agent] of [[w.thread], ...agents]) {
 		if (w.streams.has(c) || socket.watching !== w) continue
 		const send = (events) =>

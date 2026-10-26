@@ -44,7 +44,10 @@ export function server(core) {
 					: (await core.messages(from)).findLast((e) => e.data.from === thread && !e.data.re)
 			const asker =
 				asked &&
-				(await agentOf((await core.thread(thread)).agents[asked.data.author], asked.data.author))
+				(await agentOf(
+					(await core.thread(thread)).agents[asked.data.author]?.conversation,
+					asked.data.author,
+				))
 			const to =
 				args.to === 'nobody'
 					? []
@@ -163,7 +166,7 @@ export function server(core) {
 				`${found.length ? 'Several' : 'No'} agents in thread ${threadId} match ${agent}: ${(found.length ? found : names).join(', ') || 'none'}`,
 			)
 		const lines = []
-		for (const { id, model = [] } of await core.entries(agents[found[0]])) {
+		for (const { id, model = [] } of await core.entries(agents[found[0]].conversation)) {
 			for (const m of model) {
 				if (m.role === 'user') lines.push(`#${id} handed: ${messageText(m)}`)
 				if (m.role === 'toolResult')
@@ -207,7 +210,7 @@ export function server(core) {
 				await Promise.all(
 					[...new Set(mine.map((p) => p.data.author))]
 						.filter((name) => agents[name])
-						.map((name) => agentOf(agents[name], name)),
+						.map((name) => agentOf(agents[name].conversation, name)),
 				)
 			).filter(Boolean)
 			replies.push({
