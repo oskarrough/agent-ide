@@ -999,10 +999,12 @@ function render() {
 	}
 	$('family').replaceChildren(...shownThreads.map((t) => threadRow(t, depth(t.id))))
 	sheetFor(botAt(current))
-	$('members').textContent = [
-		...(people.get(current) ?? []),
-		...(here?.agents ?? []).map((a) => a.name),
-	].join(', ')
+	// Who's here, named as their messages name them.
+	$('members').replaceChildren(
+		...[...(people.get(current) ?? []), ...(here?.agents ?? []).map((a) => a.name)].flatMap(
+			(n, i) => [i ? ', ' : '', el('span', { title: n, style: colorOf(n) }, who(n))],
+		),
+	)
 	// The composer names whom it asks; the sidebar counts the runners.
 	const mineNow = threads.find((t) => t.id === current)?.agents ?? []
 	const busyNow = picks.some((p) => mineNow.some((a) => same(a.to, p) && a.status === 'working'))

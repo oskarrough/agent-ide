@@ -1251,8 +1251,12 @@ body.chat {
 	}
 }
 
+/* Names as a message's author line has them. */
 .thread-details #members {
-	margin: 0 0.6rem;
+	margin: 0 0.6rem 0.4rem;
+	color: var(--mute);
+	font-size: 12px;
+	line-height: 1.3;
 }
 
 /* Soul follows Tools as Tools follows the thread, not as a first heading. */
