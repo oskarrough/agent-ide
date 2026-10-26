@@ -766,9 +766,19 @@ function threadBox(id) {
 									el(
 										'summary',
 										{},
-										el('span', { style: colorOf(data.author) }, who(data.author)),
-										' answered in ',
-										link(data.from, titleOf(data.from)),
+										// From a bot's home, the bot answered, its name the link; from anywhere else, it says where.
+										...(botAt(data.from)?.name === data.author
+											? [
+													Object.assign(link(data.from, who(data.author)), {
+														style: colorOf(data.author),
+													}),
+													' answered',
+												]
+											: [
+													el('span', { style: colorOf(data.author) }, who(data.author)),
+													' answered in ',
+													link(data.from, titleOf(data.from)),
+												]),
 									),
 									el('span', { className: 'body' }, data.body),
 								),

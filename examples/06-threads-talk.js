@@ -25,6 +25,10 @@ const bot = await scriptedRunner('bot', (request) => {
 	const t = text(last)
 	if (last.role === 'toolResult') return say(`tool said: ${t}`)
 	if (t.includes('answering from thread')) return say(`Got it: ${t.split('\n')[0]}`)
+	if (t.includes('delegate by post'))
+		return call('post', { title: 'by post', body: 'answer by post', to: 'echo/echo@bot' })
+	if (t.includes('answer by post'))
+		return call('post', { thread: Number(t.match(/thread (\d+)/)[1]), body: 'by post: 5' })
 	if (t.includes('delegate'))
 		return call('post', { title: 'sum', body: 'compute 2+2', to: 'echo/echo@bot' })
 	if (t.includes('compute 2+2')) return say('4, after some thought '.repeat(20))
@@ -172,6 +176,23 @@ check(
 	answers(quiet).length === answers(settledParent).length && quiet.status !== 'working',
 	'after a restart no old reply asks again: the note stays unanswered',
 	brief(quiet),
+)
+
+// Answering a post with the post tool is the answer: the text the agent ends with stays in its thread.
+const {
+	json: { id: asker },
+} = await api('POST', '/api/threads', { title: 'asker' })
+await api('POST', `/api/threads/${asker}/entries`, { body: 'delegate by post', to })
+const byPost = await until(async () => {
+	const v = await view(asker)
+	return v.entries.some((e) => e.data.body === 'by post: 5') && v.status !== 'working' ? v : null
+}, 10000)
+await sleep(1000)
+const back = (await view(asker)).entries.filter((e) => e.data.from && e.data.from !== asker)
+check(
+	Boolean(byPost) && back.length === 1 && back[0].data.body === 'by post: 5',
+	'a post answered with the post tool comes back once',
+	brief(await view(asker)),
 )
 
 bot.close()

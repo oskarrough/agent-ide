@@ -571,7 +571,20 @@ async function outcome(threadId, agent, settled, mine) {
 	const told = [
 		{ thread: threadId, data: { author: name, body, ...(re.length ? { re } : {}), ...result } },
 	]
-	const posts = held.filter((e) => e.data.from && !e.data.re)
+	// A post the agent already answered with its post tool gets no second answer.
+	const answered = new Set(
+		(
+			await Promise.all(
+				[...new Set(held.filter((e) => e.data.from && !e.data.re).map((e) => e.data.from))].map(
+					(from) => messages(from),
+				),
+			)
+		)
+			.flat()
+			.filter((e) => e.data.from === threadId)
+			.flatMap((e) => e.data.re ?? []),
+	)
+	const posts = held.filter((e) => e.data.from && !e.data.re && !answered.has(e.id))
 	if (posts.length && reply)
 		return [
 			...told,
