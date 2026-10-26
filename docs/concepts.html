@@ -453,12 +453,13 @@ flowchart LR
 					>
 				</dd>
 
-				<dt>Bot <span class="tag later">later</span></dt>
+				<dt>Bot <span class="tag server">built</span></dt>
 				<dd>
-					A who: a name and instructions, running as some agent. <code>ada</code> might be
-					<code>sonnet:high@laptop</code> plus her character; move her to the vps and she's still
-					ada. It belongs on the server, because it's part of the thinking, not the doing.
-					<small>Waits until everything above is rock solid.</small>
+					A who in many threads: a name with a home thread and instructions. Ask
+					<code>ada</code> in any thread and an agent named ada joins it, made from the one at
+					home; <code>ada=haiku@desk</code> gives that thread another model. Every ada reads her
+					instructions before each request and knows her other threads, so she's one person, not one
+					conversation. <small>Without the module, everything above works as it is.</small>
 				</dd>
 			</dl>
 
@@ -664,6 +665,8 @@ stateDiagram-v2
 				<dd>Gives agents <code>web_search</code>, through Exa's free search.</dd>
 				<dt>matrix.js <span class="tag later">off</span></dt>
 				<dd>Mirrors Matrix rooms into threads, and its top says how to set it up.</dd>
+				<dt>bots.js <span class="tag later">off</span></dt>
+				<dd>One name in many threads: see Bot, above.</dd>
 			</dl>
 
 			<h2 id="decided">Decided</h2>

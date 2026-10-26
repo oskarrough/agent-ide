@@ -33,7 +33,8 @@ MODULES=+director bun server.js        # director.js asks the agents a message @
 MODULES=+memory MEMORY_MODEL=haiku@laptop bun server.js   # memory.js: threads that never end
 MODULES=+search bun server.js          # search.js: agents' web_search, through Exa's free search
 MODULES=+matrix MATRIX_TOKEN=… MATRIX_ROOMS=… bun server.js   # matrix.js: Matrix rooms as threads; its top says how
-echo '{"modules": ["+memory", "+../bots.js"]}' > agent-ide.json   # the same, in the folder it starts in; MODULES then changes what the file picked
+MODULES=+bots bun server.js            # bots.js: one name in many threads, made from its home thread's agent
+echo '{"modules": ["+memory", "+../mine.js"]}' > agent-ide.json   # the same, in the folder it starts in; MODULES then changes what the file picked
 bun scripts/replay-pi.js ~/.pi/agent/sessions/FOLDER   # pi sessions, or one .jsonl, as one long thread
 DB_PATH=other.sqlite bun server.js     # another store; only one server may use a file
 
@@ -68,6 +69,7 @@ Send `x-user: name` to say who you are. The two POSTs that make something, a thr
 - `POST /api/threads/:id/stop`: stops its agents, deliveries and commands, and withdraws their queued inputs.
 - `POST /api/threads/:id/retry`: runs again the deliveries and commands that crashes left parked: a thread whose `status` is `parked`, whose work crashes cut off five times in a row.
 - `DELETE /api/threads/:id`: hides it; Pi Durable keeps everything.
+- `POST /api/threads/:id/bots` `{"name","instructions"?}`: with bots, this thread is the bot's home, and the bot's instructions are these. Asked by name in another thread, an agent of that name joins there, made from the home agent's recipe; `name=model@runner` gives it another model. Every agent of that name reads the instructions before each request and is told its other threads. `GET` lists the bots.
 - `GET /api/threads/:id/memory?zoom=id,n&budget=bytes`: with memory, the thread's memory as `{lines: [{id, n, text}]}`, the lines an agent with `budget` bytes of room reads, or with `zoom` what a line was made from.
 - `GET /api/conversations/:id`: any Pi conversation's view as Pi gives it, such as an agent's: its entries and docs.
 - `GET /api/runners`: each runner, its `owner` and whom it `allow`s, its default model or `modelError` when pi's default doesn't resolve, the models it `offers` from pi's enabled models, the models it has resolved, and the calls it's answering.

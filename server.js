@@ -346,7 +346,8 @@ async function address(to, command = false) {
 	return clean
 }
 // Whom `to` asks in a thread: an agent there by its name, as `name` or `thread/name`, or else a recipe, an object or
-// `model@runner`, for a new one. A recipe whose name the thread has is that agent, as it was made.
+// `model@runner`, for a new one. A recipe whose name the thread has is that agent, as it was made. A name a module
+// knows, as bots knows its own, is that module's recipe.
 const addresses = (to, command, threadId) =>
 	Promise.all((to === null ? [] : [to].flat()).map((t) => whom(threadId, t, command)))
 async function whom(threadId, t, command = false) {
@@ -354,6 +355,8 @@ async function whom(threadId, t, command = false) {
 	if (at && Number(at) !== threadId) throw new Error(`${t} is in thread ${at}, not ${threadId}`)
 	const agents = threadId !== undefined ? (await thread(threadId))?.agents : undefined
 	if (typeof text === 'string' && agents?.[text]) return agentOf(agents[text].conversation, text)
+	const found = typeof text === 'string' && !/[@=]/.test(text) && (await named?.(text))
+	if (found) return address(found, command)
 	const recipe = await address(typeof text === 'string' ? agentTo(text) : text, command)
 	const name = !command && agentName(recipe)
 	return name && agents?.[name] ? agentOf(agents[name].conversation, name) : recipe
@@ -849,6 +852,7 @@ const modules = await load(
 		matrix: false,
 		context: true,
 		search: false,
+		bots: false,
 	},
 	core,
 )
@@ -860,7 +864,7 @@ const hook = (name) => {
 	return first?.[name]
 }
 const posted = modules.flatMap((m) => m.posted ?? [])
-const [route, reply, catchUp] = ['route', 'reply', 'catchUp'].map(hook)
+const [route, reply, catchUp, named] = ['route', 'reply', 'catchUp', 'recipe'].map(hook)
 
 for (const [name, runner] of Object.entries(await known()))
 	models.setProvider(runnerProvider(runners, name, runner.models))
@@ -899,7 +903,7 @@ async function conversationView(id) {
 	return view.value
 }
 
-// As the README lists them; a module may serve GET /api/threads/:id/<its name>.
+// As the README lists them; a module may serve GET and POST /api/threads/:id/<its name>.
 const routes = [
 	[
 		'GET /api/server',
@@ -948,9 +952,12 @@ const routes = [
 	['GET /api/conversations/:id', (req, id) => conversationView(id)],
 	...modules
 		.filter((m) => m.serve)
-		.map((m) => [
-			`GET /api/threads/:id/${m.name}`,
-			(req, id, url) => m.serve(id, url.searchParams),
+		.flatMap((m) => [
+			[`GET /api/threads/:id/${m.name}`, (req, id, url) => m.serve(id, url.searchParams)],
+			[
+				`POST /api/threads/:id/${m.name}`,
+				async (req, id, url) => m.serve(id, url.searchParams, await input(req)),
+			],
 		]),
 ].map(([key, handle]) => [
 	new RegExp(`^${key.replace(':id', '(\\d+)').replace(':name', '([^/]+)')}$`),
