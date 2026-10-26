@@ -1,6 +1,6 @@
 // A real model recalls a fact from before its compaction: a locker code planted early, then enough filler to cut it out
-// of the agent's context, then a question about it. Pi compacts as it always does; memory only adds the lines and zoom.
-// Its runner is pi's own models in this process, each with a 40000-token window so a compaction comes soon.
+// of the agent's context, then a question only zoom can answer word for word. Its runner is pi's own models in this
+// process, each with a 40000-token window so a compaction comes soon.
 // Uses this machine's pi login and some tokens; skipped without one. Whether the model zooms is its own choice.
 // bun examples/19-memory-recall-real-model.js [agent model] [memory model]
 import { readFileSync } from 'node:fs'
@@ -69,7 +69,7 @@ await api('POST', `/api/threads/${id}/entries`, {
 	to: null,
 })
 await ask('Note this.', 1)
-// Its line first, so zoom can reach it.
+// Its line first, so the compaction's memory holds it.
 await until(async () => (await linesOf(id)).some((x) => x.l === 0 && x.i === 0), 120000, 1000)
 for (let k = 0; k < 25; k++)
 	await api('POST', `/api/threads/${id}/entries`, { body: prose(`garden ${k}`, 4000), to: null })
@@ -84,10 +84,13 @@ check(
 	"the agent's conversation was compacted",
 )
 check(last.includes('4417'), 'the answer has the locker code')
-const zoomed = conversation?.entries.some(
-	(e) => e.kind === 'pi.assistant' && JSON.stringify(e.model ?? '').includes('"zoom"'),
+check(
+	conversation?.entries.some(
+		(e) => e.kind === 'pi.assistant' && JSON.stringify(e.model ?? '').includes('"zoom"'),
+	),
+	'the agent zoomed',
+	JSON.stringify(conversation?.entries.map((e) => e.kind)),
 )
-console.log(`  ${zoomed ? 'zoomed' : "didn't zoom"}`)
 
 srv.kill()
 done()
