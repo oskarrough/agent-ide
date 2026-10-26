@@ -903,7 +903,8 @@ async function conversationView(id) {
 	return view.value
 }
 
-// As the README lists them; a module may serve GET and POST /api/threads/:id/<its name>.
+// As the README lists them; a module may serve GET and POST /api/<its name> and /api/threads/:id/<its name>, and
+// DELETE /api/<its name>/:name with `remove`.
 const routes = [
 	[
 		'GET /api/server',
@@ -953,6 +954,9 @@ const routes = [
 	...modules
 		.filter((m) => m.serve)
 		.flatMap((m) => [
+			[`GET /api/${m.name}`, (req, _, url) => m.serve(undefined, url.searchParams)],
+			[`POST /api/${m.name}`, async (req, _, url) => m.serve(undefined, url.searchParams, await input(req))],
+			...(m.remove ? [[`DELETE /api/${m.name}/:name`, (req, name) => m.remove(name)]] : []),
 			[`GET /api/threads/:id/${m.name}`, (req, id, url) => m.serve(id, url.searchParams)],
 			[
 				`POST /api/threads/:id/${m.name}`,

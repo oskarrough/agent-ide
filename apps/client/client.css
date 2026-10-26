@@ -1219,7 +1219,7 @@ body.chat {
 	}
 }
 
-.thread-details {
+:is(.thread-details, .thread-list) {
 	h3 {
 		font-size: 12px;
 		font-weight: 500;
@@ -1238,6 +1238,34 @@ body.chat {
 			opacity: 0.5;
 		}
 	}
+}
+
+/* A bot's part of the sheet, and its + new, sized like the hands toggle and its tools. */
+.thread-details .bot > :is(textarea, button) {
+	margin: 0 0.6rem;
+}
+
+:is(.thread-details .bot, .thread-list > h3) button {
+	padding: 0 0.4rem;
+	font-size: 12px;
+}
+
+.thread-details .soul {
+	width: calc(100% - 1.2rem);
+	box-sizing: border-box;
+	font:
+		12px ui-monospace,
+		monospace;
+}
+
+.thread-details .forget {
+	margin-top: 1rem;
+}
+
+.thread-list > h3 {
+	display: flex;
+	justify-content: space-between;
+	margin-inline: 0.4rem;
 }
 
 body.chat .thread .hands {

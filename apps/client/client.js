@@ -108,6 +108,7 @@ document.querySelectorAll('.page > section').forEach((s) => sections.observe(s))
 function agent(text) {
 	const there = threads.find((t) => t.id === current)?.agents.find((a) => a.name === text)
 	if (there?.to) return there.to
+	if (bots.some((b) => b.name === text)) return { name: text }
 	const eq = text.indexOf('='),
 		name = text.slice(eq + 1)
 	const at = name.lastIndexOf('@')
@@ -124,14 +125,18 @@ function agent(text) {
 	}
 }
 const name = ({ model, thinkingLevel, runner, name: called }) =>
-	`${called ? `${called}=` : ''}${model ?? ''}${thinkingLevel ? `:${thinkingLevel}` : ''}@${runner}`
+	!runner && called
+		? called
+		: `${called ? `${called}=` : ''}${model ?? ''}${thinkingLevel ? `:${thinkingLevel}` : ''}@${runner}`
 // An agent's row on its runner's card: its name there, model@runner unless it was given another.
 const slot = ({ runner, model, name }) => `${name ?? model}@${runner}`
 const same = (a, b) => a?.runner === b?.runner && a?.model === b?.model && a?.name === b?.name
 
 let up = false,
 	runners = [],
-	threads = []
+	threads = [],
+	botsOn = false,
+	bots = [] // with the bots module: each bot's name, home thread, recipe and instructions
 let current = Number(params.get('thread')) || null
 let picks = [] // whom the next message asks, the same as the text under the composer
 const details = new Map() // thread id → its entries
@@ -206,6 +211,7 @@ const go = (id) => {
 	else next.searchParams.delete('thread')
 	history.replaceState(null, '', next)
 	focus = true
+	if (botAt(id)) choose([{ name: botAt(id).name }])
 	refresh()
 }
 let focus = false // the next render puts the cursor in the composer
@@ -267,6 +273,63 @@ const sideHands = handsControl(null, async (tools) => {
 	sideHands.show(tools)
 })
 $('side').append(el('h3', { textContent: 'Tools' }), sideHands)
+// At a bot's home, the sheet is the bot's: its instructions, the model it joins threads with, where else it is.
+const botSheet = el(
+	'div',
+	{ className: 'bot', hidden: true },
+	el('h3', { textContent: 'Soul' }),
+	el('textarea', {
+		className: 'soul',
+		rows: 8,
+		placeholder: 'Who it is. It writes this itself as you talk, or you can.',
+		onchange: (e) => saveBot({ name: botAt(current).name, instructions: e.target.value }),
+	}),
+	el('h3', { textContent: 'Model' }),
+	el(
+		'button',
+		{
+			type: 'button',
+			className: 'pick',
+			title: 'The model it joins new threads with',
+			onclick: () => {
+				recipeFor = botAt(current).name
+				$picker.showPopover()
+			},
+		},
+		el('span', { className: light('on') }),
+		el('span'),
+	),
+	el('h3', { textContent: 'Also in' }),
+	el('ul', { className: 'thread-family' }),
+	el('button', {
+		type: 'button',
+		className: 'forget',
+		textContent: 'Forget this bot',
+		title: 'Every thread stays; agents of its name stop reading its soul',
+		onclick: async () => {
+			await fetch(`${url}/api/bots/${botAt(current).name}`, {
+				method: 'DELETE',
+				headers: { 'x-user': me },
+			})
+			refresh()
+		},
+	}),
+)
+$('side').append(botSheet)
+function sheetFor(bot) {
+	botSheet.hidden = !bot
+	if (!bot) return
+	const soul = botSheet.querySelector('.soul')
+	if (document.activeElement !== soul) soul.value = bot.instructions
+	botSheet.querySelector('.pick').lastChild.textContent = short(bot.to)
+	botSheet
+		.querySelector('ul')
+		.replaceChildren(
+			...threads
+				.filter((t) => t.id !== bot.home && !t.hidden && t.agents.some((a) => a.name === bot.name))
+				.map((t) => threadRow(t)),
+		)
+}
 // A thread's name opens its sheet in the chat, and writes in it on the page with the story.
 const header = (id) => () =>
 	current !== id
@@ -285,7 +348,10 @@ async function ask(body, to = picks) {
 		fresh_tools = null
 		go(id)
 	}
-	await api(`/api/threads/${current}/entries`, { body, to })
+	await api(`/api/threads/${current}/entries`, {
+		body,
+		to: to.map((p) => (p.runner ? p : p.name)),
+	})
 	refresh()
 }
 
@@ -309,7 +375,7 @@ $to.oninput = () => {
 		.map((s) => s.trim())
 		.filter(Boolean)
 		.map(agent)
-	for (const { runner, ...set } of picks) chosen[runner] = set
+	for (const { runner, ...set } of picks) if (runner) chosen[runner] = set
 	render()
 }
 // Enter in the name line keeps the name; it doesn't send.
@@ -327,7 +393,9 @@ const $pick = form.querySelector('.pick'),
 	$picker = $('picker')
 $picker.append($to)
 const short = (p) =>
-	`${(p.model ?? '').split('/').pop()}${p.thinkingLevel ? ` · ${p.thinkingLevel}` : ''} · ${p.runner}`
+	!p.runner
+		? p.name
+		: `${(p.model ?? '').split('/').pop()}${p.thinkingLevel ? ` · ${p.thinkingLevel}` : ''} · ${p.runner}`
 // A popover opens next to what opened it: above it on a big screen, as a sheet from the bottom on a phone.
 function place(pop, from) {
 	if (phone.matches) return void pop.removeAttribute('style')
@@ -345,7 +413,7 @@ $picker.addEventListener('toggle', (e) => {
 	$pick.ariaExpanded = String(e.newState === 'open')
 	if (e.newState === 'open') {
 		pickerRows()
-		place($picker, $pick)
+		place($picker, recipeFor ? botSheet.querySelector('.pick') : $pick)
 	}
 })
 function pickerRows() {
@@ -364,6 +432,11 @@ function pickerRows() {
 					className: `model${on && o === set.model ? ' on' : ''}`,
 					onclick: (e) => {
 						tune(r, { model: o })
+						if (recipeFor) {
+							const { thinkingLevel } = setting(r)
+							saveBot({ name: recipeFor, to: { runner: r.name, model: o, ...(thinkingLevel && { thinkingLevel }) } })
+							return $picker.hidePopover()
+						}
 						if (!on || !(e.shiftKey || picks.length > 1)) toggle(r, e.shiftKey)
 						if (!e.shiftKey) $picker.hidePopover()
 					},
@@ -403,14 +476,57 @@ function pickerRows() {
 			el('div', { className: 'steps' }, ...EFFORTS.map(step)),
 		)
 	})
+	// Bots below the runners: click to ask one here, shift-click to ask it too.
+	const asking = (b) => picks.some((p) => p.name === b.name)
+	const botRows =
+		recipeFor || !bots.length
+			? []
+			: [
+					el('li', {}, el('h4', { textContent: 'Bots' })),
+					...bots.map((b) =>
+						el(
+							'li',
+							{ className: asking(b) ? 'on' : '' },
+							el(
+								'button',
+								{
+									type: 'button',
+									className: `model${asking(b) ? ' on' : ''}`,
+									onclick: (e) => {
+										choose(
+											e.shiftKey
+												? asking(b)
+													? picks.filter((p) => p.name !== b.name)
+													: [...picks, { name: b.name }]
+												: [{ name: b.name }],
+										)
+										if (!e.shiftKey) $picker.hidePopover()
+									},
+								},
+								el('span', { textContent: b.name, style: colorOf(b.name) }),
+								el('small', { textContent: name(b.to) }),
+							),
+						),
+					),
+				]
 	$picker
 		.querySelector('ul')
 		.replaceChildren(
 			...(rows.length
 				? rows
 				: [el('li', { className: 'mute', textContent: 'No runner is online.' })]),
+			...botRows,
 		)
 }
+// The picker sets a bot's recipe instead, when its sheet opens it.
+let recipeFor = null
+$picker.addEventListener('toggle', (e) => {
+	if (e.newState === 'closed') recipeFor = null
+})
+const saveBot = (change) =>
+	api('/api/bots', change)
+		.then(refresh)
+		.catch((error) => alert(error.message))
 
 // The runners connected to this server: who's there, where, and what they're doing; and how to add one.
 $('fleet-open').onclick = () => $('fleet').togglePopover()
@@ -469,6 +585,9 @@ async function refresh() {
 		up = Boolean(r)
 		runners = r ?? []
 		threads = t ?? []
+		const { modules = [] } = (await api('/api/server').catch(() => null)) ?? {}
+		botsOn = modules.includes('bots')
+		bots = botsOn ? await api('/api/bots').catch(() => bots) : []
 		// A thread that's gone, deleted here or elsewhere, leaves a new one in its place.
 		if (t && current && !threads.some((x) => x.id === current)) current = null
 		const home = runners.find((x) => x.online) ?? runners[0]
@@ -652,6 +771,7 @@ function threadBox(id) {
 		if (forkOf(f) === id && !f.hidden)
 			forksAt.set(f.conversation.parent.at, [...(forksAt.get(f.conversation.parent.at) ?? []), f])
 	const sig = JSON.stringify([
+		botAt(id)?.instructions === '',
 		entries.map((x) => x.id),
 		writing,
 		[...forksAt].map(([at, fs]) => [at, fs.map((f) => [f.id, f.title, f.status])]),
@@ -660,7 +780,17 @@ function threadBox(id) {
 		list.dataset.sig = sig
 		const grew = entries.length + writing.length > list.children.length
 		const stuck = grew || list.scrollTop + list.clientHeight >= list.scrollHeight - 4
+		const newBot = botAt(id)?.instructions === '' && botAt(id)
 		list.replaceChildren(
+			// Page chrome, not a message: nobody said it.
+			...(newBot
+				? [
+						el('li', {
+							className: 'mute',
+							textContent: `${newBot.name} has no soul yet. Talk to ${newBot.name} and find out who it is.`,
+						}),
+					]
+				: []),
 			// A message from another thread is a card: an answer to a post comes back as a reply, a post arrives as a question.
 			...entries.map(({ id: at, data }, i) =>
 				el(
@@ -685,7 +815,7 @@ function threadBox(id) {
 								`${data.re ? '↩ answer from' : '→ asked from'} ${titleOf(data.from)}`,
 							),
 						),
-					el('small', { title: data.author }, who(data.author)),
+					el('small', { title: data.author, style: colorOf(data.author) }, who(data.author)),
 					el('span', { className: 'body' }, data.body),
 					...(forksAt.get(at) ?? []).map((f) =>
 						el('div', { className: 'links' }, link(f.id, `forked → ${f.title}`)),
@@ -743,9 +873,55 @@ const threadRow = (t, depth = 0) =>
 			},
 		}),
 	)
+// A bot as a row: lit while an agent of its name works anywhere, its name in its color; it opens its home.
+const botRow = (b) => {
+	const mine = threads.flatMap((t) => t.agents.filter((a) => a.name === b.name))
+	const state = mine.some((a) => a.status === 'working')
+		? 'working'
+		: mine.some((a) => ['blocked', 'parked'].includes(a.status))
+			? 'blocked'
+			: ''
+	return el(
+		'li',
+		{ className: b.home === current ? 'current' : '', title: b.instructions.split('\n')[0], onclick: () => go(b.home) },
+		el('span', { className: light(state) }),
+		el('span', { textContent: b.name, style: colorOf(b.name) }),
+	)
+}
+// A new bot: its name first, which is how anyone asks it; it starts on the model the composer would ask.
+function nameBot() {
+	const pick = picks.find((p) => p.runner)
+	const field = el('input', {
+		placeholder: 'a name',
+		spellcheck: false,
+		title: 'How anyone asks it, in any thread',
+		onkeydown: async (e) => {
+			if (e.key === 'Escape') return field.blur()
+			if (e.key !== 'Enter') return
+			try {
+				if (!pick) throw new Error('Pick a model first: a new bot starts on it')
+				const { home } = await api('/api/bots', { name: field.value.trim(), to: { ...pick, name: undefined } })
+				bots = await api('/api/bots')
+				field.blur()
+				go(home)
+			} catch (error) {
+				field.classList.add('bad')
+				field.title = error.message
+			}
+		},
+		onblur: () => setTimeout(render),
+	})
+	$('list').querySelector('ul.bots').prepend(el('li', {}, field))
+	field.focus()
+}
 // An agent goes by its model's own name and where it runs; the full id is on hover.
 const who = (author) => author?.replace(/^(?:[^@]*\/)?([^/@:]+)(?::[^@]*)?@(.+)$/, '$1 · $2') ?? ''
 const titleOf = (id) => threads.find((t) => t.id === id)?.title || `thread ${id}`
+// A bot's color comes from its name, the same in every client.
+const hue = (name) => [...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7)
+const colorOf = (author) =>
+	bots.some((b) => b.name === author) ? `color: oklch(0.6 0.14 ${hue(author)})` : ''
+const botAt = (id) => bots.find((b) => b.home === id)
 // A link to another thread; its light lives in its own header and the list.
 function link(id, label) {
 	return el(
@@ -804,22 +980,37 @@ function render() {
 		focus = false
 		form.querySelector('input').focus()
 	}
-	// Every thread on the server, newest first; a new one always on top.
-	$('list').replaceChildren(
-		el('button', {
-			className: `new${current ? '' : ' current'}`,
-			textContent: '+ New thread',
-			onclick: () => go(null),
-		}),
-		el(
-			'ul',
-			{},
-			...threads
-				.filter((t) => !t.hidden && !threads.some((p) => p.id === t.parent))
-				.map((t) => threadRow(t)),
-		),
-		$('fleet-open'),
-	)
+	// Every thread on the server, newest first; a new one always on top. With bots, theirs first: a bot's row is its
+	// home thread under its name.
+	const homes = new Set(bots.map((b) => b.home))
+	if (!$('list').contains(document.activeElement) || document.activeElement.tagName !== 'INPUT')
+		$('list').replaceChildren(
+			el('button', {
+				className: `new${current ? '' : ' current'}`,
+				textContent: '+ New thread',
+				onclick: () => go(null),
+			}),
+			...(botsOn
+				? [
+						el(
+							'h3',
+							{},
+							'Bots',
+							el('button', { type: 'button', textContent: '+ new', onclick: nameBot }),
+						),
+						el('ul', { className: 'bots' }, ...bots.map(botRow)),
+						el('h3', { textContent: 'Threads' }),
+					]
+				: []),
+			el(
+				'ul',
+				{},
+				...threads
+					.filter((t) => !t.hidden && !homes.has(t.id) && !threads.some((p) => p.id === t.parent))
+					.map((t) => threadRow(t)),
+			),
+			$('fleet-open'),
+		)
 
 	// The phone's bar names the thread; its drawer lists the family, children indented under their parent.
 	const here = threads.find((t) => t.id === current)
@@ -838,6 +1029,7 @@ function render() {
 		return d
 	}
 	$('family').replaceChildren(...shownThreads.map((t) => threadRow(t, depth(t.id))))
+	sheetFor(botAt(current))
 	$('members').textContent = [
 		...(people.get(current) ?? []),
 		...(here?.agents ?? []).map((a) => a.name),
@@ -913,7 +1105,7 @@ function render() {
 		}
 	}
 	const mine = shownThreads.find((t) => t.id === current)?.agents ?? []
-	for (const p of picks)
+	for (const p of picks.filter((p) => p.runner))
 		connections.push({
 			...down,
 			from: $pick,

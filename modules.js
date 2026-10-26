@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url'
 //           posted(tx, threadId, entry): work added to a post's commit, writes only,
 //           catchUp(threadId, held, all, agent) → the content of a Deliver task's input to that agent's conversation,
 //           serve(threadId, query, body?) → what GET, or POST with a body, /api/threads/:id/<module name> answers,
+//           and /api/<module name> with no threadId; remove(name) → what DELETE /api/<module name>/:name answers,
 //           recipe(name) → the To a name stands for in a thread without an agent of that name, or undefined
 //   runner: call(message, context) → what the runner answers the server's call, told(message), disconnected()
 // The server reaches a module on a runner by its name: a call or a message with `op` set to it, as serve's route is.
