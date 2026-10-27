@@ -6,6 +6,13 @@ import { agentName, field, said } from './util.js'
 
 export function server(core) {
 	const { agentOf, home } = core
+	// The posts from thread `by` that were answered in `thread`.
+	const answered = async (thread, by) =>
+		new Set(
+			(await core.messages(thread))
+				.filter((e) => e.data.from === by)
+				.flatMap((e) => e.data.re ?? []),
+		)
 
 	const post = defineTool({
 		name: 'post',
@@ -37,11 +44,14 @@ export function server(core) {
 				throw new Error('Run commands with your own bash tool, not as a post')
 			const title = thread === undefined ? field(args.title, 'title') : ''
 			if (thread !== undefined) await core.conversation(thread)
-			// Posting to a thread that asked you something answers it, so the answer to that ends the exchange.
+			// Posting to a thread that asked you something answers it, until it's answered, so the answer to that ends the exchange.
+			const done = thread !== undefined && (await answered(thread, from))
 			const asked =
 				thread === undefined
 					? undefined
-					: (await core.messages(from)).findLast((e) => e.data.from === thread && !e.data.re)
+					: (await core.messages(from)).findLast(
+							(e) => e.data.from === thread && !e.data.re && !done.has(e.id),
+						)
 			const asker =
 				asked &&
 				(await agentOf(
@@ -206,12 +216,8 @@ export function server(core) {
 	async function reply(posts, answeredIn, agent, body) {
 		const replies = []
 		for (const from of new Set(posts.map((p) => p.data.from))) {
-			const answered = new Set(
-				(await core.messages(from))
-					.filter((e) => e.data.from === answeredIn)
-					.flatMap((e) => e.data.re ?? []),
-			)
-			const mine = posts.filter((p) => p.data.from === from && !answered.has(p.id))
+			const done = await answered(from, answeredIn)
+			const mine = posts.filter((p) => p.data.from === from && !done.has(p.id))
 			if (!mine.length) continue
 			const { agents } = await core.thread(from)
 			const askers = (

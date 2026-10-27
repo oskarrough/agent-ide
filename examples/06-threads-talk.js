@@ -25,6 +25,8 @@ const bot = await scriptedRunner('bot', (request) => {
 	const t = text(last)
 	if (last.role === 'toolResult') return say(`tool said: ${t}`)
 	if (t.includes('answering from thread')) return say(`Got it: ${t.split('\n')[0]}`)
+	if (t.includes('post again to'))
+		return call('post', { thread: Number(t.match(/again to (\d+)/)[1]), body: 'more news' })
 	if (t.includes('delegate by post'))
 		return call('post', { title: 'by post', body: 'answer by post', to: 'echo/echo@bot' })
 	if (t.includes('answer by post'))
@@ -193,6 +195,19 @@ check(
 	Boolean(byPost) && back.length === 1 && back[0].data.body === 'by post: 5',
 	'a post answered with the post tool comes back once',
 	brief(await view(asker)),
+)
+
+// Once answered, the next post to that thread is news, not a second answer.
+const byPostThread = (await api('GET', '/api/threads')).json.find((t) => t.parent === asker).id
+await api('POST', `/api/threads/${byPostThread}/entries`, { body: `post again to ${asker}` })
+const news = await until(
+	async () => (await view(asker)).entries.find((e) => e.data.body === 'more news'),
+	10000,
+)
+check(
+	news && !news.data.re,
+	'a post after the answer answers nothing',
+	JSON.stringify(news?.data),
 )
 
 bot.close()
