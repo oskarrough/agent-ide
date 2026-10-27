@@ -36,7 +36,9 @@ check(
 	JSON.stringify(v.agents),
 )
 check(
-	answers(v).map((e) => e.data.author).join() === 'echo/echo@laptop,reviewer',
+	answers(v)
+		.map((e) => e.data.author)
+		.join() === 'echo/echo@laptop,reviewer',
 	'each answers under its own name',
 	brief(v),
 )
@@ -94,7 +96,11 @@ check(
 await until(async () => (await view(desk)).entries.some((e) => e.data.from === id))
 
 // A recipe makes an agent once: the same name with another recipe reaches that agent as it was made.
-const moving = await post('over to the desk', { runner: 'desk', model: 'echo/echo', name: 'reviewer' })
+const moving = await post('over to the desk', {
+	runner: 'desk',
+	model: 'echo/echo',
+	name: 'reviewer',
+})
 v = await answered(id, 7)
 check(
 	moving.status === 201 &&

@@ -223,8 +223,7 @@ export function server(core) {
 		const most = await budget(agent)
 		let k = held.length - 1,
 			size = bytes(said(held[k]))
-		while (k > 0 && size + bytes(said(held[k - 1])) + 2 <= most)
-			size += bytes(said(held[--k])) + 2
+		while (k > 0 && size + bytes(said(held[k - 1])) + 2 <= most) size += bytes(said(held[--k])) + 2
 		const whole = held.slice(k).map(said).join('\n\n')
 		if (!k) return whole
 		const at = (e) => all.findIndex((x) => x.id === e.id)

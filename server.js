@@ -464,10 +464,13 @@ async function messages(id) {
 	return (await entries(id)).filter((e) => e.kind === KIND)
 }
 const lastAsked = async (id) =>
-	Promise.all(((await messages(id)).findLast((e) => e.data.to)?.data.to ?? []).map((n) => whom(id, n)))
+	Promise.all(
+		((await messages(id)).findLast((e) => e.data.to)?.data.to ?? []).map((n) => whom(id, n)),
+	)
 
 // An agent's own answer, which it never reads back: a person or a post from another thread under its name is news to it.
-const ownAnswer = ({ data: m }, name) => m.author === name && !m.from && Boolean(m.answer || m.error)
+const ownAnswer = ({ data: m }, name) =>
+	m.author === name && !m.from && Boolean(m.answer || m.error)
 
 /**
  * Writes a message, inside the caller's commit, and gives each agent it asks a Deliver task with all it hasn't seen.
@@ -637,7 +640,8 @@ const threadView = async (id, reader) => {
 async function home(conversationId) {
 	const threadId = (await storage.conversation(conversationId, context))?.owner?.conversationId
 	const row = threadId && (await thread(threadId))
-	const name = row && Object.keys(row.agents).find((n) => row.agents[n].conversation === conversationId)
+	const name =
+		row && Object.keys(row.agents).find((n) => row.agents[n].conversation === conversationId)
 	return name ? { thread: threadId, name } : null
 }
 
@@ -665,7 +669,11 @@ async function postEntry(id, author, input) {
 	const command = body.match(/^\$\s+([\s\S]+)/)?.[1]
 	const routed = route && !command
 	let to =
-		'to' in input ? await addresses(input.to, Boolean(command), id) : routed ? [] : await lastAsked(id)
+		'to' in input
+			? await addresses(input.to, Boolean(command), id)
+			: routed
+				? []
+				: await lastAsked(id)
 	if (routed)
 		to = await addresses(
 			route(
@@ -787,9 +795,7 @@ async function forkThread(id, { at, title }) {
 			return {
 				name,
 				answer,
-				unseen: shown
-					.filter((e) => !seen.has(e.id) && !ownAnswer(e, name))
-					.map((e) => e.id),
+				unseen: shown.filter((e) => !seen.has(e.id) && !ownAnswer(e, name)).map((e) => e.id),
 			}
 		}),
 	)
@@ -854,12 +860,15 @@ const defaults = {
 }
 const modules = await load('server', defaults, core)
 // A list of names alone replaces the defaults, so the start line says which of them it turned off.
-const dropped = Object.keys(defaults).filter((n) => defaults[n] && !modules.some((m) => m.name === n))
+const dropped = Object.keys(defaults).filter(
+	(n) => defaults[n] && !modules.some((m) => m.name === n),
+)
 for (const m of modules) if (m.extension) registry.install(m.extension)
 // One module answers each of these; two claiming one is a mistake, not an order.
 const hook = (name) => {
 	const [first, second] = modules.filter((m) => m[name])
-	if (second) throw new Error(`${name}: ${first.name} and ${second.name} both answer it; turn one off`)
+	if (second)
+		throw new Error(`${name}: ${first.name} and ${second.name} both answer it; turn one off`)
 	return first?.[name]
 }
 const posted = modules.flatMap((m) => m.posted ?? [])
@@ -954,7 +963,10 @@ const routes = [
 		.filter((m) => m.serve)
 		.flatMap((m) => [
 			[`GET /api/${m.name}`, (req, _, url) => m.serve(undefined, url.searchParams)],
-			[`POST /api/${m.name}`, async (req, _, url) => m.serve(undefined, url.searchParams, await input(req))],
+			[
+				`POST /api/${m.name}`,
+				async (req, _, url) => m.serve(undefined, url.searchParams, await input(req)),
+			],
 			...(m.remove ? [[`DELETE /api/${m.name}/:name`, (req, name) => m.remove(name)]] : []),
 			[`GET /api/threads/:id/${m.name}`, (req, id, url) => m.serve(id, url.searchParams)],
 			[
@@ -1083,7 +1095,10 @@ async function rewatch(socket, id) {
 // Starts a stream for the thread and for each agent not followed yet; the post that asks a new agent is a thread event,
 // which follows it from the commit that made it.
 async function follow(socket, w) {
-	const agents = Object.entries((await thread(w.thread)).agents).map(([name, a]) => [a.conversation, name])
+	const agents = Object.entries((await thread(w.thread)).agents).map(([name, a]) => [
+		a.conversation,
+		name,
+	])
 	for (const [c, agent] of [[w.thread], ...agents]) {
 		if (w.streams.has(c) || socket.watching !== w) continue
 		const send = (events) =>

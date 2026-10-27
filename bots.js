@@ -30,7 +30,8 @@ export function server(core) {
 		if (typeof name !== 'string' || !/^[\w.-]{1,40}$/.test(name))
 			throw new Error('A name is 1 to 40 letters, digits, _ . or -')
 		if ((await core.known())[name]) throw new Error(`${name} is a runner; pick another name`)
-		if (instructions !== undefined && typeof instructions !== 'string') throw new Error('instructions is text')
+		if (instructions !== undefined && typeof instructions !== 'string')
+			throw new Error('instructions is text')
 		if (to !== undefined) {
 			const { name: _, ...recipe } = await core.address(typeof to === 'string' ? agentTo(to) : to)
 			to = recipe
@@ -79,11 +80,18 @@ export function server(core) {
 			'which every agent of your name reads, or the model you join new threads with. A new name makes another bot, ' +
 			'with its own home thread, from your model unless you give one.',
 		parameters: Type.Object({
-			name: Type.Optional(Type.String({ description: 'A new bot to make; leave out for yourself' })),
-			instructions: Type.Optional(
-				Type.String({ description: 'The whole text: who the bot is, how it works, what it knows about the people it works with' }),
+			name: Type.Optional(
+				Type.String({ description: 'A new bot to make; leave out for yourself' }),
 			),
-			model: Type.Optional(Type.String({ description: 'model@runner, as `pi --model` takes the model' })),
+			instructions: Type.Optional(
+				Type.String({
+					description:
+						'The whole text: who the bot is, how it works, what it knows about the people it works with',
+				}),
+			),
+			model: Type.Optional(
+				Type.String({ description: 'model@runner, as `pi --model` takes the model' }),
+			),
 		}),
 		replay: 'safe',
 		execute: async (args, api) => {
@@ -91,7 +99,8 @@ export function server(core) {
 			const mine = at && (await bots())[at.name]
 			if (!mine || mine.home !== at.thread) throw new Error('Only a bot can, in its home thread')
 			const name = args.name ?? at.name
-			if (name !== at.name && (await bots())[name]) throw new Error(`${name} is another bot; it changes at its own home`)
+			if (name !== at.name && (await bots())[name])
+				throw new Error(`${name} is another bot; it changes at its own home`)
 			const own = await core.agentOf(api.conversationId)
 			const asked = await change({
 				name,
@@ -141,5 +150,10 @@ export function server(core) {
 				.join('\n\n')
 		},
 	}
-	return { serve, remove, recipe, extension: defineExtension({ name: 'agent-ide.bots', tools: [bot], sections: [section] }) }
+	return {
+		serve,
+		remove,
+		recipe,
+		extension: defineExtension({ name: 'agent-ide.bots', tools: [bot], sections: [section] }),
+	}
 }

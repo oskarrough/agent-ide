@@ -9,10 +9,15 @@ const files = readdirSync(import.meta.dirname)
 	.sort()
 const run = (file) =>
 	new Promise((resolve) =>
-		execFile(process.execPath, [`${import.meta.dirname}/${file}`], { maxBuffer: 1e8 }, (e, out, err) => {
-			console.log(`\n# ${file}\n${out}${err}`.trimEnd())
-			resolve(e ? [file] : [])
-		}),
+		execFile(
+			process.execPath,
+			[`${import.meta.dirname}/${file}`],
+			{ maxBuffer: 1e8 },
+			(e, out, err) => {
+				console.log(`\n# ${file}\n${out}${err}`.trimEnd())
+				resolve(e ? [file] : [])
+			},
+		),
 	)
 const queue = [...files]
 const started = performance.now()
@@ -20,7 +25,7 @@ const failed = (
 	await Promise.all(
 		Array.from({ length: availableParallelism() }, async () => {
 			const mine = []
-			for (let file; (file = queue.shift()); ) mine.push(...(await run(file)))
+			for (let file; (file = queue.shift());) mine.push(...(await run(file)))
 			return mine
 		}),
 	)

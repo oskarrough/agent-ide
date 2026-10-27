@@ -20,8 +20,7 @@ const light = (state) =>
 // The section in view says what the stage should show.
 const sections = new IntersectionObserver(
 	(list) => {
-		for (const e of list)
-			if (e.isIntersecting) $('stage').dataset.focus = e.target.dataset.focus
+		for (const e of list) if (e.isIntersecting) $('stage').dataset.focus = e.target.dataset.focus
 	},
 	{ rootMargin: '-45% 0px -45% 0px' },
 )
@@ -217,10 +216,13 @@ const botSheet = el(
 		},
 		onchange: (e) =>
 			api('/api/bots', { name: botAt(current).name, to: e.target.value.trim() })
-				.then(() => e.target.classList.remove('bad'), (error) => {
-					e.target.classList.add('bad')
-					e.target.title = error.message
-				})
+				.then(
+					() => e.target.classList.remove('bad'),
+					(error) => {
+						e.target.classList.add('bad')
+						e.target.title = error.message
+					},
+				)
 				.then(refresh),
 	}),
 	el('h3', { className: 'also', textContent: 'Also in' }),
@@ -398,34 +400,34 @@ function pickerRows() {
 	const asking = (b) => picks.some((p) => p.name === b.name)
 	const botRows = !bots.length
 		? []
-			: [
-					el('li', {}, el('h4', { textContent: 'Bots' })),
-					...bots.map((b) =>
+		: [
+				el('li', {}, el('h4', { textContent: 'Bots' })),
+				...bots.map((b) =>
+					el(
+						'li',
+						{ className: asking(b) ? 'on' : '' },
 						el(
-							'li',
-							{ className: asking(b) ? 'on' : '' },
-							el(
-								'button',
-								{
-									type: 'button',
-									className: `model${asking(b) ? ' on' : ''}`,
-									onclick: (e) => {
-										choose(
-											e.shiftKey
-												? asking(b)
-													? picks.filter((p) => p.name !== b.name)
-													: [...picks, asBot(b)]
-												: [asBot(b)],
-										)
-										if (!e.shiftKey) $picker.hidePopover()
-									},
+							'button',
+							{
+								type: 'button',
+								className: `model${asking(b) ? ' on' : ''}`,
+								onclick: (e) => {
+									choose(
+										e.shiftKey
+											? asking(b)
+												? picks.filter((p) => p.name !== b.name)
+												: [...picks, asBot(b)]
+											: [asBot(b)],
+									)
+									if (!e.shiftKey) $picker.hidePopover()
 								},
-								el('span', { textContent: b.name, style: colorOf(b.name) }),
-								el('small', { textContent: name(b.to) }),
-							),
+							},
+							el('span', { textContent: b.name, style: colorOf(b.name) }),
+							el('small', { textContent: name(b.to) }),
 						),
 					),
-				]
+				),
+			]
 	$picker
 		.querySelector('ul')
 		.replaceChildren(
@@ -724,8 +726,7 @@ function threadBox(id) {
 									'details',
 									{
 										open: opened.has(`${id} ${at}`),
-										ontoggle: (e) =>
-											opened[e.target.open ? 'add' : 'delete'](`${id} ${at}`),
+										ontoggle: (e) => opened[e.target.open ? 'add' : 'delete'](`${id} ${at}`),
 									},
 									el(
 										'summary',
@@ -825,7 +826,11 @@ const botRow = (b) => {
 			: ''
 	return el(
 		'li',
-		{ className: b.home === current ? 'current' : '', title: b.instructions.split('\n')[0], onclick: () => go(b.home) },
+		{
+			className: b.home === current ? 'current' : '',
+			title: b.instructions.split('\n')[0],
+			onclick: () => go(b.home),
+		},
 		el('span', { className: light(state) }),
 		el('span', { textContent: b.name, style: colorOf(b.name) }),
 	)
@@ -842,7 +847,10 @@ function nameBot() {
 			if (e.key !== 'Enter') return
 			try {
 				if (!pick) throw new Error('Pick a model first: a new bot starts on it')
-				const { home } = await api('/api/bots', { name: field.value.trim(), to: { ...pick, name: undefined } })
+				const { home } = await api('/api/bots', {
+					name: field.value.trim(),
+					to: { ...pick, name: undefined },
+				})
 				bots = await api('/api/bots')
 				field.blur()
 				go(home)
@@ -853,7 +861,9 @@ function nameBot() {
 		},
 		onblur: () => setTimeout(render),
 	})
-	$('list').querySelector('ul.bots').prepend(el('li', {}, field))
+	$('list')
+		.querySelector('ul.bots')
+		.prepend(el('li', {}, field))
 	field.focus()
 }
 // An agent goes by its model's own name and where it runs; the full id is on hover.
@@ -1161,7 +1171,10 @@ function runnerCard(r, asked) {
 			{ className: 'models' },
 			models.length && row(own, swap, knob),
 			...others.map((to) =>
-				row(to, el('span', { className: 'name', textContent: to.name ?? to.model, title: to.model })),
+				row(
+					to,
+					el('span', { className: 'name', textContent: to.name ?? to.model, title: to.model }),
+				),
 			),
 		),
 	)
@@ -1241,7 +1254,9 @@ const TRIES = {
 	two: () => {
 		fresh()
 		const [first, ...others] = defaults()
-		const other = runners.find((r) => r.name === first?.runner)?.offers?.find((m) => m !== first.model)
+		const other = runners
+			.find((r) => r.name === first?.runner)
+			?.offers?.find((m) => m !== first.model)
 		choose(
 			others.length || !first
 				? [first, ...others].filter(Boolean)

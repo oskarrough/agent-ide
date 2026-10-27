@@ -42,20 +42,25 @@ export async function load(end, defaults, core) {
 		const make = (await import(own ? pathToFileURL(path.resolve(name)).href : `./${name}.js`))[end]
 		const named = own ? path.basename(name, '.js') : name
 		// Two modules of one name would answer one route; that's a mistake, not an order.
-		if (modules.some((m) => m.name === named)) throw new Error(`${file}: two modules are named ${named}; rename one`)
+		if (modules.some((m) => m.name === named))
+			throw new Error(`${file}: two modules are named ${named}; rename one`)
 		if (make) modules.push({ name: named, ...(await make(core)) })
 	}
 	return modules
 }
 
 function pick(on, list, where) {
-	if (!Array.isArray(list)) throw new Error(`${where}: modules is a list, like ["+search", "-talk"]`)
+	if (!Array.isArray(list))
+		throw new Error(`${where}: modules is a list, like ["+search", "-talk"]`)
 	const changes = list.filter((name) => /^[+-]/.test(name))
 	if (!changes.length) return list
-	if (changes.length < list.length) throw new Error(`${where}: names can't be mixed with +name or -name`)
+	if (changes.length < list.length)
+		throw new Error(`${where}: names can't be mixed with +name or -name`)
 	return changes.reduce(
 		(on, change) =>
-			change[0] === '+' ? [...new Set([...on, change.slice(1)])] : on.filter((name) => name !== change.slice(1)),
+			change[0] === '+'
+				? [...new Set([...on, change.slice(1)])]
+				: on.filter((name) => name !== change.slice(1)),
 		on,
 	)
 }

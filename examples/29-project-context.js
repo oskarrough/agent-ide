@@ -71,5 +71,8 @@ const {
 	json: { id: off },
 } = await api('POST', '/api/threads', { title: 'no context' })
 await ask(off, 'hello', 1)
-check(!(await prompt(off)).includes('Always answer'), 'MODULES=-context: no AGENTS.md in the prompt')
+check(
+	!(await prompt(off)).includes('Always answer'),
+	'MODULES=-context: no AGENTS.md in the prompt',
+)
 done()

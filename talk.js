@@ -106,7 +106,8 @@ export function server(core) {
 			),
 			agent: Type.Optional(
 				Type.String({
-					description: 'An agent in that thread, by its name or any unique part of it, or thread/name',
+					description:
+						'An agent in that thread, by its name or any unique part of it, or thread/name',
 				}),
 			),
 			last: Type.Optional(Type.Number({ description: 'How many entries, 20 by default' })),
@@ -206,7 +207,9 @@ export function server(core) {
 		const replies = []
 		for (const from of new Set(posts.map((p) => p.data.from))) {
 			const answered = new Set(
-				(await core.messages(from)).filter((e) => e.data.from === answeredIn).flatMap((e) => e.data.re ?? []),
+				(await core.messages(from))
+					.filter((e) => e.data.from === answeredIn)
+					.flatMap((e) => e.data.re ?? []),
 			)
 			const mine = posts.filter((p) => p.data.from === from && !answered.has(p.id))
 			if (!mine.length) continue

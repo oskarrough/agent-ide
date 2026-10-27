@@ -1,5 +1,5 @@
-import {createMemo, createSignal, Errored, Loading} from 'solid-js'
-import {render} from '@solidjs/web'
+import { createMemo, createSignal, Errored, Loading } from 'solid-js'
+import { render } from '@solidjs/web'
 
 function App() {
 	const [count, setCount] = createSignal(0)
@@ -11,7 +11,8 @@ function App() {
 			<Errored fallback={(error) => <p>No agent-ide server: {String(error())}</p>}>
 				<Loading fallback={<p>Asking /api/server…</p>}>
 					<p>
-						agent-ide on port {server().port}: {server().threads} threads, modules {server().modules.join(', ')}
+						agent-ide on port {server().port}: {server().threads} threads, modules{' '}
+						{server().modules.join(', ')}
 					</p>
 				</Loading>
 			</Errored>

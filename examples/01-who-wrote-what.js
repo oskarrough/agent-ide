@@ -35,8 +35,7 @@ const view = await answered(id)
 const input = view?.entries.find((e) => e.id === posted.json.entry)
 const answer = answers(view ?? { entries: [] })[0]
 check(
-	input?.data.author === 'oskar' &&
-		input.data.to?.join() === 'echo/echo@laptop',
+	input?.data.author === 'oskar' && input.data.to?.join() === 'echo/echo@laptop',
 	'the message says who wrote it and whom it asks',
 	JSON.stringify(input),
 )

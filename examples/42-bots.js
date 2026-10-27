@@ -2,7 +2,18 @@
 // anywhere else, an agent of that name joins there from the bot's recipe, and name=model@runner gives that thread
 // another model. Every one of them reads the bot's instructions and knows its other threads. At home its `bot` tool
 // rewrites it or makes another bot. Forgetting a bot keeps every thread.
-import { answered, answers, api, call, check, done, say, scriptedRunner, server, text } from './lib.js'
+import {
+	answered,
+	answers,
+	api,
+	call,
+	check,
+	done,
+	say,
+	scriptedRunner,
+	server,
+	text,
+} from './lib.js'
 
 await server({ MODULES: '+bots' })
 // Pi carries the system prompt in system messages: what each runner was last asked with.
@@ -14,7 +25,8 @@ const route = (runner) => (request) => {
 	if (last.role === 'toolResult') return say(`tool: ${t}`)
 	if (t.includes('be a pirate')) return call('bot', { instructions: 'Answer like a pirate.' })
 	if (t.includes('make wren')) return call('bot', { name: 'wren', instructions: 'Review diffs.' })
-	if (t.includes('ask wren')) return call('post', { to: 'wren', title: 'a diff', body: 'look at this' })
+	if (t.includes('ask wren'))
+		return call('post', { to: 'wren', title: 'a diff', body: 'look at this' })
 	return say(`${runner}: ${t}`)
 }
 await scriptedRunner('laptop', route('laptop'))
@@ -72,7 +84,8 @@ const y = await answered(yard)
 check(
 	v.agents.find((a) => a.name === 'ada')?.to.runner === 'desk' &&
 		y.agents.find((a) => a.name === 'ada')?.to.runner === 'desk' &&
-		(await api('GET', `/api/threads/${shed}`)).json.agents.find((a) => a.name === 'ada')?.to.runner === 'laptop',
+		(await api('GET', `/api/threads/${shed}`)).json.agents.find((a) => a.name === 'ada')?.to
+			.runner === 'laptop',
 	'ada=model@runner gives one thread another model; a new recipe counts in the threads she joins next',
 	JSON.stringify([v.agents, y.agents]),
 )
@@ -88,7 +101,7 @@ check(
 		wren.home !== home &&
 		runnerName.status === 400 &&
 		/give it a recipe/.test(nameless.json.error),
-	'a bot makes a bot with its own home, on her model; a runner\'s name is no bot\'s, and a new bot needs a recipe',
+	"a bot makes a bot with its own home, on her model; a runner's name is no bot's, and a new bot needs a recipe",
 	JSON.stringify([await bots(), runnerName.json, nameless.json]),
 )
 
