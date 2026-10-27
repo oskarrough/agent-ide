@@ -233,7 +233,9 @@ const botSheet = el(
 		textContent: 'Forget this bot',
 		title: 'Every thread stays; agents of its name stop reading its instructions',
 		onclick: async () => {
-			await fetch(`${url}/api/bots/${botAt(current).name}`, {
+			const { name } = botAt(current)
+			if (!confirm(`Forget ${name}? Its instructions go; every thread stays.`)) return
+			await fetch(`${url}/api/bots/${name}`, {
 				method: 'DELETE',
 				headers: { 'x-user': me },
 			})
@@ -298,7 +300,7 @@ $to.oninput = () => {
 		.map((s) => s.trim())
 		.filter(Boolean)
 		.map(agent)
-	for (const { runner, ...set } of picks) chosen[runner] = set
+	for (const { runner, name, ...set } of picks) if (!name) chosen[runner] = set
 	render()
 }
 // Enter in the name line keeps the name; it doesn't send.
@@ -346,7 +348,7 @@ function pickerRows() {
 		several = online.length > 1
 	const rows = online.map((r) => {
 		const set = setting(r),
-			on = picks.some((p) => p.runner === r.name)
+			on = Boolean(picked(r))
 		const models = [...new Set([set.model, r.model, ...(r.offers ?? [])].filter(Boolean))]
 		// A model is a row: click to ask it here, shift-click to ask it too. Thinking is a row of steps; the lit one again goes back to default.
 		const model = (o) =>
@@ -1076,10 +1078,12 @@ function render() {
 	w.draw(connections)
 }
 
-// What each runner's card is set to: the model and thinking it asks with, kept when it's not picked.
+// What each runner's card is set to: the model and thinking it asks with, kept when it's not picked. A named pick,
+// such as a bot, is an agent of its own there, not the card's.
 const chosen = {}
+const picked = (r) => picks.find((p) => p.runner === r.name && !p.name)
 const setting = (r) => {
-	const p = picks.find((x) => x.runner === r.name)
+	const p = picked(r)
 	// Low thinking unless you turn it up: quick answers suit a page you play with.
 	return p
 		? { model: p.model, thinkingLevel: p.thinkingLevel }
@@ -1088,23 +1092,23 @@ const setting = (r) => {
 function tune(r, change) {
 	const next = Object.fromEntries(Object.entries({ ...setting(r), ...change }).filter(([, v]) => v))
 	chosen[r.name] = next
-	if (picks.some((p) => p.runner === r.name))
-		choose(picks.map((p) => (p.runner === r.name ? { runner: r.name, ...next } : p)))
+	if (picked(r)) choose(picks.map((p) => (p === picked(r) ? { runner: r.name, ...next } : p)))
 	else render()
 }
 function toggle(r, also) {
 	const self = { runner: r.name, ...setting(r) }
-	const on = picks.some((p) => p.runner === r.name)
+	const on = picked(r)
 	if (!also) return choose([self])
 	if (!on) return choose([...picks, self])
-	if (picks.length > 1) choose(picks.filter((p) => p.runner !== r.name))
+	if (picks.length > 1) choose(picks.filter((p) => p !== on))
 }
 
 // One runner: its light, its folder, the model it asks with and how hard it thinks, and what its hands are doing.
 // Agents the threads asked here with another model or name get a quiet row of their own, for their wire and light.
 function runnerCard(r, asked) {
 	const set = setting(r)
-	const on = picks.some((p) => p.runner === r.name)
+	const on = Boolean(picked(r)),
+		routed = picks.some((p) => p.runner === r.name)
 	const here = asked.filter((a) => a.to.runner === r.name)
 	// The busiest agent here decides the dot: working beats blocked, and an idle agent is grey.
 	const stateOf = (list) =>
@@ -1158,7 +1162,7 @@ function runnerCard(r, asked) {
 	return el(
 		'div',
 		{
-			className: `node card${r.online ? '' : ' off'}${on ? ' routed' : ''}`,
+			className: `node card${r.online ? '' : ' off'}${routed ? ' routed' : ''}`,
 			id: `runner-${r.name}`,
 			title: on ? 'Shift-click to stop asking it' : 'Click to ask it; shift-click to ask it too',
 			onclick: (e) => toggle(r, e.shiftKey || e.metaKey || e.ctrlKey),
