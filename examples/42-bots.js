@@ -1,7 +1,7 @@
 // MODULES=+bots: a bot is one name in many threads. One call makes it and its home thread, hands off; asked by name
 // anywhere else, an agent of that name joins there from the bot's recipe, and name=model@runner gives that thread
 // another model. Every one of them reads the bot's instructions and knows its other threads. At home its `bot` tool
-// rewrites it or makes another bot. Forgetting a bot keeps every thread.
+// rewrites it or makes another bot. Its home can't be hidden while it's a bot; forgetting a bot keeps every thread.
 import {
 	answered,
 	answers,
@@ -116,6 +116,15 @@ check(
 	JSON.stringify([side, prompt.laptop]),
 )
 
+const hide = await api('DELETE', `/api/threads/${home}`)
+check(
+	hide.status === 400 &&
+		/ada's home/.test(hide.json.error) &&
+		(await api('GET', '/api/threads')).json.some((t) => t.id === home && !t.hidden),
+	"ada's home can't be hidden while she's a bot",
+	JSON.stringify(hide.json),
+)
+
 const gone = await api('DELETE', '/api/bots/ada')
 await post(shed, 'still there?', 'ada')
 v = await answered(shed, 3)
@@ -128,4 +137,6 @@ check(
 	'forgetting ada keeps every thread: her agents stay, without her instructions',
 	JSON.stringify([gone.json, answers(v)[2]?.data, prompt.laptop]),
 )
+const hidden = await api('DELETE', `/api/threads/${home}`)
+check(hidden.status === 200, 'forgotten, her home hides like any thread', JSON.stringify(hidden.json))
 done()

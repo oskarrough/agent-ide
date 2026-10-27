@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url'
 // A module exports `server(core)` and/or `runner(core)`, which return its hooks:
 //   server: extension, route(posted, agents) → To[], reply(posts, answeredIn, agent, body) → [{ thread, data }], changed(),
 //           posted(tx, threadId, entry): work added to a post's commit, writes only,
+//           hiding(tx, threadId): work added to hiding a thread's commit, which a throw refuses,
 //           catchUp(threadId, held, all, agent) → the content of a Deliver task's input to that agent's conversation,
 //           serve(threadId, query, body?) → what GET, or POST with a body, /api/threads/:id/<module name> answers,
 //           and /api/<module name> with no threadId; remove(name) → what DELETE /api/<module name>/:name answers,

@@ -5,7 +5,8 @@
 // talk's `threads` when it matters. At home, its `bot` tool rewrites it or makes another bot; -bot in a thread's
 // tools takes that away.
 //   GET /api/bots: every bot. POST /api/bots {name, to?, instructions?}: a new name makes the bot and its home thread,
-//   hands off, in one commit; a known name changes it. DELETE /api/bots/:name forgets it and keeps every thread.
+//   hands off, in one commit; a known name changes it. DELETE /api/bots/:name forgets it and keeps every thread. Its home
+//   can't be hidden while it's a bot.
 import { Type } from '@earendil-works/pi-ai'
 import { defineDoc, defineExtension, defineTool } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
@@ -65,6 +66,12 @@ export function server(core) {
 			delete all[name]
 			return { name }
 		})
+	}
+
+	// A bot's home stays: hidden, nobody could open it to change the bot, nor could the bot itself.
+	async function hiding(tx, threadId) {
+		const [name] = Object.entries(await tx.doc(Bots)).find(([, b]) => b.home === threadId) ?? []
+		if (name) throw new Error(`Thread ${threadId} is ${name}'s home; forget ${name} first`)
 	}
 
 	// A bot's name in a thread without it: the bot's recipe, under its name.
@@ -153,6 +160,7 @@ export function server(core) {
 	return {
 		serve,
 		remove,
+		hiding,
 		recipe,
 		extension: defineExtension({ name: 'agent-ide.bots', tools: [bot], sections: [section] }),
 	}

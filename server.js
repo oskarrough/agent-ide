@@ -872,6 +872,7 @@ const hook = (name) => {
 	return first?.[name]
 }
 const posted = modules.flatMap((m) => m.posted ?? [])
+const hiding = modules.flatMap((m) => m.hiding ?? [])
 const [route, reply, catchUp, named] = ['route', 'reply', 'catchUp', 'recipe'].map(hook)
 
 for (const [name, runner] of Object.entries(await known()))
@@ -891,6 +892,7 @@ async function hideThread(id) {
 	await conversation(id)
 	await commit(async (tx) => {
 		;(await tx.doc(Thread, id)).hidden = true
+		for (const m of hiding) await m(tx, id)
 	})
 	return { id }
 }
