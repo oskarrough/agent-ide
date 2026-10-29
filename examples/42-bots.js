@@ -138,5 +138,9 @@ check(
 	JSON.stringify([gone.json, answers(v)[2]?.data, prompt.laptop]),
 )
 const hidden = await api('DELETE', `/api/threads/${home}`)
-check(hidden.status === 200, 'forgotten, her home hides like any thread', JSON.stringify(hidden.json))
+check(
+	hidden.status === 200,
+	'forgotten, her home hides like any thread',
+	JSON.stringify(hidden.json),
+)
 done()

@@ -258,8 +258,6 @@ const styles = Object.fromEntries(
 		]),
 	),
 )
-// What agent-ide promises, its words and principles: docs/concepts.html, at /concepts.
-const concepts = await readFile(new URL('./docs/concepts.html', import.meta.url))
 // The runner this server ships, and the updater that fetches it: `curl -fsSL <server>/connect-runner | sh -s -- --dir ~/code`.
 const bundle = await runnerBundle(import.meta.dirname)
 const updater = await readFile(new URL('./runner-updater.js', import.meta.url))
@@ -996,9 +994,9 @@ async function handleRequest(req, res) {
 		})
 		return res.end()
 	}
-	if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/concepts')) {
+	if (req.method === 'GET' && url.pathname === '/') {
 		res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-		return res.end(url.pathname === '/' ? page : concepts)
+		return res.end(page)
 	}
 	if (req.method === 'GET' && scripts[url.pathname]) {
 		res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' })

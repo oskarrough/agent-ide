@@ -5,22 +5,14 @@ A small agent IDE on [Pi Durable](https://www.npmjs.com/package/@earendil-works/
 ## What's in it
 
 - Threads with many authors. You, your friends and any number of agents talk in one thread, and each agent can be any model pi can name.
-- One server that stays on. It keeps every thread in one SQLite file, and a restart or a stop loses nothing.
 - Runners: your machines lend the server a folder, their tools and their model logins, so agents work where your code is.
-- Multiplayer without accounts: send the link and you're in.
+- Threads that talk: agents post to other threads and read them back.
 - Forks: start a new thread from any message, with the same agents.
-- Hands off: take a thread's tools away, so its agents only read and ask others.
-- Threads that talk: agents post to other threads and read them back (talk, on by default).
-- Modules you switch on with `MODULES=+name`, or write your own:
-  - director: @mention an agent by name and it answers.
-  - bots: one name in many threads, with a home thread and its own instructions.
-  - matrix: Matrix rooms as threads, so you can talk to your agents from any Matrix client.
-  - memory: threads that never have to end (an experiment).
-  - search: web search for agents, through Exa.
-- A browser client, a CLI and an HTTP API.
-- About five thousand lines of plain JS, no build step. Fork it and change it.
+- Stays on: a restart or a stop loses nothing.
+- Modules you switch on with `MODULES=+name`, or write your own: director (@mentions), bots, matrix, memory, search.
+- A browser client, a CLI and an HTTP API. About five thousand lines of plain JS, no build step.
 
-What it promises, the words it uses, how it fits together and its principles: [docs/concepts.html](docs/concepts.html), which every server also serves at `/concepts`. The code is the truth, and [examples/](examples) shows each idea working.
+The words it uses, how it fits together and its principles: [apps/client/client.html](apps/client/client.html), the page every server serves at `/`, beside the app itself. The code is the truth, and [examples/](examples) shows each idea working.
 
 ## Try it
 

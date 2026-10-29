@@ -1793,3 +1793,144 @@ body.chat {
 		}
 	}
 }
+
+/* What it's made of: the reference half of the page, under the walk-through. */
+.reference {
+	h3 {
+		font-size: 1rem;
+		margin: 1.6rem 0 0.3rem;
+	}
+
+	h2:not(:first-child) {
+		margin-top: 3rem;
+		padding-top: 1rem;
+		border-top: 1px solid var(--line);
+	}
+
+	pre.mermaid {
+		display: none;
+	}
+
+	.contents {
+		font-size: 0.92rem;
+		color: var(--mute);
+	}
+
+	.diagram {
+		margin: 1.5rem 0 0.5rem;
+		padding: 1rem;
+		background: #fff;
+		border: 1px solid var(--line);
+		border-radius: 10px;
+		overflow-x: auto;
+	}
+
+	.pele {
+		--pele-bg: #ffffff;
+		--pele-fg: #100f0f;
+		--pele-muted: #6f6e69;
+		--pele-line: #575653;
+		--pele-surface: #f2f0e5;
+		--pele-surface-alt: #e6e4d9;
+		--pele-border: #b7b5ac;
+	}
+
+	.caption {
+		color: var(--mute);
+		font-size: 0.92rem;
+		margin: 0.4rem 0 0;
+	}
+
+	dl.words {
+		margin: 1.2rem 0;
+
+		dt {
+			font-weight: 700;
+			margin-top: 1rem;
+		}
+
+		dd {
+			margin: 0.2rem 0 0;
+		}
+
+		small {
+			display: block;
+			color: var(--mute);
+			font-size: 0.9rem;
+			margin-top: 0.15rem;
+		}
+	}
+
+	.tag {
+		font:
+			600 0.7rem system-ui,
+			sans-serif;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		padding: 0.15em 0.5em;
+		border-radius: 99px;
+		color: #fff;
+		margin-left: 0.4em;
+		vertical-align: 0.15em;
+		background: var(--mute);
+
+		&[data-c='server'] {
+			background: #205ea6;
+		}
+		&[data-c='runner'] {
+			background: #66800b;
+		}
+		&[data-c='client'] {
+			background: #ad8301;
+		}
+		&[data-c='agent'] {
+			background: #a02f6f;
+		}
+	}
+
+	.name {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		margin: 2rem 0 0.4rem;
+		font:
+			600 clamp(1.4rem, 5vw, 2rem) ui-monospace,
+			monospace;
+
+		span {
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+		}
+
+		i {
+			font:
+				500 0.78rem system-ui,
+				sans-serif;
+			color: var(--mute);
+			margin-top: 0.5rem;
+			padding-top: 0.35rem;
+			border-top: 3px solid;
+			width: 100%;
+			text-align: center;
+		}
+
+		.m i {
+			border-color: #a02f6f;
+		}
+		.t i {
+			border-color: #ad8301;
+		}
+		.r i {
+			border-color: #66800b;
+		}
+		.sep {
+			color: var(--mute);
+			font-weight: 400;
+		}
+	}
+}
+
+ol.promises li {
+	margin: 0.35rem 0;
+}

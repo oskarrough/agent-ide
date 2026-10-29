@@ -146,10 +146,10 @@ check(
 	JSON.stringify(lost),
 )
 
-const concepts = await (await fetch(`${base}/concepts`)).text()
+const page = await (await fetch(`${base}/`)).text()
 check(
-	concepts.includes('What it promises'),
-	'the server serves its promises, words and principles at /concepts',
+	page.includes("What it's made of"),
+	'the server serves its promises, words and principles on its one page',
 )
 
 done()

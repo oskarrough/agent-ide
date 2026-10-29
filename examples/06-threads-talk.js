@@ -204,11 +204,7 @@ const news = await until(
 	async () => (await view(asker)).entries.find((e) => e.data.body === 'more news'),
 	10000,
 )
-check(
-	news && !news.data.re,
-	'a post after the answer answers nothing',
-	JSON.stringify(news?.data),
-)
+check(news && !news.data.re, 'a post after the answer answers nothing', JSON.stringify(news?.data))
 
 bot.close()
 done()

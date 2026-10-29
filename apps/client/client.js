@@ -1318,7 +1318,6 @@ for (const b of document.querySelectorAll('[data-try]'))
 	}
 
 // Memory follows the current thread on its own; the page only says which.
-$('concepts').href = `${url}/concepts`
 $('memory').setAttribute('server', url)
 
 pulse()
