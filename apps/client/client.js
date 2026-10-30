@@ -649,7 +649,6 @@ function threadBox(id) {
 			'article',
 			{ className: 'thread' },
 			el('header', { onclick: header(id) }, el('span'), el('span', { className: 'dot' })),
-			handsControl(t?.tools, (tools) => api(`/api/threads/${id}/tools`, { tools }).then(refresh)),
 			el('nav', { className: 'from' }),
 			el('ul'),
 			write,
@@ -658,7 +657,6 @@ function threadBox(id) {
 	}
 	box.classList.toggle('current', id === current)
 	box.classList.toggle('hands-off', Boolean(t?.tools))
-	box.querySelector('.hands').show(t?.tools)
 	const [title, dot] = box.querySelector('header').children
 	title.textContent = t?.title || 'untitled'
 	dot.className = light(t?.status)
@@ -915,11 +913,6 @@ function render() {
 		'article',
 		{ className: 'thread current' },
 		el('header', { onclick: header(null) }, el('span', { textContent: 'a new thread' })),
-		handsControl(null, async (tools) => {
-			fresh_tools = tools
-			blankBox.classList.toggle('hands-off', Boolean(tools))
-			blankBox.querySelector('.hands').show(tools)
-		}),
 	)
 	const blank = !current && blankBox
 	if (blank && form.parentNode !== blank) blank.append(form)

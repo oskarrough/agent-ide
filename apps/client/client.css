@@ -371,7 +371,7 @@ agent-memory {
 	margin: 1rem 0;
 }
 
-:is(.thread, .thread-details) > .hands {
+.thread-details > .hands {
 	display: flex;
 	gap: 0.4rem;
 	align-items: center;
@@ -773,11 +773,7 @@ agent-memory {
 		}
 	}
 
-	/* Hands off: a toggle, and the tools it stands for. A hands-off thread's box is dashed: its agents touch nothing. */
-	&:not(.hands-off) .hands input:not(:focus) {
-		opacity: 0.5;
-	}
-
+	/* A hands-off thread's box is dashed: its agents touch nothing. */
 	&.hands-off {
 		border-style: dashed;
 	}
@@ -1289,10 +1285,6 @@ body.chat {
 	display: flex;
 	justify-content: space-between;
 	margin-inline: 0.4rem;
-}
-
-body.chat .thread .hands {
-	display: none;
 }
 
 @media (prefers-reduced-motion: no-preference) {
