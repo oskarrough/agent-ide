@@ -45,7 +45,14 @@ import { createRunners, messageText, remoteEnv, runnerBundle, runnerProvider } f
  * @typedef {{ author: string, command: string, to: To }} Command
  */
 
-const port = Number(process.env.PORT || 3000)
+// PORT, or 3000 and up to the first free one; each port keeps its own store.
+let port = Number(process.env.PORT || 3000)
+const free = (p) =>
+	new Promise((resolve) => {
+		const probe = http.createServer().once('error', () => resolve(false))
+		probe.listen(p, '127.0.0.1', () => probe.close(() => resolve(true)))
+	})
+if (!process.env.PORT) while (!(await free(port))) port++
 const file = process.env.DB_PATH || `agent-ide-${port}.sqlite`
 const KIND = 'agent-ide.message'
 // An agent's input in its conversation; `held` names the thread messages it gave.

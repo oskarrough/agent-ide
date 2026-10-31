@@ -29,7 +29,7 @@ Or read [examples/](examples): one file per idea, each starting its own server a
 ## Running it
 
 ```sh
-bun server.js                          # http://127.0.0.1:3000, stored in agent-ide-3000.sqlite
+bun server.js                          # http://127.0.0.1:3000, stored in agent-ide-3000.sqlite; if 3000 is taken, the next free port and its store
 HOST=0.0.0.0 PORT=3001 bun server.js   # reachable from other machines
 RUNNER=~/code bun server.js            # lends this machine another folder than the one it starts in; RUNNER=0 lends none
 MODULES=-talk,-status,-context bun server.js   # modules are picked as Pi picks tools: +name and -name change the defaults, names alone replace them, a path is a module of your own
