@@ -374,15 +374,27 @@ function pickerRows() {
 				ariaPressed: String(set.thinkingLevel === x),
 				onclick: () => tune(r, { thinkingLevel: set.thinkingLevel === x ? undefined : x }),
 			})
+		// The folders it serves, when there's a choice: its first is '', the rest relative to it when inside.
+		const folders = (r.folders ?? []).map((f) => {
+			const rel = f === r.dir ? '' : f.startsWith(`${r.dir}/`) ? f.slice(r.dir.length + 1) : f
+			return new Option(rel || f, rel)
+		})
+		const where =
+			folders.length > 1 &&
+			el('select', { onchange: () => tune(r, { dir: where.value || undefined }) }, ...folders)
+		if (where) where.value = set.dir ?? ''
 		return el(
 			'li',
 			{ className: on ? 'on' : '' },
 			el(
 				'div',
 				{ className: 'who' },
-				el('span', { className: light('on') }),
+				el('span', { className: light(r.busy ? 'working' : 'on') }),
 				el('b', { textContent: r.name }),
-				el('small', { textContent: r.dir, title: r.dir }),
+				el('small', {
+					textContent: r.busy ? `busy in ${r.busy} thread${r.busy > 1 ? 's' : ''}` : r.dir,
+					title: r.dir,
+				}),
 				several &&
 					el('button', {
 						type: 'button',
@@ -396,6 +408,8 @@ function pickerRows() {
 			el('div', { className: 'models' }, ...models.map(model)),
 			el('h4', { textContent: 'Thinking' }),
 			el('div', { className: 'steps' }, ...EFFORTS.map(step)),
+			where && el('h4', { textContent: 'Folder' }),
+			where,
 		)
 	})
 	// Bots below the runners: click to ask one here, shift-click to ask it too.
@@ -1079,7 +1093,7 @@ const setting = (r) => {
 	const p = picked(r)
 	// Low thinking unless you turn it up: quick answers suit a page you play with.
 	return p
-		? { model: p.model, thinkingLevel: p.thinkingLevel }
+		? { model: p.model, thinkingLevel: p.thinkingLevel, dir: p.dir }
 		: (chosen[r.name] ?? { model: r.model, thinkingLevel: 'low' })
 }
 function tune(r, change) {

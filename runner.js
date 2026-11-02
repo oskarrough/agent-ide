@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
@@ -17,7 +17,9 @@ const { values: args } = parseArgs({
 		server: { type: 'string', default: process.env.AGENT_IDE_SERVER || 'http://localhost:3000' },
 		name: { type: 'string', default: os.hostname() },
 		alias: { type: 'string', default: '' },
-		dir: { type: 'string', default: process.cwd() },
+		// Each --dir is one more folder it lends; the first is its home, where pi's settings are read.
+		dir: { type: 'string', multiple: true, default: [process.cwd()] },
+		'discover-dirs': { type: 'boolean', default: false },
 		owner: { type: 'string', default: '' },
 		'read-only': { type: 'boolean', default: false },
 		allow: { type: 'string', multiple: true, default: [] },
@@ -33,7 +35,8 @@ function saved() {
 		return ''
 	}
 }
-const dir = path.resolve(args.dir)
+const roots = [...new Set(args.dir.map((d) => path.resolve(d)))]
+const dir = roots[0]
 const server = new URL(args.server).origin
 const name = args.name
 
@@ -78,7 +81,30 @@ async function offers() {
 const { version } = await runnerBundle(import.meta.dirname).catch(() => ({ version: '' }))
 const launched = process.env.AGENT_IDE_LAUNCHER === '1'
 
-const modules = await load('runner', { status: true, context: true }, { name, server, dir })
+const modules = await load('runner', { status: true, context: true }, { name, server, dir, roots })
+
+// The folders it serves, for the picker: its own, and with --discover-dirs every git or jj checkout up to two levels
+// beneath them, found again on each connect. The checkouts are inside its folders, so they lend nothing more.
+function folders() {
+	const found = []
+	const list = (at) => {
+		try {
+			return readdirSync(at, { withFileTypes: true })
+		} catch {
+			return []
+		}
+	}
+	const scan = (at, depth) => {
+		for (const item of list(at)) {
+			if (!item.isDirectory() || item.name.startsWith('.') || item.name === 'node_modules') continue
+			const sub = path.join(at, item.name)
+			if (list(sub).some((i) => i.name === '.git' || i.name === '.jj')) found.push(sub)
+			else if (depth > 1) scan(sub, depth - 1)
+		}
+	}
+	if (args['discover-dirs']) for (const root of roots) scan(root, 2)
+	return [...new Set([...roots, ...found.sort()])].slice(0, 500)
+}
 
 async function connect() {
 	const { model, error } = defaultModel()
@@ -96,12 +122,14 @@ async function connect() {
 	if (error) console.log(`pi's default model doesn't resolve: ${error}`)
 	for (const ref of await offers().catch(() => [])) query.append('offer', ref)
 	for (const who of args.allow) query.append('allow', who)
+	for (const folder of folders()) query.append('folder', folder)
 	const socket = new WebSocket(`${server.replace(/^http/, 'ws')}/ws?${query}`, {
 		headers: { authorization: `Bearer ${args.key}` },
 	})
 	const runner = serveRunner({
 		name,
 		dir,
+		roots,
 		models,
 		resolve,
 		echo,
@@ -116,7 +144,7 @@ async function connect() {
 	const from = args.owner ? `, to ${[args.owner, ...args.allow].join(', ')}` : ''
 	socket.onopen = () =>
 		console.log(
-			`${name} online at ${server}, lending pi's logins and ${dir}${args['read-only'] ? ' to read only' : ''}${from}`,
+			`${name} online at ${server}, lending pi's logins and ${roots.join(', ')}${args['read-only'] ? ' to read only' : ''}${from}`,
 		)
 	socket.onmessage = ({ data }) => runner.receive(data)
 	socket.onclose = ({ code, reason }) => {

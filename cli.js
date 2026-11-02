@@ -140,8 +140,9 @@ const commands = {
 	async runners() {
 		for (const r of await api('GET', '/api/runners')) {
 			console.log(
-				`${r.name} ${r.online ? 'online' : 'offline'}  ${r.dir}${r.readOnly ? ' (read-only)' : ''}  default ${r.model || `none${r.modelError ? `: ${r.modelError}` : ''}`}`,
+				`${r.name} ${r.online ? 'online' : 'offline'}${r.busy ? `, busy in ${r.busy}` : ''}  ${r.dir}${r.readOnly ? ' (read-only)' : ''}  default ${r.model || `none${r.modelError ? `: ${r.modelError}` : ''}`}`,
 			)
+			for (const f of (r.folders ?? []).slice(1)) console.log(`  folder ${f}`)
 			for (const m of r.offers) console.log(`  ${m}@${r.name}`)
 		}
 	},

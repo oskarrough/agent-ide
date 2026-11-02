@@ -25,7 +25,14 @@ import { CodemodeSandbox } from '@earendil-works/pi-codemode'
 import { load } from './modules.js'
 import { WebSocketServer } from 'ws'
 import { agentName, agentTo, collect, field, said, speaker } from './util.js'
-import { createRunners, messageText, remoteEnv, runnerBundle, runnerProvider } from './remote.js'
+import {
+	createRunners,
+	messageText,
+	remoteEnv,
+	runnerBundle,
+	runnerProvider,
+	within,
+} from './remote.js'
 
 /**
  * @typedef {{ runner: string, model: string, thinkingLevel?: string, dir?: string, name?: string }} To  An agent: its name in
@@ -398,10 +405,11 @@ async function reach(to, by) {
 	}
 }
 
+// `dir` is relative to the runner's first folder, or a path in any folder it lends.
 function folder(runner, to) {
 	const cwd = path.resolve(runner.dir, to.dir || '.')
-	if (cwd !== runner.dir && !cwd.startsWith(runner.dir + path.sep))
-		throw new Error(`${to.dir} is outside ${to.runner}'s folder`)
+	if (!within(runner.folders ?? [runner.dir], cwd))
+		throw new Error(`${to.dir} is outside ${to.runner}'s folders`)
 	return cwd
 }
 
@@ -411,7 +419,8 @@ async function agentOf(id, named) {
 	const runnerName = agent?.model?.provider?.match(/^runner:(.+)$/)?.[1]
 	if (!runnerName) return null
 	const runner = (await known())[runnerName]
-	const dir = runner && agent.cwd ? path.relative(runner.dir, agent.cwd) : ''
+	const rel = runner && agent.cwd ? path.relative(runner.dir, agent.cwd) : ''
+	const dir = rel.startsWith('..') ? agent.cwd : rel
 	const name = named ?? (await home(id))?.name
 	return {
 		runner: runnerName,
@@ -441,6 +450,23 @@ async function agentsIn(row, live) {
 			return { name, conversation, to, status }
 		}),
 	)
+}
+// The threads each runner is working for: an agent there answering, or a command running. Parked work isn't.
+async function busyThreads() {
+	const by = {}
+	for (const t of await liveTasks()) {
+		if (t.parked) continue
+		const runner =
+			t.kind === Shell.definition.name
+				? t.input.to?.runner
+				: t.kind === Deliver.definition.name
+					? (await harness.snapshot(AgentDoc, t.input.agent, context))?.model?.provider?.match(
+							/^runner:(.+)$/,
+						)?.[1]
+					: null
+		if (runner) (by[runner] ??= new Set()).add(t.conversationId)
+	}
+	return by
 }
 const liveTasks = async () =>
 	(await harness.inspect(context)).tasks.map(({ record, state }) => ({
@@ -934,16 +960,19 @@ const routes = [
 	],
 	[
 		'GET /api/runners',
-		async () =>
-			Object.entries(await known()).map(([name, { models, offers, ...runner }]) => ({
+		async () => {
+			const busy = await busyThreads()
+			return Object.entries(await known()).map(([name, { models, offers, ...runner }]) => ({
 				name,
 				...runner,
 				offers: offers ?? [],
 				models: Object.keys(models ?? {}),
 				online: runners.isOnline(name),
 				calls: runners.working(name),
+				busy: runners.isOnline(name) ? (busy[name]?.size ?? 0) : 0,
 				outdated: Boolean(runner.version) && runner.version !== bundle.version,
-			})),
+			}))
+		},
 	],
 	['POST /api/runners', async (req) => mintKey(String((await input(req)).name ?? ''), origin(req))],
 	['DELETE /api/runners/:name', (req, name) => revoke(name)],
@@ -1212,6 +1241,9 @@ async function upgrade(req, raw, head) {
 		allow: url.searchParams.getAll('allow').map(speaker),
 		host: q('host'),
 		dir: q('dir') || '/',
+		folders: url.searchParams.getAll('folder').length
+			? url.searchParams.getAll('folder')
+			: [q('dir') || '/'],
 		readOnly: q('readOnly') === '1',
 		version: q('version'),
 		model: q('model'),

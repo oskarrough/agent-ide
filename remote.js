@@ -310,11 +310,16 @@ export function remoteEnv(runners, name, cwd) {
 	return env
 }
 
+// Whether a path is one of `folders` or inside one: the folders a runner lends.
+export const within = (folders, p) =>
+	folders.some((f) => p === f || p.startsWith(f + path.sep))
+
 // `resolve(pattern)` is pi's `--model pattern`: { model, thinkingLevel? }. `echo/echo` answers from a queue, one per request.
 // `ops` are the modules' own, each under its name; an op nobody serves answers null. A read-only runner reads its folder and changes nothing.
 export function serveRunner({
 	name,
 	dir,
+	roots = [dir],
 	models,
 	resolve,
 	echo,
@@ -337,8 +342,8 @@ export function serveRunner({
 
 	function inside(p, cwd = dir) {
 		const full = path.resolve(cwd, p ?? '.')
-		if (full !== dir && !full.startsWith(dir + path.sep))
-			throw new FileError('permission_denied', `${p} is outside ${name}'s folder ${dir}`, p)
+		if (!within(roots, full))
+			throw new FileError('permission_denied', `${p} is outside ${name}'s folders ${roots.join(', ')}`, p)
 		return full
 	}
 

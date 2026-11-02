@@ -8,6 +8,7 @@ import {
 	SettingsManager,
 } from '@earendil-works/pi-coding-agent'
 import { defineExtension } from '@earendil-works/pi-durable'
+import { within } from './remote.js'
 
 export function server({ runners }) {
 	const section = {
@@ -32,8 +33,8 @@ export function server({ runners }) {
 // Skill files can sit outside the runner's folder, where the file tools don't reach, so agents read them with bash.
 export function runner(core) {
 	async function context({ dir }) {
-		if (path.relative(core.dir, dir).startsWith('..'))
-			throw new Error(`${dir} is outside ${core.name}'s folder`)
+		if (!within(core.roots ?? [core.dir], path.resolve(dir)))
+			throw new Error(`${dir} is outside ${core.name}'s folders`)
 		const loader = new DefaultResourceLoader({
 			cwd: dir,
 			agentDir: getAgentDir(),
