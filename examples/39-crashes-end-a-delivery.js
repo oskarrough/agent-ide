@@ -40,7 +40,11 @@ check(
 	'the thread says the agent gave no answer, and why',
 	JSON.stringify(v?.entries.at(-1)?.data),
 )
-check(v?.agents[0]?.status === 'idle', 'and the agent is idle, not working forever', v?.agents[0]?.status)
+check(
+	v?.agents[0]?.status === 'idle',
+	'and the agent is idle, not working forever',
+	v?.agents[0]?.status,
+)
 laptop = await runner('laptop')
 await sleep(500)
 check((await view(id)).entries.length === v?.entries.length, 'nothing runs again on its own')
@@ -50,7 +54,9 @@ const answer = after?.entries.filter((e) => e.data.answer).at(-1)
 check(Boolean(answer), 'the next ask is answered', after?.status)
 check(
 	JSON.stringify(answer?.data.re) ===
-		JSON.stringify(after?.entries.filter((e) => ['hello', 'again'].includes(e.data.body)).map((e) => e.id)),
+		JSON.stringify(
+			after?.entries.filter((e) => ['hello', 'again'].includes(e.data.body)).map((e) => e.id),
+		),
 	'and the answer takes the message that waited too',
 	JSON.stringify(answer?.data),
 )

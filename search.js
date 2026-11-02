@@ -12,9 +12,7 @@ export function server() {
 			"Search the web. Answers with each page's title, address and highlights; read a page whole with curl.",
 		parameters: obj({
 			query: str(),
-			results: opt(
-				num({ description: 'How many pages, 5 by default, at most 10' }),
-			),
+			results: opt(num({ description: 'How many pages, 5 by default, at most 10' })),
 		}),
 		replay: 'safe',
 		execute: async ({ query, results = 5 }, api, context) => {

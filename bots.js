@@ -87,18 +87,14 @@ export function server(core) {
 			'which every agent of your name reads, or the model you join new threads with. A new name makes another bot, ' +
 			'with its own home thread, from your model unless you give one.',
 		parameters: obj({
-			name: opt(
-				str({ description: 'A new bot to make; leave out for yourself' }),
-			),
+			name: opt(str({ description: 'A new bot to make; leave out for yourself' })),
 			instructions: opt(
 				str({
 					description:
 						'The whole text: who the bot is, how it works, what it knows about the people it works with',
 				}),
 			),
-			model: opt(
-				str({ description: 'model@runner, as `pi --model` takes the model' }),
-			),
+			model: opt(str({ description: 'model@runner, as `pi --model` takes the model' })),
 		}),
 		replay: 'safe',
 		execute: async (args, api) => {

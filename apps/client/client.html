@@ -195,9 +195,9 @@
 				<dd>
 					A program on a machine that lends the server two things: its folders and the model logins
 					pi has there. Started by hand, or installed with one line,
-					<code>curl -fsSL &lt;server&gt;/connect-runner | sh</code>. Each
-					<code>--dir</code> lends one more folder, and <code>--discover-dirs</code> offers the git
-					and jj checkouts beneath them; you pick one where you write.
+					<code>curl -fsSL &lt;server&gt;/connect-runner | sh</code>. Each <code>--dir</code> lends
+					one more folder, and <code>--discover-dirs</code> offers the git and jj checkouts beneath
+					them; you pick one where you write.
 					<small
 						>What you might call a machine, a computer or a daemon. A machine is where runners run,
 						one per folder if you like, and a cloud sandbox is just another machine.</small
@@ -264,8 +264,10 @@ flowchart TB
 			<p>
 				Pi is the harness: its prompt, tools and loop. The server runs it for every agent, and the
 				tools run on a runner. Each model call and tool call crosses the socket the runner dialled,
-				so its logins never leave its machine. File tools stay inside the runner's folders, but a
-				command only starts there, which is why that line is dashed.
+				so its logins never leave its machine. A model call sends only what's new since the agent's
+				last one, since the runner keeps its last few conversations while it's connected; one that
+				reconnects gets them whole again. File tools stay inside the runner's folders, but a command
+				only starts there, which is why that line is dashed.
 			</p>
 			<p>
 				Pi Durable does the heavy lifting: storage, tasks, ordering, retries, restarts, stops and

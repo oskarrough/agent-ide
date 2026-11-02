@@ -6,7 +6,13 @@ import path from 'node:path'
 import { answered, answers, api, check, dir, done, runner, server, until, view } from './lib.js'
 
 const other = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'agent-ide-other-')))
-for (const d of ['app/.git', 'org/lib/.jj', 'org/deep/er/.git', 'node_modules/x/.git', '.hidden/.git'])
+for (const d of [
+	'app/.git',
+	'org/lib/.jj',
+	'org/deep/er/.git',
+	'node_modules/x/.git',
+	'.hidden/.git',
+])
 	mkdirSync(path.join(dir, d), { recursive: true })
 
 await server()
@@ -59,7 +65,8 @@ const busy = await until(async () =>
 )
 check(Boolean(busy), 'while a command runs, the runner is busy in one thread')
 const idle = await until(
-	async () => (await api('GET', '/api/runners')).json.find((r) => r.name === 'laptop' && r.busy === 0),
+	async () =>
+		(await api('GET', '/api/runners')).json.find((r) => r.name === 'laptop' && r.busy === 0),
 	5000,
 )
 check(Boolean(idle), 'and then in none')

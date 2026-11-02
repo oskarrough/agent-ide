@@ -21,9 +21,7 @@ export function server(core) {
 			'Give a `thread` to ask whoever is there, with all they already know there. Posting to a thread that asked you something answers it. ' +
 			"Whoever answers, their answer comes to you here as a message, even mid-turn; don't read the thread to check for it.",
 		parameters: obj({
-			thread: opt(
-				num({ description: 'The thread to post to. Leave out to start a new one.' }),
-			),
+			thread: opt(num({ description: 'The thread to post to. Leave out to start a new one.' })),
 			title: opt(str({ description: "The new thread's title" })),
 			body: str(),
 			to: opt(
@@ -111,9 +109,7 @@ export function server(core) {
 			"With `agent`, read that agent's own work in the thread instead: what it was handed, the tool calls it made and what they printed, word for word. " +
 			'Answers to your own posts come to you; no need to read for them.',
 		parameters: obj({
-			thread: opt(
-				num({ description: 'With `query` or `agent`, your own thread by default' }),
-			),
+			thread: opt(num({ description: 'With `query` or `agent`, your own thread by default' })),
 			agent: opt(
 				str({
 					description:
@@ -121,9 +117,7 @@ export function server(core) {
 				}),
 			),
 			last: opt(num({ description: 'How many entries, 20 by default' })),
-			query: opt(
-				str({ description: 'Only entries containing this text, ignoring case' }),
-			),
+			query: opt(str({ description: 'Only entries containing this text, ignoring case' })),
 		}),
 		replay: 'safe',
 		execute: async (args, api) => {

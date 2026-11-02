@@ -951,9 +951,10 @@ function render() {
 	sheetFor(botAt(current))
 	// Who's here, named as their messages name them.
 	$('members').replaceChildren(
-		...[...peopleIn(current), ...(here?.agents ?? []).map((a) => a.name)].flatMap(
-			(n, i) => [i ? ', ' : '', el('span', { title: n, style: colorOf(n) }, who(n))],
-		),
+		...[...peopleIn(current), ...(here?.agents ?? []).map((a) => a.name)].flatMap((n, i) => [
+			i ? ', ' : '',
+			el('span', { title: n, style: colorOf(n) }, who(n)),
+		]),
 	)
 	// The composer names whom it asks; the sidebar counts the runners. A bot's home asks the bot.
 	const asking = asks()

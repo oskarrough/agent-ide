@@ -66,7 +66,9 @@ const alive = (pid) => {
 }
 const holder = Number(existsSync(lock) && readFileSync(lock, 'utf8'))
 if (holder && holder !== process.pid && alive(holder)) {
-	console.error(`${file} is served by process ${holder}; stop it, or DB_PATH=other.sqlite for another store`)
+	console.error(
+		`${file} is served by process ${holder}; stop it, or DB_PATH=other.sqlite for another store`,
+	)
 	process.exit(1)
 }
 writeFileSync(lock, String(process.pid))
@@ -174,7 +176,10 @@ const Deliver = defineTask({
 			)
 			const settled = await submission.wait(ctx)
 			const told = await outcome(threadId, agent, settled, held)
-			await rt.commit(async (tx) => (await tell(tx, threadId, agent, settled, held, told), finished()), ctx)
+			await rt.commit(
+				async (tx) => (await tell(tx, threadId, agent, settled, held, told), finished()),
+				ctx,
+			)
 		},
 	},
 	// Pi's abort of the thread withdrew its input if still queued.
@@ -685,7 +690,9 @@ const threadList = async (reader) => {
 // Who's in a thread, with no state of its own: its agents, and the people who wrote or read there.
 const peopleIn = (entries, readers) => [
 	...new Set([
-		...entries.filter((e) => !e.data.answer && !e.data.error && !e.data.from).map((e) => e.data.author),
+		...entries
+			.filter((e) => !e.data.answer && !e.data.error && !e.data.from)
+			.map((e) => e.data.author),
 		...readers,
 	]),
 ]
@@ -1169,7 +1176,9 @@ async function rewatch(socket, id) {
 		for (const [agent, { conversation }] of Object.entries(agents)) {
 			if (followed.has(agent)) continue
 			followed.add(agent)
-			const w = await (await harness.conversation(conversation, context)).watch(context, { min: 20 })
+			const w = await (
+				await harness.conversation(conversation, context)
+			).watch(context, { min: 20 })
 			if (!keep(w)) return
 			send({ agent, live: doing(w.value) })
 			w.start(async ({ value }) => send({ agent, live: doing(value) }))
@@ -1190,9 +1199,11 @@ async function told(handle, watch, send) {
 	const tell = async (value) => {
 		let view = transcript.merge(value)
 		while (view.items[0]?.kind === 'earlier') view = await transcript.loadEarlier(context)
-		for (let gap; (gap = view.items.find((i) => i.kind === 'gap')); )
+		for (let gap; (gap = view.items.find((i) => i.kind === 'gap'));)
 			view = await transcript.fillGap(gap, context)
-		const fresh = view.items.flatMap((i) => (i.kind === 'entry' && i.entry.id > newest ? [i.entry] : []))
+		const fresh = view.items.flatMap((i) =>
+			i.kind === 'entry' && i.entry.id > newest ? [i.entry] : [],
+		)
 		if (!fresh.length && !first) return
 		first = false
 		newest = fresh.at(-1)?.id ?? newest
@@ -1250,7 +1261,8 @@ async function revoke(name) {
 }
 
 const sockets = new Map()
-const wss = new WebSocketServer({ noServer: true })
+// Compressed: a conversation sent whole, and an answer resent as it grows, shrink a few times over.
+const wss = new WebSocketServer({ noServer: true, perMessageDeflate: true })
 async function upgrade(req, raw, head) {
 	const url = new URL(req.url, 'http://localhost')
 	if (url.pathname !== '/ws') return raw.destroy()

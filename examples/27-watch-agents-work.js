@@ -53,7 +53,10 @@ check(
 	'a new thread says first that it has no messages, and no agents',
 	JSON.stringify(first.heard),
 )
-await api('POST', `/api/threads/${id}/entries`, { body: 'work', to: { runner: 'bot', model: 'echo/echo' } })
+await api('POST', `/api/threads/${id}/entries`, {
+	body: 'work',
+	to: { runner: 'bot', model: 'echo/echo' },
+})
 check(
 	Boolean(await until(async () => lives(first.heard).length, 8000, 20)),
 	'an agent the thread asks is followed from then on',
@@ -98,7 +101,9 @@ check(
 
 // A burst bigger than Pi's window still arrives whole, in order, each message once.
 const burst = Array.from({ length: 250 }, (_, i) => `note ${i}`)
-await Promise.all(burst.map((body) => api('POST', `/api/threads/${id}/entries`, { body, to: null })))
+await Promise.all(
+	burst.map((body) => api('POST', `/api/threads/${id}/entries`, { body, to: null })),
+)
 const notes = await until(async () => {
 	const got = said(first.heard).filter((b) => b.startsWith('note '))
 	return got.length >= burst.length && got
@@ -123,7 +128,10 @@ check(
 	'after a restart, watching again starts with the whole thread',
 	JSON.stringify(restarted.heard[0])?.slice(0, 200),
 )
-check(now && !now.run && !now.tools.length, 'after a restart, watching again says the agent is idle')
+check(
+	now && !now.run && !now.tools.length,
+	'after a restart, watching again says the agent is idle',
+)
 restarted.close()
 bot.close()
 done()
