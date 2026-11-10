@@ -55,6 +55,30 @@ check(
 	JSON.stringify(captured),
 )
 
+const silent = await output('post', 'no one named')
+check(
+	/^thread \d+\n$/.test(silent.stdout) && /nobody/i.test(silent.stderr),
+	'a post with no --to that asks nobody says so',
+	JSON.stringify(silent),
+)
+
+const before404 = (await api('GET', '/api/threads')).json.length
+const missing = await output('post', '--to', 'echo/echo@attic', 'anyone up there?').catch(
+	(error) => error,
+)
+check(
+	/No runner named attic/.test(missing.stderr) &&
+		/laptop/.test(missing.stderr) &&
+		/desk/.test(missing.stderr) &&
+		!/thread \d+/.test(missing.stdout),
+	"asking a runner that isn't there names the ones that are",
+	JSON.stringify(missing),
+)
+check(
+	(await api('GET', '/api/threads')).json.length === before404,
+	'and the failed post leaves no empty thread in the list',
+)
+
 const both = await cli(
 	'post',
 	'--thread',

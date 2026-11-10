@@ -99,10 +99,10 @@ function show({ id, data: message }) {
 async function post() {
 	const body = rest.join(' ')
 	if (!body) throw new Error('post what?')
-	const id = flags.thread
-		? Number(flags.thread)
-		: (await api('POST', '/api/threads', { title: flags.title ?? defaultTitle(body) })).id
-	if (!flags.thread) console.log(`thread ${id}`)
+	const fresh = !flags.thread
+	const id = fresh
+		? (await api('POST', '/api/threads', { title: flags.title ?? defaultTitle(body) })).id
+		: Number(flags.thread)
 	const seen = (await api('GET', `/api/threads/${id}`)).entries.at(-1)?.id ?? 0
 	const to = flags.to && (flags.to.includes('nobody') ? null : flags.to.map(agent))
 	/** Listen before posting so even an immediate answer can't slip between the read and the wait */
@@ -117,8 +117,22 @@ async function post() {
 			...(flags.to ? { to } : {}),
 			...(flags.steer ? { steer: true } : {}),
 			requestId: crypto.randomUUID(),
+		}).catch(async (error) => {
+			// A new thread that never got its message isn't worth keeping
+			if (fresh) await api('POST', `/api/threads/${id}/archive`, { archived: true }).catch(() => {})
+			if (error.message.startsWith('No runner named ')) {
+				const names = (await api('GET', '/api/runners')).map((runner) => runner.name)
+				error.message += names.length
+					? `. Runners: ${names.join(', ')}`
+					: '. No runner has connected yet'
+			}
+			throw error
 		})
-		if (flags['no-wait'] || !(posted.command || posted.to?.length)) return
+		if (fresh) console.log(`thread ${id}`)
+		const asked = posted.command || posted.to?.length
+		if (!asked && !flags.to)
+			console.error('Asked nobody: name a model@runner, a runner or a bot with --to')
+		if (flags['no-wait'] || !asked) return
 		let last = posted.entry ?? seen
 		let waiting = ''
 		for (;;) {

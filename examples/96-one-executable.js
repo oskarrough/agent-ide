@@ -36,4 +36,14 @@ check(
 )
 check((await run('threads')).includes('runner'), 'threads dispatch')
 check((await run('revoke', 'laptop')).includes('revoked'), 'revoke dispatch')
+for (const flag of ['--help', '-h']) {
+	const { stdout } = await promisify(execFile)(process.execPath, [`${repo}/${bin}`, flag], {
+		timeout: 8000,
+	})
+	check(
+		stdout.includes('runner') && stdout.includes('post'),
+		`${flag} says what it runs, without starting a server`,
+		stdout,
+	)
+}
 done()
