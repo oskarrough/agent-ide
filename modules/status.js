@@ -5,6 +5,8 @@
  * On by default; MODULES=-status turns it off. STATUS=1 writes even when stdout isn't a terminal.
  */
 
+export const on = true
+
 /** One telling at a time, so an older one never lands after a newer one */
 export function server({ runners, known, threadList }) {
 	let telling

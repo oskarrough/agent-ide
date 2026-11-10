@@ -1,12 +1,15 @@
 /**
  * A bot is one name in many threads: a home thread, the agent it joins as, instructions, and the hue it's shown in if
  * someone picked one. Ask `ada` anywhere and an
- * agent named ada joins as that; at home, hands off, it rewrites its own instructions with the `bot` tool. MODULES=+bots
+ * agent named ada joins as that; at home, hands off, it rewrites its own instructions with the `bot` tool. On by default;
+ * MODULES=-bots turns it off.
  */
 import { obj, opt, str } from '@earendil-works/pi-schema'
 import { defineDoc, defineExtension, defineTool } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { AGENT, agentTo } from '../util.js'
+
+export const on = true
 
 /** A bot's name → { home, to, instructions, color? }: color is a hue someone picked */
 const Bots = defineDoc({

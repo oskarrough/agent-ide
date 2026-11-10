@@ -24,6 +24,8 @@ import {
 import { messageText } from '../remote.js'
 import { AGENT, agentTo, collect, said, finished, background } from '../util.js'
 
+export const on = true
+
 const KIND = 'agent-ide.line'
 const RETRY = { enabled: true, maxRetries: 10, baseDelayMs: 2000 }
 const LINE = 512,

@@ -34,7 +34,8 @@ for (const flag of ['--help', '-h']) {
 	)
 }
 
-await server()
+// Auto-title would rename the threads this lists by name
+await server({ MODULES: '-auto-title' })
 const laptop = await runner('laptop')
 await runner('desk')
 

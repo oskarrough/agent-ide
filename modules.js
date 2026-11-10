@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -31,9 +31,27 @@ export async function about(name) {
 		.match(/^.*?\.(?=\s|$)/)?.[0]
 }
 
+/** Each module in modules/ → whether it's on by default, from its own `export const on` */
+export async function builtIn() {
+	const files = (await readdir(new URL('./modules/', import.meta.url))).filter((file) =>
+		file.endsWith('.js'),
+	)
+	return Object.fromEntries(
+		await Promise.all(
+			files
+				.sort()
+				.map(async (file) => [
+					path.basename(file, '.js'),
+					(await import(`./modules/${file}`)).on === true,
+				]),
+		),
+	)
+}
+
 /** A module exports `server(core)` and/or `runner(core)`, which return its hooks */
-export async function load(end, defaults, core, settings) {
+export async function load(end, core, settings) {
 	const { file, config } = settings ?? (await readConfig())
+	const defaults = await builtIn()
 	let on = Object.keys(defaults).filter((name) => defaults[name])
 	for (const [where, list] of [
 		[file, config.modules],

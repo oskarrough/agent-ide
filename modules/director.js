@@ -4,7 +4,8 @@
  * Those a message asks answer one after another, in the order named, each handed the answers before it. A bot's answer
  * that @mentions another bot here asks that bot too, until bots have answered three times in a row with no one else
  * writing; then the next person's message wakes them. With `picks` on, a message that names no one, a person's or an
- * agent's post, in a thread with two or more bots, asks the ones a model picks, or nobody. MODULES=+director
+ * agent's post, in a thread with two or more bots, asks the ones a model picks, or nobody. On by default;
+ * MODULES=-director turns it off.
  *
  * In agent-ide.json `{"director": {"picks": true, "model": "gpt-6-luna:low@oskar"}}`, the model optional;
  * DIRECTOR_MODEL=model@runner turns picks on with that model.
@@ -12,6 +13,8 @@
 import { defineExtension } from '@earendil-works/pi-durable'
 import { messageText } from '../remote.js'
 import { AGENT, agentTo, writtenTo, mentioned } from '../util.js'
+
+export const on = true
 
 const MODEL = 'gpt-6-luna:low@oskar'
 /** The messages it reads before the new one, how much of each, and of a bot's instructions */

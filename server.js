@@ -28,7 +28,7 @@ import {
 } from '@earendil-works/pi-durable/tools'
 import { createCodemodeExtension } from '@earendil-works/pi-durable/codemode'
 import { CodemodeSandbox } from '@earendil-works/pi-codemode'
-import { about, load, readConfig } from './modules.js'
+import { about, builtIn, load, readConfig } from './modules.js'
 import { WebSocketServer } from 'ws'
 import {
 	AGENT,
@@ -1315,21 +1315,12 @@ const core = {
 	once,
 	receipt,
 }
-const defaults = {
-	director: true,
-	talk: true,
-	status: true,
-	memory: true,
-	'auto-title': false,
-	matrix: false,
-	context: true,
-	'web-search': false,
-	bots: true,
-}
+/** Each module in modules/ → on by default, as its own file says */
+const defaults = await builtIn()
 /** agent-ide.json, as it started; the page changes it, and a restart takes it up */
 const settings = await readConfig()
 core.config = settings.config
-const modules = await load('server', defaults, core, settings)
+const modules = await load('server', core, settings)
 for (const module of modules) if (module.extension) registry.install(module.extension)
 const customModules = (settings.config.modules ?? [])
 	.map((entry) => entry.replace(/^[+-]/, ''))

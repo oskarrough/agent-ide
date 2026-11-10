@@ -111,7 +111,7 @@ async function offers() {
 const { version } = await runnerBundle(import.meta.dirname).catch(() => ({ version: '' }))
 const launched = process.env.AGENT_IDE_LAUNCHER === '1'
 
-const modules = await load('runner', { status: true, context: true }, { name, server, dir, roots })
+const modules = await load('runner', { name, server, dir, roots })
 
 function folders() {
 	const found = []

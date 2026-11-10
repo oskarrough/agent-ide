@@ -13,6 +13,8 @@ import {
 import { defineExtension } from '@earendil-works/pi-durable'
 import { within } from '../remote.js'
 
+export const on = true
+
 export function server({ runners }) {
 	const section = {
 		key: 'project',

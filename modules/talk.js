@@ -8,6 +8,8 @@ import { defineExtension, defineTool } from '@earendil-works/pi-durable'
 import { messageText } from '../remote.js'
 import { AGENT, writtenTo, field, keyOf, said, mentioned } from '../util.js'
 
+export const on = true
+
 export function server(core) {
 	const { agentOf, home } = core
 	const answered = async (thread, by) =>

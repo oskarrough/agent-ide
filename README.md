@@ -80,8 +80,8 @@ Threads and conversations live in `agent-ide.sqlite` in the folder you start in,
 
 Everything is a module that you can turn on and off.
 
-On by default: talk, status, context, bots, director and memory.  
-Off: auto-title, web-search and matrix.
+On by default: talk, status, context, bots, director, memory and auto-title.  
+Off: web-search and matrix.
 
 - **talk** gives agents `post` and `threads`, to ask other threads and read them. A thread answers the thread that started it on its own; anywhere else, an agent answers with `post`.
 - **memory** summarizes messages so agents can keep working in long threads. It's used by default in threads with bots; you can switch it on or off for any thread.
@@ -93,7 +93,7 @@ Off: auto-title, web-search and matrix.
 - **web-search** gives agents a `web_search` tool.
 - **matrix** makes Matrix rooms into threads.
 
-For each module's settings, see the top of its file in [modules/](modules).
+For each module's settings, see the top of its file in [modules/](modules). A module there with `export const on = true` is on by default; a new file there is a new module.
 
 ## What's what
 

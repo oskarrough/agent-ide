@@ -5,10 +5,10 @@ for (const [modules, host, expected] of [
 	[
 		'-bots,-director,+bots,+web-search,+director',
 		'',
-		'talk,status,memory,context,bots,web-search,director',
+		'auto-title,context,memory,status,talk,bots,web-search,director',
 	],
 	['bots,web-search,director', '', 'bots,web-search,director'],
-	['-talk,-status,-bots,-director', '::1', 'memory,context'],
+	['-talk,-status,-bots,-director', '::1', 'auto-title,context,memory'],
 	['+bots,web-search,director', '', null],
 ]) {
 	let output = ''

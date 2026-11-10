@@ -72,10 +72,22 @@ async function round(env) {
 	}
 }
 
-const on = await round({ MODULES: '-bots,-director' })
+fresh()
+const plain = await server()
+const { modules: byDefault, off: offByDefault } = (await api('GET', '/api/server')).json
+await kill(plain)
 check(
-	on.modules.join() === 'talk,status,memory,context',
-	'talk, status, memory and context are on; this round turns bots and director off',
+	byDefault.join() === 'auto-title,bots,context,director,memory,status,talk' &&
+		offByDefault.join() === 'matrix,web-search',
+	'each module says in its own file whether it starts on: all but matrix and web-search do',
+	JSON.stringify({ byDefault, offByDefault }),
+)
+
+// Auto-title asks the model too, and would overwrite what the round saw it offered
+const on = await round({ MODULES: '-bots,-director,-auto-title' })
+check(
+	on.modules.join() === 'context,memory,status,talk',
+	'talk, status, memory and context are on; this round turns bots, director and auto-title off',
 	JSON.stringify(on.modules),
 )
 check(
@@ -94,10 +106,10 @@ check(
 	'status on: the runner is told how its threads stand',
 )
 
-const off = await round({ MODULES: '-talk,-status,-context,-bots,-director,-memory' })
+const off = await round({ MODULES: '-talk,-status,-context,-bots,-director,-memory,-auto-title' })
 check(
 	off.modules.length === 0,
-	'MODULES=-talk,-status,-context,-bots,-director: no modules',
+	'every default turned off with MODULES: no modules',
 	JSON.stringify(off.modules),
 )
 check(

@@ -29,7 +29,7 @@ remote.js                the runner protocol, both ends: createRunners (server),
 cli.js                   the API from a terminal
 util.js                  helpers server and modules share: agentTo, writtenTo, mentioned, keyOf, speaker, said,
                          finished (task result), background (thread-owned task)
-modules.js               agent-ide.json, MODULES, and loading each module's server/runner half
+modules.js               builtIn (each module's own `on` default), agent-ide.json, MODULES, and loading each module's server/runner half
 modules/
   talk.js                `post` and `threads` tools; reply sends answers back to the parent thread that asked; a bot in the
                          thread it posts to speaks there as itself (member), and so does a bot that
