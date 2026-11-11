@@ -21,6 +21,7 @@ import { shortLabel } from './agent.js'
 import { BotSettings, botThreads } from './bot.js'
 import { ThreadItem } from './thread-list.js'
 import { Dot, Switch } from './dot.js'
+import { PiSource } from './pi-sessions.js'
 
 export function ThreadDetails() {
 	const here = () => threads.find((thread) => thread.id === current())
@@ -107,6 +108,9 @@ export function ThreadDetails() {
 						<//>
 					</p>
 				<//>
+				<${Show} when=${() => server().modules.includes('pi-sessions') && current()} keyed
+					>${(id) => html`<${PiSource} thread=${id} />`}<//
+				>
 				<${Show} when=${() => homeBot(current())} keyed
 					>${(bot) =>
 						html`<${BotSettings}

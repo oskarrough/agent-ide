@@ -20,7 +20,6 @@ import {
 import {
 	AssistantEntry,
 	CompactionEntry,
-	defineDoc,
 	ProviderDoc,
 	ToolResultEntry,
 } from '@earendil-works/pi-durable'
@@ -32,16 +31,8 @@ export async function server(core) {
 	// Server-only files, which a runner doesn't have
 	const { AGENT, speaker, writtenTo } = await import('../util.js')
 	const { defaultTitle } = await import('../apps/client/title.js')
-	/** Where a thread's agent conversation came from, so its details can say */
-	const Source = defineDoc({
-		kind: 'agent-ide.pi-session-source',
-		version: 1,
-		scope: 'conversation',
-		history: 'latest',
-		fork: 'initial',
-		checkpointWhen: () => true,
-		initial: () => ({ from: null }),
-	})
+	/** The thread's first entry says which pi session it came from; its messages are the other kind, so nothing else reads it */
+	const SOURCE = 'agent-ide.pi-session'
 	const followed = new Map()
 	const touched = new Set()
 	/** Pi has no place for a reset, and a system message would put agent-ide's tools where pi's own belong */
@@ -174,6 +165,15 @@ export async function server(core) {
 		const heading = title?.trim() || read.name || defaultTitle(textOf(first.message.content))
 		const thread = await core.commit(async (tx) => {
 			const threadId = await core.startThread(tx, heading, null, null)
+			await tx.appendEntry(threadId, {
+				kind: SOURCE,
+				data: {
+					runner: name,
+					file: found.path,
+					session: found.id,
+					...(read.name ? { name: read.name } : {}),
+				},
+			})
 			const agent = await core.newAgent(tx, threadId, [])
 			await core.setUp(tx, agent.conversation, threadId, to)
 			const mapped = new Map()
@@ -238,12 +238,6 @@ export async function server(core) {
 				}
 			}
 			;(await core.threadIn(tx, threadId)).agents[AGENT] = agent
-			;(await tx.doc(Source, threadId)).from = {
-				runner: name,
-				file: found.path,
-				session: found.id,
-				...(read.name ? { name: read.name } : {}),
-			}
 			return threadId
 		})
 		return { id: thread }
@@ -254,10 +248,12 @@ export async function server(core) {
 		if (threadId !== undefined) {
 			if (body !== undefined)
 				throw new Error('POST /api/pi-sessions {runner, session} starts a thread from a pi session')
-			// Copied before it leaves the commit, as a document's values must be
-			const from = await core.commit(async (tx) =>
-				JSON.parse(JSON.stringify((await tx.doc(Source, threadId)).from ?? null)),
-			)
+			const [first] = (
+				await core.commit((tx) =>
+					tx.scanEntries({ conversationId: threadId, order: 'ascending' }, 1),
+				)
+			).items
+			const from = first?.kind === SOURCE ? first.data : null
 			return { from }
 		}
 		if (body !== undefined) return bring(body)

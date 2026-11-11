@@ -19,6 +19,7 @@ import { report } from './notice.js'
 import { RunnerList } from './runner.js'
 import { Settings } from './settings.js'
 import { BotItem, NewBot } from './bot.js'
+import { PiSessions } from './pi-sessions.js'
 
 export function ThreadList() {
 	const [creating, setCreating] = createSignal(false)
@@ -47,6 +48,7 @@ export function ThreadList() {
 						current=${() => !current()}
 						onPick=${(_e) => openThread(null)}
 					/>
+					<${Show} when=${() => server().modules.includes('pi-sessions')}><${PiSessions} /><//>
 					<${For}
 						each=${() =>
 							threads.filter(

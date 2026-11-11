@@ -80,6 +80,7 @@ apps/client/             the web client, Solid 2, no build (README.md there)
   thread-list.js         the thread list, its family rows
   thread-details.js      title, people, family, tools and the memory switch for the open thread;
                          a bot's threads as a page of the sheet
+  pi-sessions.js         the thread list's "From a pi session" popover (PiSessions), and in thread details where one came from (PiSource)
   agent-memory.js        memory popover and compaction view for the visible thread
   icons.js               Icon: the client's stroke icons (up, back, plus, close, next, check, again), one viewBox and weight
   title.js               defaultTitle shared by new-thread client paths, CLI and auto-title
