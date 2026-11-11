@@ -1307,6 +1307,8 @@ const core = {
 	botAgent: (name) => botAgent?.(name),
 	botNames: () => botNames?.() ?? [],
 	startThread,
+	newAgent,
+	setUp,
 	setTitleIn,
 	waitForTask: (id) => harness.waitForTask(id, context),
 	post,
