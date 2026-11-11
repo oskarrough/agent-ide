@@ -20,6 +20,7 @@ import {
 	server,
 	text,
 	until,
+	view,
 } from './lib.js'
 
 // Pi's own folder for this run, inside the workspace: no session lands in the real one
@@ -59,8 +60,7 @@ await localRunner('laptop', {
 	model: 'script/one',
 })
 
-const sessions = async () =>
-	(await SessionManager.list(dir)).filter((info) => info.id.startsWith('agent-ide-'))
+const sessions = async () => (await SessionManager.list(dir)).filter((info) => info.cwd === dir)
 /** Pi's own loading of the one file there is, once its newest message is what we wait for */
 const loaded = async (file, newest) => {
 	let session
@@ -84,6 +84,15 @@ check(
 	listed?.cwd === dir,
 	'pi lists the session for the agent’s folder, as pi --resume would',
 	JSON.stringify(listed),
+)
+const sessionIdOf = async (thread) =>
+	(await api('GET', `/api/conversations/${(await view(thread)).agents[0].conversation}`)).json.docs[
+		'pi.provider'
+	].sessionId
+check(
+	listed.id === (await sessionIdOf(id)) && /^[0-9a-f-]{36}$/.test(listed.id),
+	'the session’s id is the conversation’s own, a UUID',
+	listed.id,
 )
 let session = await loaded(listed.path, 'It printed secret-42.')
 check(
@@ -193,6 +202,10 @@ check(
 		'user,assistant,toolResult,assistant,user,assistant,toolResult,assistant',
 	'the fork’s file is its own: the history it kept, then its own turn',
 	roles(session).join(),
+)
+check(
+	own.id === (await sessionIdOf(fork)) && own.id !== listed.id,
+	'a fork’s file has the fork’s own id',
 )
 check(
 	SessionManager.open(listed.path).buildSessionContext().messages.length === 12,

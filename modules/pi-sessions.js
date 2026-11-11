@@ -14,10 +14,11 @@ import {
 	parseSessionEntries,
 	SettingsManager,
 } from '@earendil-works/pi-coding-agent'
+import { ProviderDoc } from '@earendil-works/pi-durable'
 
 export const on = false
 
-/** Conversations the server follows, `conversation` → { created, seen, last, where }; a tick looks only at the newest entry of each */
+/** Conversations the server follows, `conversation` → { session, seen, last, where }; a tick looks only at the newest entry of each */
 export function server(core) {
 	const followed = new Map()
 	const touched = new Set()
@@ -30,7 +31,11 @@ export function server(core) {
 		if (!runner) return
 		const cwd = path.resolve(runner.dir, to.dir ?? '.')
 		const where = `${to.runner} ${cwd}`
-		const session = `agent-ide-${state.created}-${conversation}`
+		// The conversation's own session identity, a UUID that pi uses the same way; a fork has a fresh one
+		state.session ??= await core.commit(
+			async (tx) => (await tx.doc(ProviderDoc, conversation)).sessionId,
+		)
+		const { session } = state
 		const send = (entries) =>
 			core.runners.call(to.runner, { op: 'pi-session', session, cwd, entries }, {})
 		// A new runner or folder starts from what its own file holds
@@ -91,8 +96,7 @@ export function server(core) {
 		const row = await core.thread(threadId)
 		if (!row) return
 		for (const { conversation } of Object.values(row.agents))
-			if (!followed.has(conversation))
-				followed.set(conversation, { created: row.createdAt, seen: 0, last: 0 })
+			if (!followed.has(conversation)) followed.set(conversation, { seen: 0, last: 0 })
 	}
 
 	return {
