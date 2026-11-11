@@ -230,7 +230,6 @@ const commands = {
 		const { id } = await api('POST', '/api/pi-sessions', {
 			runner,
 			session,
-			author: flags.as,
 			...(flags.dir ? { dir: flags.dir } : {}),
 			...(flags.title ? { title: flags.title } : {}),
 		})

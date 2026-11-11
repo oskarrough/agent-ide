@@ -432,9 +432,9 @@ export function serveRunner({
 		/** The pi session files of a folder, one of them read, and a conversation's new entries appended to its own; the folder must be one the runner offers */
 		'pi-session-list': async ({ cwd }) => listPiSessions({ cwd: inside(cwd) }),
 		'pi-session-read': async ({ cwd, file }) => readPiSession({ cwd: inside(cwd), file }),
-		'pi-session': async ({ session, cwd, entries }) => {
+		'pi-session': async ({ session, cwd, entries, title }) => {
 			if (readOnly) throw new Error(`${name} is read-only`)
-			return writePiSession({ session, cwd: inside(cwd), entries })
+			return writePiSession({ session, cwd: inside(cwd), entries, title })
 		},
 		stream: (message, context) => stream(message, context.abortSignal),
 		env,

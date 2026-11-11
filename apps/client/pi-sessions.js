@@ -2,7 +2,7 @@
 import html from '@solidjs/html'
 import { Icon } from './icons.js'
 import { createSignal, createUniqueId, For, Show } from 'solid-js'
-import { api, me, openThread, reloadThreads, runners } from './server.js'
+import { api, openThread, reloadThreads, runners } from './server.js'
 import { placePopover } from './popover.js'
 import { Panes } from './panes.js'
 import { report } from './notice.js'
@@ -44,7 +44,6 @@ export function PiSessions() {
 			const { id: thread } = await api('/api/pi-sessions', {
 				...place(),
 				session: session.path,
-				author: me,
 			})
 			reloadThreads()
 			openThread(thread)
@@ -134,9 +133,7 @@ export function PiSource(props) {
 	return html`
 		<${Show} when=${from}>
 			<h2>From pi</h2>
-			<p class="mute" title=${() => from().file}>
-				${() => `${from().name ?? from().session}, on ${from().runner}`}
-			</p>
+			<p class="mute" title=${() => from().file}>${() => `${from().name}, on ${from().runner}`}</p>
 		<//>
 	`
 }

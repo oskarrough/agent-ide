@@ -46,8 +46,8 @@ modules/
   matrix.js              Matrix rooms as threads (MatrixSend, relay, sync)
   pi-sessions.js         conversations as pi session files: server follows each agent's conversation (push, sync, changed) and sends
                          new entries; writePiSession, the runner's `pi-session` op (remote.js serveRunner), maps them to pi's entries.
-                         The other way: bring (a session's active branch into a new thread: post, newAgent, setUp), serve
-                         (`/api/pi-sessions`), listPiSessions and readPiSession (the runner's `pi-session-list` and `-read`)
+                         The other way: bring (what pi hands its model from a session, into a new thread: newAgent, setUp, post), serve
+                         (`/api/pi-sessions`), listPiSessions and readPiSession (the runner's `pi-session-list` and `-read`, over pi's own projection and convertToLlm)
 apps/client/             the web client, Solid 2, no build (README.md there)
   client.html            the walkthrough and the app's page; the promises every change serves
   client.js              root: just the chat, or the live system around it

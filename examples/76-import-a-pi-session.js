@@ -85,6 +85,20 @@ const answer = session.appendMessage(said([fauxText('It printed secret-42.')]))
 session.appendMessage({ role: 'user', content: 'the road not taken', timestamp: now })
 session.appendMessage(said([fauxText('A dead end.')]))
 session.branch(answer)
+// What pi hands its model besides plain messages: a `!` command, an extension's note, an edit of the context
+session.appendMessage({
+	role: 'bashExecution',
+	command: 'echo bang-77',
+	output: 'bang-77',
+	exitCode: 0,
+	cancelled: false,
+	truncated: false,
+	timestamp: now,
+})
+session.appendCustomMessageEntry('note', 'remember: RED', true)
+const hidden = session.appendMessage({ role: 'user', content: 'hide this', timestamp: now })
+session.appendMessage(said([fauxText('hidden answer')]))
+session.appendContextEdit(hidden, { content: 'REPLACED' })
 session.appendMessage({ role: 'user', content: 'and the other one?', timestamp: now })
 session.appendMessage(said([fauxText('The other one is Friday.')]))
 const file = session.getSessionFile()
@@ -96,11 +110,7 @@ check(
 	'the folder’s pi sessions are listed, by their name',
 	JSON.stringify(listed),
 )
-const brought = await api('POST', '/api/pi-sessions', {
-	runner: 'laptop',
-	session: file,
-	author: 'oskar',
-})
+const brought = await api('POST', '/api/pi-sessions', { runner: 'laptop', session: file })
 check(
 	brought.status < 300 && brought.json.id,
 	'a session comes in as a new thread',
@@ -109,11 +119,23 @@ check(
 const id = brought.json.id
 let thread = await view(id)
 check(thread.title === 'Looking at secrets', 'it is titled by the session’s name', thread.title)
+const said_ = thread.entries.map((entry) => `${entry.data.author}: ${entry.data.body}`)
 check(
-	thread.entries.map((entry) => `${entry.data.author}: ${entry.data.body}`).join(' | ') ===
-		'oskar: run echo secret-42 | one:high@laptop: It printed secret-42. | oskar: and the other one? | one:high@laptop: The other one is Friday.',
-	'the thread shows the active branch only: the person’s words, and what the agent last said each turn',
-	JSON.stringify(thread.entries.map((entry) => entry.data.body)),
+	said_[0] === 'oskar: run echo secret-42' &&
+		said_[1] === 'one:high@laptop: It printed secret-42.' &&
+		said_.at(-2) === 'oskar: and the other one?' &&
+		said_.at(-1) === 'one:high@laptop: The other one is Friday.' &&
+		!said_.join().includes('not taken'),
+	'the thread shows the active branch only, as whoever asked it: the person’s words, and what the agent last said each turn',
+	JSON.stringify(said_),
+)
+check(
+	said_.join('\n').includes('bang-77') &&
+		said_.join('\n').includes('remember: RED') &&
+		said_.join('\n').includes('REPLACED') &&
+		!said_.join('\n').includes('hide this'),
+	'with what pi handed its model besides messages: a command it ran, a note, an edit of the context',
+	JSON.stringify(said_),
 )
 check(
 	thread.agents[0]?.to?.model === 'script/one' &&
@@ -122,26 +144,27 @@ check(
 	'its agent has the session’s last model and thinking, on that runner',
 	JSON.stringify(thread.agents),
 )
+const source = (await api('GET', `/api/threads/${id}/pi-sessions`)).json.from
 check(
-	(await api('GET', `/api/threads/${id}/pi-sessions`)).json.from?.file === file,
-	'the thread remembers the file it came from',
+	source?.file === file && source.name === 'Looking at secrets',
+	'the thread remembers the file it came from, and its name',
+	JSON.stringify(source),
 )
 
 // The next turn is handed the imported conversation, not the thread's words about it
-await api('POST', `/api/threads/${id}/entries`, {
-	body: 'what now?',
-	to: { runner: 'laptop', model: 'script/one' },
-})
-thread = await answered(id, 3)
+// A plain reply, naming no one, goes to its agent
+await api('POST', `/api/threads/${id}/entries`, { body: 'what now?' })
+thread = await answered(id, 4)
 const reply = thread.entries.findLast((entry) => entry.data.answer).data.body
 check(
-	reply.startsWith('handed 7:'),
-	'the agent is handed the six imported messages and the new one',
+	reply.startsWith('handed 11:') && reply.includes('REPLACED') && !reply.includes('hide this'),
+	'the agent is handed the ten imported messages, as pi would hand them, and the new one',
 	reply.slice(0, 60),
 )
 check(
 	reply.includes('secret-42') &&
 		reply.includes('toolCall') &&
+		reply.includes('bang-77') &&
 		reply.includes('The other one is Friday'),
 	'with the tool call and its result',
 )
@@ -172,6 +195,17 @@ const second = await api('POST', '/api/pi-sessions', {
 	runner: 'laptop',
 	session: compacted.getSessionFile(),
 })
+const unpinned = await view(second.json.id)
+check(
+	unpinned.agents[0].to.thinkingLevel === undefined,
+	'a session that never set thinking leaves the thread’s default',
+	JSON.stringify(unpinned.agents[0].to),
+)
+check(
+	(await api('GET', `/api/threads/${second.json.id}/pi-sessions`)).json.from?.name ===
+		'old question',
+	'a session without a name is known by its first line',
+)
 await api('POST', `/api/threads/${second.json.id}/entries`, {
 	body: 'go on',
 	to: { runner: 'laptop', model: 'script/one' },
@@ -221,6 +255,21 @@ check(
 	viaCli,
 )
 
+// A runner with an owner lends its sessions to its owner, as it lends its work
+await localRunner('desk', {
+	models,
+	resolve: (pattern) => ({ model: script.getModel(String(pattern).split('/').pop()) }),
+	echo: script,
+	model: 'script/one',
+	query: [['owner', 'ana']],
+})
+const stranger = await api('GET', '/api/pi-sessions?runner=desk')
+const owner = await api('GET', '/api/pi-sessions?runner=desk', undefined, 'ana')
+check(
+	stranger.status === 403 && owner.status === 200 && owner.json.length >= 2,
+	'a runner with an owner lists its sessions to its owner only',
+	JSON.stringify([stranger.status, owner.status]),
+)
 const missing = await api('POST', '/api/pi-sessions', { runner: 'laptop', session: 'nothing' })
 check(missing.status >= 400, 'a session that isn’t there is refused', JSON.stringify(missing.json))
 done()

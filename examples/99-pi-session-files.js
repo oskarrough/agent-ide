@@ -2,7 +2,7 @@
 import { createModels } from '@earendil-works/pi-ai/models'
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
 import { SessionManager } from '@earendil-works/pi-coding-agent'
-import { appendFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { appendFileSync, chmodSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import {
 	answered,
@@ -102,8 +102,8 @@ check(
 )
 const [user, call1, result, final] = session.buildSessionContext().messages
 check(
-	text(user).includes('run echo secret-42'),
-	'the agent’s message is what the agent was handed',
+	text(user) === 'run echo secret-42',
+	'the person’s message is what pi sees, without agent-ide’s author prefix',
 	text(user),
 )
 const tool = call1.content.find((part) => part.type === 'toolCall')
@@ -121,6 +121,14 @@ check(
 			.every((entry) => entry.type !== 'message' || entry.message.role !== 'system'),
 	'it names the model, and carries no system message that would stand in for pi’s own',
 	JSON.stringify(session.buildSessionContext().model),
+)
+await until(
+	async () => SessionManager.open(listed.path).getSessionName() === (await view(id)).title,
+)
+check(
+	SessionManager.open(listed.path).getSessionName() === (await view(id)).title,
+	'the thread’s title is the session’s name, as pi’s resume list shows it',
+	SessionManager.open(listed.path).getSessionName(),
 )
 const before = readFileSync(listed.path, 'utf8')
 
@@ -238,4 +246,47 @@ check(
 			.messages.some((message) => text(message).includes('asked in pi')),
 	'what pi added stays in the file as a branch of its own; agent-ide’s turns go on beside it',
 )
+// A write that can't be done is said once, not at every change: a read-only runner never writes
+let complaints = 0
+srv.stderr.on('data', (chunk) => {
+	complaints += String(chunk)
+		.split('\n')
+		.filter((line) => line.includes('pi-sessions:')).length
+})
+await localRunner('ro', {
+	models,
+	resolve: (pattern) => ({ model: script.getModel(String(pattern).split('/').pop()) }),
+	echo: script,
+	model: 'script/one',
+	readOnly: true,
+})
+const reading = (await api('POST', '/api/threads', { title: 'read only' })).json.id
+await post(reading, 'look', { runner: 'ro', model: 'script/one' })
+await answered(reading)
+await post(reading, 'and again')
+await answered(reading, 2)
+check(complaints === 1, 'a runner that can’t write is complained of once', complaints)
+
+// A write that fails leaves the file as it was; the next change writes what it missed
+complaints = 0
+chmodSync(listed.path, 0o444)
+await post(id, 'while it is locked', {
+	runner: 'laptop',
+	model: 'script/two',
+	thinkingLevel: 'high',
+})
+await answered(id, 5)
+await until(async () => complaints > 0)
+chmodSync(listed.path, 0o644)
+await post(id, 'and unlocked', { runner: 'laptop', model: 'script/two', thinkingLevel: 'high' })
+await answered(id, 6)
+await until(
+	async () => SessionManager.open(listed.path).buildSessionContext().messages.length === 24,
+)
+check(
+	roles(SessionManager.open(listed.path)).length === 24,
+	'what a failed write missed comes with the next one',
+	roles(SessionManager.open(listed.path)).length,
+)
+check(complaints === 1, 'a failing write is complained of once', complaints)
 done()
