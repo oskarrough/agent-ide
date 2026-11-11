@@ -183,14 +183,14 @@ check(
 check(
 	moved.told.startsWith(
 		`[You now run as echo/echo on vps, in ${path.join(dir, 'site')}. Files and paths from before may not be here`,
-	) && moved.told.endsWith('oskar: and now?'),
+	) && moved.told.endsWith('\n\nand now?'),
 	'it is told where it is now, and not to trust paths from before',
 	moved.told,
 )
 
 const stays = await askThere('again', { runner: 'vps', model: 'echo/echo' }, 3)
 check(
-	stays.cwd === path.join(dir, 'site') && stays.told === 'oskar: again',
+	stays.cwd === path.join(dir, 'site') && stays.told === 'again',
 	'the same runner without a folder keeps the folder, and says nothing new',
 	JSON.stringify([stays.cwd, stays.told]),
 )

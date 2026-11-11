@@ -71,7 +71,7 @@ check(
 	input.slice(0, 40),
 )
 check(
-	input.endsWith(`oskar: ${long(299)}\n\noskar: catch up, please`),
+	input.endsWith(`\n\n${long(299)}\n\ncatch up, please`),
 	'and ends with the newest messages whole',
 )
 const zoomed = conversation.entries.find((e) => e.kind === 'pi.tool-result')

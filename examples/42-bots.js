@@ -162,7 +162,7 @@ const handed = (await api('GET', `/api/conversations/${plain?.conversation}`)).j
 check(
 	v.agents.map((a) => a.name).join() === 'ada,echo@desk' &&
 		answers(v).at(-1).data.author === 'echo@desk' &&
-		handed?.[0].includes('\n\nada (agent): laptop: oskar: build it?'),
+		handed?.[0].includes('\n\nada (agent): laptop: build it?'),
 	"a thread holds one agent and any bots; the agent reads a bot's words marked as an agent's",
 	JSON.stringify([v.agents, handed]),
 )

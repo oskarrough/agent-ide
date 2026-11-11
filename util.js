@@ -70,15 +70,18 @@ export function field(value, name) {
 	return value.trim()
 }
 
-/** A message as an agent reads it */
-export function said({ data: message }) {
-	const agent = Boolean(message.answer || message.error || message.from)
-	const who = agent
-		? `${message.author} (agent${message.from ? `, ${message.re ? 'answering' : 'writing'} from thread ${message.from}` : ''})`
-		: message.author
+/** Whether an agent wrote it, in this thread or from another */
+export const byAgent = (message) => Boolean(message.answer || message.error || message.from)
+
+/** A message as an agent reads it: `plain` while one person is the only voice it has been handed, as typed */
+export function said({ data: message }, plain = false) {
 	const output = message.shell
 		? `\n${[`exit ${message.shell.code ?? message.shell.error}`, message.shell.stdout, message.shell.stderr].filter(Boolean).join('\n')}`
 		: ''
+	if (plain) return `${message.body}${output}`
+	const who = byAgent(message)
+		? `${message.author} (agent${message.from ? `, ${message.re ? 'answering' : 'writing'} from thread ${message.from}` : ''})`
+		: message.author
 	return `${who}: ${`${message.body}${output}`.replace(/\n/g, '\n  ')}`
 }
 

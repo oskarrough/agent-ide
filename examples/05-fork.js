@@ -85,7 +85,7 @@ const inputs = (await conversationOf(fv, 'echo/echo@laptop')).entries
 	.filter((e) => e.kind === 'agent-ide.delivery')
 	.map((e) => text(e.model[0]))
 check(
-	JSON.stringify(inputs) === JSON.stringify(['oskar: hello', 'ben: other way']),
+	JSON.stringify(inputs) === JSON.stringify(['hello', 'ben: other way']),
 	'the forked agent read hello once, then only ben',
 	JSON.stringify(inputs),
 )
@@ -188,8 +188,7 @@ const earlyInputs = (
 	.map((e) => text(e.model[0]))
 check(
 	routed.json.to?.[0] === 'echo@bot' &&
-		JSON.stringify(earlyInputs) ===
-			JSON.stringify(['oskar: try this\n\noskar: @echo/echo@bot try another way']),
+		JSON.stringify(earlyInputs) === JSON.stringify(['try this\n\n@echo/echo@bot try another way']),
 	'the director reaches it, and its first input carries the inherited question exactly once',
 	JSON.stringify([routed.json, earlyInputs]),
 )

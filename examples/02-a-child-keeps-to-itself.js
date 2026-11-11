@@ -27,7 +27,7 @@ await api('POST', `/api/threads/${child.id}/entries`, {
 })
 const answer = await until(async () => (await view(child.id)).entries.find((e) => e.data.answer))
 check(
-	answer?.data.body.startsWith('echo@laptop heard: oskar: do it'),
+	answer?.data.body.startsWith('echo@laptop heard: do it'),
 	'the child answers in the child',
 	JSON.stringify(answer),
 )

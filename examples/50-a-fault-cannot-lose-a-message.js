@@ -48,7 +48,7 @@ const v = await view(id)
 const c = await conversationOf(v, 'echo/echo@bot')
 const inputs = c.entries.filter((e) => e.kind === 'agent-ide.delivery').map((e) => text(e.model[0]))
 check(
-	inputs.length === 1 && inputs[0].includes('oskar: first\n\noskar: second'),
+	inputs.length === 1 && inputs[0].includes('first\n\nsecond'),
 	'it takes the undelivered message too, once and in thread order',
 	JSON.stringify(inputs),
 )

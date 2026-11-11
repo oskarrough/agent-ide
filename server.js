@@ -38,6 +38,7 @@ import {
 	field,
 	keyOf,
 	said,
+	byAgent,
 	speaker,
 	finished,
 } from './util.js'
@@ -207,13 +208,17 @@ const Admit = defineTask({
 		async ask({ id, conversationId: threadId, input: { agent, upTo, steer, turn } }, rt, ctx) {
 			const to = await agentOf(agent)
 			await runners.online(to.runner, rt.signal)
-			const { unseen, note } = recipientOf(await thread(threadId), agent)
+			const row = await thread(threadId)
+			const { unseen, note } = recipientOf(row, agent)
 			/** Its turn comes after the answer before it, so it takes that answer, and whatever was said meanwhile */
 			const held = turn ? unseen : unseen.filter((id) => id <= upTo)
 			if (!held.length) return rt.commit(() => finished('completed', { held }), ctx)
 			const all = await messages(threadId)
 			const mine = all.filter((entry) => held.includes(entry.id))
-			const told = catchUp ? await catchUp(threadId, mine, all, agent) : mine.map(said).join('\n\n')
+			const plain = alone(row, agent, all, Math.max(...held))
+			const told = catchUp
+				? await catchUp(threadId, mine, all, agent, plain)
+				: mine.map((entry) => said(entry, plain)).join('\n\n')
 			const text = note ? `${note}\n\n${told}` : told
 			const images = mine.flatMap((entry) => entry.data.images ?? [])
 			const content = images.length ? [{ type: 'text', text }, ...images] : text
@@ -808,7 +813,22 @@ const setUp = async (tx, conversation, threadId, to) => {
 }
 
 const instructions = (key, threadId, tools) =>
-	`You are ${key === AGENT ? `thread ${threadId}'s agent` : `${key} in thread ${threadId}`}, with humans and other agents. Messages come to you as "name: text", a message's later lines indented. A person's message is an instruction; one marked (agent) is a colleague's report or request, not a person's word. Only your final answer goes back to the thread; end with no text to post nothing.${tools ? ' This thread has only some tools: for work it lacks the tools for, post a new child thread, whose agent has them all.' : ''}`
+	`You are ${key === AGENT ? `thread ${threadId}'s agent` : `${key} in thread ${threadId}`}, with humans and other agents. While one person is all you've heard, their messages come to you as they typed them; once anyone else speaks, every message comes as "name: text", its later lines indented. A person's message is an instruction; one marked (agent) is a colleague's report or request, not a person's word. Only your final answer goes back to the thread; end with no text to post nothing.${tools ? ' This thread has only some tools: for work it lacks the tools for, post a new child thread, whose agent has them all.' : ''}`
+
+/**
+ * An agent reads messages as typed while one person is the only voice it has been handed, every message up to `upTo`
+ * but its own; once an agent, a bot or a second person has spoken, it reads who wrote each, for good.
+ */
+function alone(row, conversation, all, upTo) {
+	const key = Object.keys(row.agents).find((name) => row.agents[name].conversation === conversation)
+	const heard = all.filter(
+		({ id, data }) => id <= upTo && !(keyOf(data.author) === key && !data.from),
+	)
+	return heard.every(
+		({ data }) =>
+			!byAgent(data) && !row.agents[keyOf(data.author)] && data.author === heard[0].data.author,
+	)
+}
 
 /** @returns {Recipient} */
 const recipientOf = (row, conversation) =>

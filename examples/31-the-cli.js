@@ -43,7 +43,7 @@ const { stdout: first, stderr: chatter } = await output('post', '--to', 'echo/ec
 check(!chatter, 'a new thread id and its answers go to stdout, not stderr', chatter)
 const id = /thread (\d+)/.exec(first)?.[1]
 check(
-	id && first.includes('echo:off@laptop') && first.includes('echo@laptop heard: oskar: hello'),
+	id && first.includes('echo:off@laptop') && first.includes('echo@laptop heard: hello'),
 	'post starts a thread and prints the answer',
 	first,
 )
@@ -118,9 +118,7 @@ await cli('post', '--thread', id, '--to', 'echo/echo@laptop', '--no-wait', 'late
 const waited = await cli('wait', id, '--after', String(before))
 const after = await cli('read', id, '--after', String(before))
 check(
-	waited.includes('later please') &&
-		/heard:[\s\S]*oskar: later please/.test(waited) &&
-		waited === after,
+	waited.includes('later please') && /heard:[\s\S]*\nlater please/.test(waited) && waited === after,
 	'post --no-wait returns at once; wait prints what landed once the agents are idle, read --after the same',
 	JSON.stringify([waited, after]),
 )
@@ -145,8 +143,9 @@ const asAgent = await promisify(execFile)(
 		},
 	},
 ).then(({ stdout, stderr }) => stdout + stderr)
+const fromShell = (await view(/thread (\d+)/.exec(asAgent)?.[1])).entries?.[0]?.data
 check(
-	asAgent.includes('echo@laptop heard: claude-opus-4-5:high: from an agent shell'),
+	fromShell?.author === 'claude-opus-4-5:high' && fromShell.body === 'from an agent shell',
 	"inside an agent's bash tool (PI_SESSION_ID set), post writes as its model, not whoever owns the shell",
 	asAgent,
 )

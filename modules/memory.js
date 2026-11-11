@@ -271,14 +271,15 @@ export function server(core) {
 			: undefined
 	}
 
-	async function catchUp(threadId, held, all, agent) {
-		if (!remembers(await core.thread(threadId))) return held.map(said).join('\n\n')
+	async function catchUp(threadId, held, all, agent, plain) {
+		const told = (entry) => said(entry, plain)
+		if (!remembers(await core.thread(threadId))) return held.map(told).join('\n\n')
 		const most = await budget(agent)
 		let first = held.length - 1,
-			size = bytes(said(held[first]))
-		while (first > 0 && size + bytes(said(held[first - 1])) + 2 <= most)
-			size += bytes(said(held[--first])) + 2
-		const whole = held.slice(first).map(said).join('\n\n')
+			size = bytes(told(held[first]))
+		while (first > 0 && size + bytes(told(held[first - 1])) + 2 <= most)
+			size += bytes(told(held[--first])) + 2
+		const whole = held.slice(first).map(told).join('\n\n')
 		if (!first) return whole
 		const at = (entry) => all.findIndex((message) => message.id === entry.id)
 		const older = memory(
