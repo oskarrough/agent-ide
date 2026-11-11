@@ -9,7 +9,7 @@ import { fauxAssistantMessage } from '@earendil-works/pi-ai/providers/faux'
 import { BACKGROUND_CONTEXT, withCancel } from '@earendil-works/chord/context'
 import { ExecutionError, FileError } from '@earendil-works/pi-durable/env'
 import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node'
-import { writePiSession } from './modules/pi-sessions.js'
+import { listPiSessions, readPiSession, writePiSession } from './modules/pi-sessions.js'
 
 /** What a runner is made of, as the server ships it */
 const RUNNER_FILES = [
@@ -429,7 +429,9 @@ export function serveRunner({
 	const ops = {
 		...more,
 		resolve: ({ model }) => resolved(model),
-		/** A conversation's new entries, appended to its pi session file; the folder must be one the runner offers */
+		/** The pi session files of a folder, one of them read, and a conversation's new entries appended to its own; the folder must be one the runner offers */
+		'pi-session-list': async ({ cwd }) => listPiSessions({ cwd: inside(cwd) }),
+		'pi-session-read': async ({ cwd, file }) => readPiSession({ cwd: inside(cwd), file }),
 		'pi-session': async ({ session, cwd, entries }) => {
 			if (readOnly) throw new Error(`${name} is read-only`)
 			return writePiSession({ session, cwd: inside(cwd), entries })

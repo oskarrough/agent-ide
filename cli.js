@@ -23,7 +23,10 @@ const usage = `node cli.js [--server url] [--as name] <command>
   runners          every runner holding a key, online or not, and its models
   key <runner>     a new key for a runner, replacing its old one, and the line that connects it
   revoke <runner>  take its key away: it goes offline and leaves the list
-  stop <thread>    stop its agents and commands`
+  stop <thread>    stop its agents and commands
+  import <runner> [session]
+                   with pi-sessions on: list the pi sessions in the runner's folder (--dir for another),
+                   or start a new thread from one, by id or path, and print "thread N"; --title names it`
 
 const parse = (options) => {
 	try {
@@ -213,6 +216,26 @@ const commands = {
 		console.log(`${rest[0]} revoked`)
 	},
 	stop: () => api('POST', `/api/threads/${Number(rest[0])}/stop`),
+	async import() {
+		const [runner, session] = rest
+		if (!runner) throw new Error('import from which runner?')
+		if (!session) {
+			const query = new URLSearchParams({ runner, ...(flags.dir ? { dir: flags.dir } : {}) })
+			for (const found of await api('GET', `/api/pi-sessions?${query}`))
+				console.log(
+					`${found.id}  ${found.modified.slice(0, 16).replace('T', ' ')}  ${found.messageCount} messages  ${found.name ?? found.firstMessage.slice(0, 60)}`,
+				)
+			return
+		}
+		const { id } = await api('POST', '/api/pi-sessions', {
+			runner,
+			session,
+			author: flags.as,
+			...(flags.dir ? { dir: flags.dir } : {}),
+			...(flags.title ? { title: flags.title } : {}),
+		})
+		console.log(`thread ${id}`)
+	},
 }
 
 if (flags.help || !commands[command]) {
