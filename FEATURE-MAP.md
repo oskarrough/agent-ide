@@ -44,6 +44,8 @@ modules/
   web-search.js          `web_search`
   status.js              Program Status Protocol (OSC 7501) on the runner's terminal
   matrix.js              Matrix rooms as threads (MatrixSend, relay, sync)
+  pi-sessions.js         conversations as pi session files: server follows each agent's conversation (push, sync, changed) and sends
+                         new entries; writePiSession, the runner's `pi-session` op (remote.js serveRunner), maps them to pi's entries
 apps/client/             the web client, Solid 2, no build (README.md there)
   client.html            the walkthrough and the app's page; the promises every change serves
   client.js              root: just the chat, or the live system around it
@@ -97,6 +99,7 @@ examples/17-memory-compaction.js   automatic and manual cuts, memory coverage an
 examples/27-watch-agents-work.js   socket snapshots, streaming entries, delivery identity and reconnects
 examples/all.js          suite queue, per-example timeout and interruption cleanup
 examples/92-the-server-keeps-a-log.js   the log next to the store: output, crash stack, exit code
+examples/99-pi-session-files.js   the session file pi loads: tool call, model change, compaction, restart, fork
 examples/93-auto-title.js          one-shot default titles, explicit titles, edits in flight, failures, a new title on request
 examples/74-examples-clean-up.js   CLI checks: example exit, failure and timeout leave no server
 examples/64-settings-restart-the-server.js   settings write agent-ide.json and restart in place; only the server's machine may
@@ -121,6 +124,7 @@ Where a feature lives:
 - Forks: server.js forkThread/seenBy, client server.js fork, thread.js Message (fork link).
 - `$ cmd`: server.js Shell, printed, shells.
 - Status dots: server.js status/busiest, client dot.js.
+- Pi session files: modules/pi-sessions.js; the runner's message is `pi-session` in remote.js serveRunner, shipped with the runner through RUNNER_FILES.
 - Settings and modules: modules.js, server.js saveSettings/restart, client settings.js.
 
 ## UI parts

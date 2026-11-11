@@ -9,6 +9,7 @@ import { fauxAssistantMessage } from '@earendil-works/pi-ai/providers/faux'
 import { BACKGROUND_CONTEXT, withCancel } from '@earendil-works/chord/context'
 import { ExecutionError, FileError } from '@earendil-works/pi-durable/env'
 import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node'
+import { writePiSession } from './modules/pi-sessions.js'
 
 /** What a runner is made of, as the server ships it */
 const RUNNER_FILES = [
@@ -17,6 +18,7 @@ const RUNNER_FILES = [
 	'modules.js',
 	'modules/status.js',
 	'modules/context.js',
+	'modules/pi-sessions.js',
 ]
 const RUNNER_PACKAGES = [
 	'@earendil-works/chord',
@@ -427,6 +429,11 @@ export function serveRunner({
 	const ops = {
 		...more,
 		resolve: ({ model }) => resolved(model),
+		/** A conversation's new entries, appended to its pi session file; the folder must be one the runner offers */
+		'pi-session': async ({ session, cwd, entries }) => {
+			if (readOnly) throw new Error(`${name} is read-only`)
+			return writePiSession({ session, cwd: inside(cwd), entries })
+		},
 		stream: (message, context) => stream(message, context.abortSignal),
 		env,
 		handle,

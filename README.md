@@ -81,7 +81,7 @@ Threads and conversations live in `agent-ide.sqlite` in the folder you start in,
 Everything is a module that you can turn on and off.
 
 On by default: talk, status, context, bots, director, memory and auto-title.  
-Off: web-search and matrix.
+Off: web-search, matrix and pi-sessions.
 
 - **talk** gives agents `post` and `threads`, to ask other threads and read them. A thread answers the thread that started it on its own; anywhere else, an agent answers with `post`.
 - **memory** summarizes messages so agents can keep working in long threads. It's used by default in threads with bots; you can switch it on or off for any thread.
@@ -92,6 +92,7 @@ Off: web-search and matrix.
 - **auto-title** turns a thread's first message into a short title once it's answered. `POST /api/threads/:id/auto-title` writes a new one whenever you ask and answers with it, or with why it couldn't; a rename in the meantime wins.
 - **web-search** gives agents a `web_search` tool.
 - **matrix** makes Matrix rooms into threads.
+- **pi-sessions** writes each agent's conversation as a pi session file on its runner, in the folder where pi keeps sessions for the agent's folder (`PI_CODING_AGENT_SESSION_DIR`, or `~/.pi/agent/sessions/`), so `pi --resume` there lists it and carries on. A file only grows, as the conversation does; a runner that was offline writes what it missed when it's back, and a read-only runner writes nothing. A fork gets a file of its own once someone writes in it. It goes one way: whatever you add to the file in pi, agent-ide never reads.
 
 For each module's settings, see the top of its file in [modules/](modules). A module there with `export const on = true` is on by default; a new file there is a new module.
 
