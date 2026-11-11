@@ -1292,6 +1292,7 @@ const core = {
 	models,
 	runners,
 	known,
+	reach,
 	address,
 	whom,
 	agentOf,
@@ -1486,18 +1487,25 @@ const routes = [
 	...modules
 		.filter((module) => module.serve)
 		.flatMap((module) => [
-			[`GET /api/${module.name}`, (req, _, url) => module.serve(undefined, url.searchParams)],
+			[
+				`GET /api/${module.name}`,
+				(req, _, url) => module.serve(undefined, url.searchParams, undefined, user(req)),
+			],
 			[
 				`POST /api/${module.name}`,
-				async (req, _, url) => module.serve(undefined, url.searchParams, await input(req)),
+				async (req, _, url) =>
+					module.serve(undefined, url.searchParams, await input(req), user(req)),
 			],
 			...(module.remove
 				? [[`DELETE /api/${module.name}/:name`, (req, name) => module.remove(name)]]
 				: []),
-			[`GET /api/threads/:id/${module.name}`, (req, id, url) => module.serve(id, url.searchParams)],
+			[
+				`GET /api/threads/:id/${module.name}`,
+				(req, id, url) => module.serve(id, url.searchParams, undefined, user(req)),
+			],
 			[
 				`POST /api/threads/:id/${module.name}`,
-				async (req, id, url) => module.serve(id, url.searchParams, await input(req)),
+				async (req, id, url) => module.serve(id, url.searchParams, await input(req), user(req)),
 			],
 		]),
 ].map(([key, handle]) => [
