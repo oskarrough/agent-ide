@@ -206,8 +206,7 @@ const Admit = defineTask({
 		wait: ({ input: { after, turn } }, rt, ctx) =>
 			rt.commit(() => waiting([after?.admit, turn].filter(Boolean), 'ask'), ctx),
 		async ask({ id, conversationId: threadId, input: { agent, upTo, steer, turn } }, rt, ctx) {
-			const to = await agentOf(agent)
-			await runners.online(to.runner, rt.signal)
+			await reachable(agent, rt.signal)
 			const row = await thread(threadId)
 			const { unseen, note } = recipientOf(row, agent)
 			/** Its turn comes after the answer before it, so it takes that answer, and whatever was said meanwhile */
@@ -362,6 +361,8 @@ function printed(
 
 const clients = new Set()
 const runners = createRunners({ onChange: notify })
+/** Waits woken by every change; set before Pi resumes tasks that wait */
+const changes = new Set()
 /** What each running `$ cmd` has printed so far */
 const shells = new Map()
 /** The runner this server ships, and the updater that fetches it */
@@ -599,6 +600,30 @@ async function agentOf(id, key, tx) {
 }
 
 // ── Live work and statuses ────────────────────────────────────────────────
+
+/** Until the agent's runner is online, following the agent if it's asked on another runner meanwhile */
+async function reachable(agent, signal) {
+	for (;;) {
+		const to = await agentOf(agent)
+		// Its runner dialling in, or any change, which may be the agent moving, wakes it to look again
+		const done = new AbortController()
+		const stop = () => done.abort(signal.reason)
+		signal.addEventListener('abort', stop, { once: true })
+		let wake
+		try {
+			await Promise.race([
+				runners.online(to.runner, done.signal),
+				new Promise((resolve) => changes.add((wake = resolve))),
+			])
+		} finally {
+			changes.delete(wake)
+			signal.removeEventListener('abort', stop)
+			done.abort()
+		}
+		signal.throwIfAborted()
+		if (runners.isOnline(to.runner)) return to
+	}
+}
 
 /** One status for an agent, a thread, a runner or a bot: `working`, `blocked` while its runner is offline, or `idle` */
 const STATUSES = ['idle', 'blocked', 'working']
@@ -1698,6 +1723,7 @@ let flushing
 function notify() {
 	flushing ??= setTimeout(() => {
 		flushing = undefined
+		for (const wake of changes) wake()
 		nudge()
 		for (const socket of clients) socket.send('{}')
 		for (const module of modules) module.changed?.()

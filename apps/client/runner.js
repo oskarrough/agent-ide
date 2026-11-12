@@ -124,7 +124,7 @@ export function RunnerList() {
 			popovertarget=${id}
 		>
 			<${For} each=${() => runners}
-				>${(runner) => html`<${Dot} state=${() => (runner.online ? 'on' : '')} />`}<//
+				>${(runner) => html`<${Dot} state=${() => (runner.status === 'blocked' ? 'blocked' : runner.online ? 'on' : '')} />`}<//
 			>
 			<span>${() => `${online()} online`}</span>
 		</button>
@@ -154,17 +154,19 @@ export function RunnerList() {
 }
 
 function RunnerItem(props) {
-	const work = createMemo(() =>
+	const asking = (status) =>
 		threads.flatMap((thread) =>
 			thread.agents
-				.filter((agent) => agent.to.runner === props.runner.name && agent.status === 'working')
+				.filter((agent) => agent.to?.runner === props.runner.name && agent.status === status)
 				.map((agent) => ({
 					thread: thread.id,
 					title: thread.title,
 					conversation: agent.conversation,
 				})),
-		),
-	)
+		)
+	const work = createMemo(() => asking('working'))
+	/** Threads asking it while it's away */
+	const waiting = createMemo(() => [...new Set(asking('blocked').map((work) => work.title))])
 	const call = () =>
 		work()
 			.map((agent) => lastToolCall(doing[agent.thread]?.[agent.conversation]))
@@ -188,7 +190,7 @@ function RunnerItem(props) {
 					<small class=${() => ({ doing: props.runner.online })}
 						>${() =>
 							!props.runner.online
-								? 'offline'
+								? `offline${waiting().length ? `, ${waiting().join(', ')} waiting for it` : ''}`
 								: call() ||
 									`working in ${work()
 										.map((work) => work.title)

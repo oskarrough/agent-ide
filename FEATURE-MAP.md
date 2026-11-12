@@ -13,6 +13,7 @@ server.js                the server: Pi Durable store, tasks, HTTP API, /ws, run
   post, append, postEntry           write a message and hand it to each agent it asks
   reconfigure, newAgent, setUp      an agent switching model/thinking/runner/folder in place, or starting
   outcome, tell, restore, faulted   what a finished delivery posts back (a bot's answer asks whom direct says), or a failure says
+  reachable                         a message waits for its agent's runner, following the agent if it moves
   work, status, busiest, agentsIn   working / blocked / idle for agents, threads, runners
   threadList, threadRow, threadView, people   what GET /api/threads returns
   forkThread, seenBy                forks

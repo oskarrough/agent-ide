@@ -39,7 +39,8 @@ export function Turn(props) {
 			return running.name === 'post'
 				? `asking ${askedThread(running) ? titleOf(askedThread(running)) : (running.args.title ?? 'a new thread')}`
 				: `${running.name}(${argsLine(running)})`
-		if (props.agent.status === 'blocked') return 'waiting for its runner'
+		if (props.agent.status === 'blocked')
+			return `waiting for ${props.agent.to?.runner ?? 'its runner'} to come online`
 		return messageText(live()?.message) ? 'writing' : 'thinking'
 	}
 	const calls = () => steps().filter((step) => step.name)
