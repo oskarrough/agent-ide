@@ -7,7 +7,7 @@ bin.js                   installed executable: dispatches to server, CLI command
 server.js                the server: Pi Durable store, tasks, HTTP API, /ws, runners, settings
   Thread, Runners, Keys, Receipts   the docs it keeps (defineDoc)
   Anchor, Admit, Deliver, Shell     the tasks: own an agent, take a message in, hand it over, run `$ cmd`
-  alone                             whether an agent reads messages as typed (one person is all it has heard) or as "name: text"
+  person                            whether a person wrote a message; Admit hands one person's as typed, and tags them once a second writes
   address, whom, modelOn, reach     whom a `to` asks, on which runner and model
   recipients                       director → explicit recipient → last-asked choice
   post, append, postEntry           write a message and hand it to each agent it asks
@@ -29,7 +29,7 @@ runner-updater.js        what `curl <server>/connect-runner | sh` starts; keeps 
 remote.js                the runner protocol, both ends: createRunners (server), serveRunner (runner),
                          runnerProvider (a model over the wire), remoteEnv (tools in the runner's folder)
 cli.js                   the API from a terminal
-util.js                  helpers server and modules share: agentTo, writtenTo, mentioned, keyOf, speaker, said, byAgent,
+util.js                  helpers server and modules share: agentTo, writtenTo, mentioned, keyOf, speaker, said, written, byAgent,
                          finished (task result), background (thread-owned task)
 modules.js               builtIn (each module's own `on` default), agent-ide.json, MODULES, and loading each module's server/runner half
 modules/
@@ -101,7 +101,7 @@ scripts/
   replay-pi.js           replays pi sessions into a thread, to try memory
 examples/lib.js          what examples share: start (owned child processes), kill (awaits the exit), server, runner, scriptedRunner, api, view, until, quiet/settled/online (wait for state, not the clock), check
 examples/17-memory-compaction.js   automatic and manual cuts, memory coverage and budget at small and large windows
-examples/14-a-person-alone-reads-as-typed.js   one person alone is handed as typed; after anyone else, labelled for good
+examples/14-one-person-reads-as-typed.js       one person is handed as typed, bots in <message from>; a second person tags everyone
 examples/27-watch-agents-work.js   socket snapshots, streaming entries, delivery identity and reconnects
 examples/all.js          suite queue, per-example timeout and interruption cleanup
 examples/92-the-server-keeps-a-log.js   the log next to the store: output, crash stack, exit code

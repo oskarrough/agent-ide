@@ -42,7 +42,7 @@ export async function server(core) {
 	/** Pi has no place for a reset, and a system message would put agent-ide's tools where pi's own belong */
 	const sendable = (entry) => entry.kind !== 'pi.system' && entry.kind !== 'pi.reset' && entry.model
 
-	/** What the person typed, where agent-ide handed the agent "name: text" (once someone else has spoken) or a note before it: pi sees the one, and an import brings back the one */
+	/** What the person typed, where agent-ide handed the agent a tag naming them (once a second person has written) or a note before it: pi sees the one, and an import brings back the one */
 	function typed(entry, said) {
 		if (entry.kind !== DELIVERY) return entry
 		const [only, ...more] = entry.data.held

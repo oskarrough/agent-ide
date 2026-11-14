@@ -73,16 +73,23 @@ export function field(value, name) {
 /** Whether an agent wrote it, in this thread or from another */
 export const byAgent = (message) => Boolean(message.answer || message.error || message.from)
 
-/** A message as an agent reads it: `plain` while one person is the only voice it has been handed, as typed */
+/** A message's text, with what its shell command gave */
+export const written = (message) =>
+	`${message.body}${
+		message.shell
+			? `\n${[`exit ${message.shell.code ?? message.shell.error}`, message.shell.stdout, message.shell.stderr].filter(Boolean).join('\n')}`
+			: ''
+	}`
+
+/** A message as an agent reads it: inside a tag that names who wrote it, or, a person's when `plain`, as typed */
 export function said({ data: message }, plain = false) {
-	const output = message.shell
-		? `\n${[`exit ${message.shell.code ?? message.shell.error}`, message.shell.stdout, message.shell.stderr].filter(Boolean).join('\n')}`
+	if (plain && !byAgent(message)) return written(message)
+	const from = String(message.author).replace(/[&"<>]/g, (c) => `&#${c.charCodeAt(0)};`)
+	const agent = byAgent(message)
+		? ` agent${message.from ? ` thread="${message.from}"${message.re ? ' answering' : ''}` : ''}`
 		: ''
-	if (plain) return `${message.body}${output}`
-	const who = byAgent(message)
-		? `${message.author} (agent${message.from ? `, ${message.re ? 'answering' : 'writing'} from thread ${message.from}` : ''})`
-		: message.author
-	return `${who}: ${`${message.body}${output}`.replace(/\n/g, '\n  ')}`
+	/** A body can't open or close a tag of this name, so nothing in it can pass for someone else's message */
+	return `<message from="${from}"${agent}>\n${written(message).replace(/<(\/?message)/gi, '&lt;$1')}\n</message>`
 }
 
 /** Bot names a message @mentions, in mention order, ignoring case and trailing dots. */

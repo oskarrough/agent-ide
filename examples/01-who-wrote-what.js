@@ -80,7 +80,8 @@ check(
 	JSON.stringify(ana),
 )
 check(
-	answers(v2 ?? { entries: [] })[1]?.data.body === 'echo@laptop heard: ana: me too',
+	answers(v2 ?? { entries: [] })[1]?.data.body ===
+		`echo@laptop heard: [Every message above without a tag is oskar's.]\n\n<message from="ana">\nme too\n</message>`,
 	"the agent catches up on what's new, not its own answer",
 	JSON.stringify(v2?.entries.at(-1)),
 )

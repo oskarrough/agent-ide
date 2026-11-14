@@ -85,7 +85,11 @@ const inputs = (await conversationOf(fv, 'echo/echo@laptop')).entries
 	.filter((e) => e.kind === 'agent-ide.delivery')
 	.map((e) => text(e.model[0]))
 check(
-	JSON.stringify(inputs) === JSON.stringify(['hello', 'ben: other way']),
+	JSON.stringify(inputs) ===
+		JSON.stringify([
+			'hello',
+			`[Every message above without a tag is oskar's.]\n\n<message from="ben">\nother way\n</message>`,
+		]),
 	'the forked agent read hello once, then only ben',
 	JSON.stringify(inputs),
 )

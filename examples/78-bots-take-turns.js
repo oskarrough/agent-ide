@@ -41,7 +41,7 @@ check(
 	JSON.stringify(authors(first)),
 )
 check(
-	handed.Ada?.[0]?.includes('Bram (agent): Bram here'),
+	handed.Ada?.[0]?.includes('<message from="Bram" agent>\nBram here\n</message>'),
 	'the second is handed the first one’s answer',
 	JSON.stringify(handed.Ada),
 )
@@ -66,7 +66,8 @@ check(
 )
 const told = handed.Ada.at(-1)
 check(
-	told.includes('Bram (agent): Bram done') && told.includes('and one more thing'),
+	told.includes('<message from="Bram" agent>\nBram done\n</message>') &&
+		told.includes('and one more thing'),
 	'a message written mid-sequence reaches the next bot along with the answer before it',
 	told,
 )

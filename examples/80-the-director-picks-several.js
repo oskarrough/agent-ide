@@ -38,7 +38,7 @@ check(
 	'they answer in that order',
 )
 check(
-	handed.Ada.at(-1).includes('Kira (agent): Kira thinks so'),
+	handed.Ada.at(-1).includes('<message from="Kira" agent>\nKira thinks so\n</message>'),
 	'the second is handed the first one’s answer',
 	handed.Ada.at(-1),
 )

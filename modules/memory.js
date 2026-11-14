@@ -22,7 +22,7 @@ import {
 	hook,
 } from '@earendil-works/pi-durable'
 import { messageText } from '../remote.js'
-import { AGENT, agentTo, collect, said, finished, background } from '../util.js'
+import { AGENT, agentTo, byAgent, collect, written, finished, background } from '../util.js'
 
 export const on = true
 
@@ -38,6 +38,13 @@ const PAGE = 16 * 1024,
 const bytes = (text) => Buffer.byteLength(text)
 const key = (l, i) => `${l}:${i}`
 const RULER = '-'.repeat(LINE)
+/** A message as memory keeps it: who wrote it, then its text, later lines indented so none can pass for a speaker */
+const kept = ({ data: message }) =>
+	`${
+		byAgent(message)
+			? `${message.author} (agent${message.from ? `, ${message.re ? 'answering' : 'writing'} from thread ${message.from}` : ''})`
+			: message.author
+	}: ${written(message).replace(/\n/g, '\n  ')}`
 const cut = (text) => {
 	let head = Buffer.from(text).subarray(0, LINE).toString()
 	while (bytes(head) > LINE) head = head.slice(0, -1)
@@ -209,7 +216,7 @@ export function server(core) {
 					const limit = `into one line of at most ${LINE} bytes (about 70 words), the length of this ruler:\n${RULER}`
 					let source, task
 					if (!l) {
-						source = said(all[i])
+						source = kept(all[i])
 						task = `${render(memory(have, i, CONTEXT))}\n\n${ask} ${limit}\n<input>\n${source}\n</input>`
 					} else {
 						const [left, right] = [have.get(key(l - 1, 2 * i)), have.get(key(l - 1, 2 * i + 1))]
@@ -271,8 +278,7 @@ export function server(core) {
 			: undefined
 	}
 
-	async function catchUp(threadId, held, all, agent, plain) {
-		const told = (entry) => said(entry, plain)
+	async function catchUp(threadId, held, all, agent, told) {
 		if (!remembers(await core.thread(threadId))) return held.map(told).join('\n\n')
 		const most = await budget(agent)
 		let first = held.length - 1,
@@ -296,7 +302,7 @@ export function server(core) {
 		const l = Math.log2(n)
 		if (!Number.isInteger(l) || !Number.isInteger(id) || id < 0 || id % n || id >= all.length)
 			throw new Error(`No line ${id}+${n}; zoom one from your memory`)
-		if (n === 1) return said(all[id])
+		if (n === 1) return kept(all[id])
 		const have = await core.commit((tx) => lines(tx, thread))
 		const half = (index) => have.get(key(l - 1, index)) ?? unwritten(l - 1, index)
 		return [half(2 * (id / n)), half(2 * (id / n) + 1)].filter(

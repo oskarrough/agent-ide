@@ -139,7 +139,11 @@ const old = said('@oskar:fake', '@bot an old question, from before the bridge')
 let srv = await server(env)
 await until(async () => synced)
 await scriptedRunner('bot', (request) => {
-	const heard = text(request.messages.findLast((m) => m.role === 'user'))
+	/** The newest message is in a tag that names its sender; the answer ends on its words */
+	const heard = text(request.messages.findLast((m) => m.role === 'user')).replace(
+		/\n<\/message>$/,
+		'',
+	)
 	if (heard.endsWith('@bot fail please'))
 		return fauxAssistantMessage([], { stopReason: 'error', errorMessage: 'boom' })
 	if (heard.includes('busy') && !request.messages.some((m) => m.role === 'toolResult'))

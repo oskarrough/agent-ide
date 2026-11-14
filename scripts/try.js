@@ -36,10 +36,11 @@ const bots = (request) => {
 	const system = JSON.stringify(request.messages.filter((m) => m.role === 'system'))
 	const name = /You are the bot (\w+)/.exec(system)?.[1]
 	if (!name || request.messages.at(-1).role !== 'user') return undefined
+	/** A person's words come as typed and everyone else's inside a <message> tag, a blank line between messages */
 	const handed = text(request.messages.at(-1))
-		.split('\n')
-		.filter((line) => /^[\w.@/:-]+( \(agent\))?: /.test(line))
-	const newest = (handed.at(-1) ?? '').slice(0, 120)
+		.split(/\n\n(?=<message from=")|(?<=\n<\/message>)\n\n/)
+		.filter(Boolean)
+	const newest = (handed.at(-1) ?? '').replace(/\n/g, ' ').slice(0, 120)
 	return say(`${name} (${personas[name]}) got ${handed.length}, newest "${newest}"`)
 }
 /** The director's pick: the bot whose persona's last word the message uses, else nobody */
@@ -84,7 +85,7 @@ const step = (request) => {
 		return call('bash', {
 			command: `${asked.includes('slow') ? 'sleep 5; ' : ''}ls -la; cat notes.md`,
 		})
-	if (n === 4 && asked.includes('post') && !asked.includes('from thread'))
+	if (n === 4 && asked.includes('post') && !/<message from="[^"]*" agent thread=/.test(asked))
 		return call('post', {
 			title: 'side question',
 			body: `${asked.includes('slow') ? 'slow: ' : ''}what did you find?`,

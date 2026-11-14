@@ -23,7 +23,7 @@ const route = (request) => {
 	const last = request.messages.findLast((m) => m.role !== 'system')
 	const t = text(last)
 	if (last.role === 'toolResult') return say(`tool said: ${t}`)
-	if (t.includes('answering from thread')) return say('noted')
+	if (t.includes(' answering>')) return say('noted')
 	if (t.includes('reach laptop'))
 		return call('post', { title: 'hop', body: 'hello laptop', to: 'echo/echo@laptop' })
 	return say(`heard: ${t}`)

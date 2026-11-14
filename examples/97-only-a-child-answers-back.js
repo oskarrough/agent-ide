@@ -21,7 +21,7 @@ const bot = await scriptedRunner('bot', (request) => {
 	const last = request.messages.findLast((m) => m.role !== 'system')
 	const t = text(last)
 	if (last.role === 'toolResult') return say('')
-	if (t.includes('answering from thread')) return say('heard the answer')
+	if (t.includes(' answering>')) return say('heard the answer')
 	if (t.includes('progress note')) return say('for oskar: go')
 	if (t.includes('delegate'))
 		return call('post', { title: 'sum', body: 'compute 2+2', to: 'echo/echo@bot' })

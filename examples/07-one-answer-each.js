@@ -32,7 +32,7 @@ const bot = await scriptedRunner('bot', async (request) => {
 		if (results.length === 2) return call('post', { thread: child, body: 'and a third' })
 		return say('waiting')
 	}
-	if (t.includes('answering from thread')) return say(`Got it: ${t.split('\n')[0]}`)
+	if (t.includes(' answering>')) return say(`Got it: ${t.split('\n')[0]}`)
 	if (t.includes('ask twice')) return call('post', { title: 'pair', body: 'slow question' })
 	if (t.includes('slow question')) {
 		await until(() => posted(3), 15000, 20)

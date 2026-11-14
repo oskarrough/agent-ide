@@ -87,7 +87,7 @@ const told = (await deliveries(v)).at(-1)
 check(
 	told.startsWith('[You now run as echo/two:high on laptop, in ') &&
 		!told.includes('Files and paths') &&
-		told.endsWith('ana: which number?'),
+		told.endsWith('<message from="ana">\nwhich number?\n</message>'),
 	'the agent is told it switched, before what it was asked',
 	told,
 )

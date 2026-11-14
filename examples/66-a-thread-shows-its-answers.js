@@ -21,7 +21,7 @@ await scriptedRunner('bot', (request) => {
 	if (t.includes('delegate'))
 		return call('post', { title: 'sum', body: 'compute 2+2', to: 'echo/echo@bot' })
 	if (t.includes('compute 2+2'))
-		return call('post', { thread: Number(t.match(/from thread (\d+)/)[1]), body: 'by post: 4' })
+		return call('post', { thread: Number(t.match(/ thread="(\d+)"/)[1]), body: 'by post: 4' })
 	return say('')
 })
 
