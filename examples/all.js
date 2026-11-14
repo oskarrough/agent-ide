@@ -5,7 +5,7 @@ import { readdirSync } from 'node:fs'
 import { availableParallelism } from 'node:os'
 
 const files = readdirSync(import.meta.dirname)
-	.filter((f) => /^\d\d-.*\.js$/.test(f) && (process.env.REAL || !f.includes('real-model')))
+	.filter((f) => /^\d{2,}-.*\.js$/.test(f) && (process.env.REAL || !f.includes('real-model')))
 	.sort()
 const running = new Set()
 process.on('exit', () => {

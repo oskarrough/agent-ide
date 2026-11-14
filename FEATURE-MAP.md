@@ -23,7 +23,7 @@ server.js                the server: Pi Durable store, tasks, HTTP API, /ws, run
   routes                            every HTTP route, as the README lists them
   watch, rewatch, told, doing       /ws: a browser watching one thread and its agents' live work
   mintKey, revoke, upgrade          runner keys and the runner's socket
-  saveSettings, restart, connectSelf   settings, restart, the server lending its own machine
+  saveSettings, restart, connectSelf   settings, restart, the server lending its own machine, under the name it first got
 runner.js                a runner: offers its models and folders, connects, runs agents for the server
 runner-updater.js        what `curl <server>/connect-runner | sh` starts; keeps the runner up to date
 remote.js                the runner protocol, both ends: createRunners (server), serveRunner (runner),

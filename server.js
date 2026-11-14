@@ -145,6 +145,14 @@ const Keys = defineDoc({
 	checkpointWhen: base,
 	initial: () => ({}),
 })
+/** The name the server's own runner got the first time, kept so a new hostname doesn't make it another runner */
+const Lent = defineDoc({
+	kind: 'agent-ide.lent',
+	version: 1,
+	scope: 'session',
+	checkpointWhen: base,
+	initial: () => ({ name: '' }),
+})
 /** `agents` holds a {@link Recipient} for the thread's one agent, at `AGENT`, and for each bot, by name */
 const Thread = defineDoc({
 	kind: 'agent-ide.thread',
@@ -1490,7 +1498,7 @@ const routes = [
 				return {
 					name,
 					...runner,
-					...(lent && name === os.hostname() && { own: true }),
+					...(lent?.name === name && { own: true }),
 					offers: offers ?? [],
 					models: Object.keys(models ?? {}),
 					online: runners.isOnline(name),
@@ -2028,16 +2036,31 @@ async function connectSelf(url) {
 	const dir = process.env.RUNNER ?? process.cwd()
 	if (dir === '0' || lent) return
 	lent = true
-	const { key } = await mintKey(os.hostname(), url)
+	// Its first name stays: macOS renames the machine when the network changes, and agents wait for the name they know
+	const name = await commit(async (tx) => {
+		const doc = await tx.doc(Lent)
+		doc.name ||= os.hostname()
+		return doc.name
+	})
+	const { key } = await mintKey(name, url)
 	lent = spawn(
 		process.execPath,
-		[new URL('./runner.js', import.meta.url).pathname, '--server', url, '--dir', dir],
+		[
+			new URL('./runner.js', import.meta.url).pathname,
+			'--server',
+			url,
+			'--name',
+			name,
+			'--dir',
+			dir,
+		],
 		// Its online line would repeat the server's runner row
 		{
 			stdio: ['inherit', 'pipe', 'pipe'],
 			env: { ...process.env, AGENT_IDE_KEY: key, AGENT_IDE_LENT: '1' },
 		},
 	)
+	lent.name = name
 	// Through this process's own output, so the log has it too
 	lent.stdout.on('data', (chunk) => process.stdout.write(chunk))
 	lent.stderr.on('data', (chunk) => process.stderr.write(chunk))
