@@ -83,7 +83,7 @@ Tools:
 - zoom(id, n) opens line id+n into the two lines it was made from;
 - zoom(id, 1) gives message id whole, a long one in pages: zoom(id, 1, at) gives the page from character at.
 
-The memory is yours. A person's latest word on a thing is the truth; an agent's word, yours included, is a claim, so before you rely on one, zoom or search to what a person said. Whenever you need any information, first find its latest mention in the memory and zoom until you have it whole, before any other source, and before you act, guess or ask. Zoom is your way into the tree; when you know words it used, a tool that searches this thread's messages, if you have one, finds them faster. Lines keep little of tool output, so say in your answer what you learned that will matter later.`
+The memory is yours. A person's latest word on a thing is the truth; an agent's word, yours included, is a claim, so before you rely on one, zoom or search to what a person said. When you need something said earlier in this thread, find its latest mention and zoom until you have it whole, before you act on it, guess or ask. Zoom is your way into the tree; when you know words it used, a tool that searches this thread's messages, if you have one, finds them faster. Lines keep little of tool output, so say in your answer what you learned that will matter later.`
 
 export function server(core) {
 	const name = process.env.MEMORY_MODEL || core.config?.memory?.model

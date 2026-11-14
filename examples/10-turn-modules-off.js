@@ -95,7 +95,10 @@ check(
 	"talk on: the model has post and threads, beside Pi's own read",
 	JSON.stringify(on.offered),
 )
-check(on.prompt.includes('end your turn'), 'talk on: its instructions are in the prompt')
+check(
+	on.prompt.includes('Answers to your posts wake you'),
+	'talk on: its instructions are in the prompt',
+)
 check(on.children.length === 1, 'talk on: the post starts a child')
 check(
 	on.parent.entries.some((e) => e.data.from && e.data.re),
@@ -117,7 +120,10 @@ check(
 	'talk off: no post or threads, still the coding tools',
 	JSON.stringify(off.offered),
 )
-check(!off.prompt.includes('end your turn'), 'talk off: nothing about other threads in the prompt')
+check(
+	!off.prompt.includes('Answers to your posts wake you'),
+	'talk off: nothing about other threads in the prompt',
+)
 check(
 	Boolean(off.result) && !/Posted to thread/.test(off.result),
 	'talk off: a post call fails',

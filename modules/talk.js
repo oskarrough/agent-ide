@@ -317,7 +317,7 @@ export function server(core) {
 		key: 'talk',
 		tag: false,
 		render: () =>
-			"A message from another thread says which. Whatever text you end a turn with is posted, so while you wait for answers from other threads, end your turn with no text at all, not even to say you are waiting: each answer wakes you. When you have nothing new to tell, end with no text too. Don't sleep or poll.",
+			"Answers to your posts wake you, even mid-turn: while you wait for one, end your turn with no text, and don't sleep or poll.",
 	}
 
 	async function reply(posts, answeredIn, agent, body) {
